@@ -48,7 +48,9 @@ go back.
 
 ## Set it up
 
-You need an Apple silicon Mac on macOS 26 or newer, Node 24 or newer, and Homebrew.
+You need an Apple silicon Mac on macOS 26 or newer, Node 24 or newer, and Homebrew. The
+short version is below; [docs/setup.md](docs/setup.md) is the full one, step by step, with
+how to tell each step worked and which three need you in person.
 
 ```bash
 brew install openai/tools/tart openai/tools/softnet

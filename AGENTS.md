@@ -12,6 +12,8 @@ smallness and the security model come before features.
 - `docs/architecture.md`: the system shape: the life of a job, the parts, the GitHub calls
 - `docs/security.md`: what a job can and cannot do, and what is not covered. **A change
   that touches a row of its table changes the table in the same pull request.**
+- `docs/setup.md`: setting a Mac up, step by step. A change to a command, a flag or what
+  `doctor` prints changes this file in the same pull request.
 - `docs/design.md`: the look of the dashboard and the site, and the rules it follows
 - `docs/testing.md`: the test layers, and what can only be tested on the Mac
 - `docs/decisions/README.md`: **the decision register.** Every consequential choice lives

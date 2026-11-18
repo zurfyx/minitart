@@ -85,6 +85,21 @@
             <span>Memory per VM, GB</span>
             <input type="number" name="memory" min="2" inputmode="numeric" />
           </label>
+          <label>
+            <span>Ask GitHub every, seconds</span>
+            <input type="number" name="poll" min="2" max="300" inputmode="numeric" />
+          </label>
+          <label>
+            <span>Delete an idle VM after, seconds</span>
+            <input type="number" name="idle" min="30" max="3600" inputmode="numeric" />
+          </label>
+          <label class="check">
+            <input type="checkbox" name="public" />
+            <span>
+              Serve public repos. Anyone who can open a pull request could then run code in a VM on
+              this Mac.
+            </span>
+          </label>
           <button type="submit">Save</button>
           <span id="settings-note" class="muted" role="status"></span>
         </form>

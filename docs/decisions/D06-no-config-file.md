@@ -9,6 +9,8 @@ There is no file the owner writes. Each thing that could be configuration has on
 - **Which repos**: the App's installation, on GitHub ([D03](D03-a-github-app-is-the-allowlist.md)).
 - **How many VMs, and how big**: computed from the Mac's memory and cores on first start
   (three quarters of the memory, at most two VMs of each kind), changed in the dashboard.
+- **How often GitHub is asked, how long an idle VM waits, whether public repos are served**:
+  sensible defaults, changed in the dashboard.
 - **Pausing a repo**: a button in the dashboard.
 - **Where the dashboard listens**: flags to `minitart start`, kept by the service.
 

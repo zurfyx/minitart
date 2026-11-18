@@ -260,6 +260,9 @@ function render() {
     form.elements.cpu.value = settings.vm.cpu;
     form.elements.cpu.max = state.machine.cpus;
     form.elements.memory.value = Math.round(settings.vm.memoryMb / 1024);
+    form.elements.poll.value = settings.pollSeconds;
+    form.elements.idle.value = settings.idleSeconds;
+    form.elements.public.checked = settings.allowPublicRepos;
   }
 
   $('activity').replaceChildren(
@@ -350,6 +353,9 @@ settingsForm.addEventListener('submit', (event) => {
     linux: { max: value('linux') },
     macos: { max: value('macos') },
     vm: { cpu: value('cpu'), memoryMb: value('memory') * 1024 },
+    pollSeconds: value('poll'),
+    idleSeconds: value('idle'),
+    allowPublicRepos: settingsForm.elements.public.checked,
   }).then(
     () => {
       delete settingsForm.dataset.dirty;

@@ -322,6 +322,19 @@ button.quiet:hover {
   font-size: 13px;
 }
 
+#settings label.check {
+  display: flex;
+  flex-basis: 100%;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 70ch;
+}
+
+#settings label.check input {
+  width: auto;
+  accent-color: var(--accent);
+}
+
 #settings input {
   width: 9.5em;
   padding: 5px 8px;
