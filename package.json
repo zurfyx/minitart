@@ -14,18 +14,33 @@
   "engines": {
     "node": ">=24"
   },
+  "bin": {
+    "minitart": "src/main.ts"
+  },
   "scripts": {
+    "start": "node src/main.ts start",
+    "demo": "node src/main.ts start --demo",
+    "doctor": "node src/main.ts doctor",
+    "typecheck": "tsc",
+    "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test \"scripts/**/*.test.mjs\"",
+    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mjs\"",
     "prepare": "husky"
   },
   "lint-staged": {
     "*.{ts,js,mjs,json,jsonc,css,md,yml,yaml,html}": "prettier --write"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.14.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.1",
-    "prettier": "^3.10.1"
+    "prettier": "^3.10.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0"
   }
 }

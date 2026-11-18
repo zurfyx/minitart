@@ -38,10 +38,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+        if: ${{ !cancelled() }}
       - run: pnpm format:check
+        if: ${{ !cancelled() }}
 
   test:
-    # Separate from static so a formatting nit never masks a real failure.
+    # Separate from static so a formatting nit never masks a real failure. No VM and no
+    # network: the manager runs against a GitHub and a Tart in memory (docs/testing.md).
     name: test
     runs-on: ubuntu-latest
     permissions:

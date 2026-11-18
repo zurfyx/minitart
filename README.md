@@ -10,8 +10,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
 
 ![The minitart dashboard](site/dashboard-light.png)
 
-> **Designed, being built.** These docs describe the design. The manager and its dashboard
-> are in review in the first pull request, and nothing is usable from `main` yet.
+> **Early.** Built for one Mac mini. Read [the security model](docs/security.md), and the
+> code, before you trust it with yours.
 
 ## What you get
 

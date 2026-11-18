@@ -32,17 +32,16 @@ scripts/     repo tooling, with its tests
 
 ## Commands
 
-The manager is not on `main` yet: `src/`, `dashboard/` and `images/` arrive with the pull
-request that implements the design in `docs/`. Until then:
-
 ```bash
-pnpm install          # root tooling only
-pnpm format           # Prettier, write
-pnpm format:check     # Prettier, check: must pass before every commit
-pnpm test             # node --test over scripts/**/*.test.mjs
+pnpm install          # development tools only; minitart itself has no dependencies
+pnpm demo             # the dashboard with made-up jobs and VMs, at 127.0.0.1:4141
+pnpm start            # the real manager
+pnpm typecheck        # strict TS (tsc, no emit): must pass before every commit
+pnpm lint             # ESLint
+pnpm format:check     # Prettier
+pnpm test             # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
+node src/main.ts doctor | selftest | image build <kind> | service install
 ```
-
-The pull request that adds the code replaces this section with its commands.
 
 ## Conventions
 
@@ -94,8 +93,8 @@ that you did them well.
 2. **Have it reviewed.** Run a code review on the final diff (`/code-review` in Claude Code,
    or a fresh agent that has not seen your reasoning). Fix each finding or answer it in the
    PR.
-3. **Test it.** `pnpm format:check && pnpm test` (the pre-push hook runs both), plus the
-   commands of the code you changed. A change to how VMs start, to the network or to the images is
+3. **Test it.** `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` (the
+   pre-push hook runs them). A change to how VMs start, to the network or to the images is
    also run on the Mac: `docs/testing.md`, layer 3. Say in the PR what you ran.
 4. **Fill in the PR template**, tick its boxes, and set `Verified at:` to the head commit you
    verified.

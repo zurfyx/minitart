@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>minitart</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <h1><img src="/favicon.svg" alt="" width="20" height="20" /> minitart</h1>
+      <p id="machine" class="muted"></p>
+      <p id="live" class="status" role="status"></p>
+    </header>
+
+    <main>
+      <div id="alerts"></div>
+
+      <section id="setup" hidden>
+        <h2>Connect GitHub</h2>
+        <p>
+          minitart talks to GitHub as a GitHub App that only you own. Creating it takes one click
+          here and one on GitHub; then you choose the repos it may run jobs for.
+        </p>
+        <form id="create-app" method="post">
+          <input type="hidden" name="manifest" />
+          <button type="submit" class="primary">Create the GitHub App</button>
+        </form>
+        <p id="setup-remote" class="muted" hidden>
+          Open this page on the Mac itself to create the GitHub App.
+        </p>
+      </section>
+
+      <section id="slots" aria-label="Slots"></section>
+
+      <section>
+        <h2>Running <span id="running-count" class="count"></span></h2>
+        <div id="running" class="rows"></div>
+      </section>
+
+      <section>
+        <h2>Queued <span id="queued-count" class="count"></span></h2>
+        <div id="queued" class="rows"></div>
+      </section>
+
+      <section>
+        <h2>Done <span id="done-count" class="count"></span></h2>
+        <div id="done" class="rows"></div>
+      </section>
+
+      <section id="log-panel" hidden>
+        <h2>
+          <span id="log-title"></span>
+          <button type="button" id="log-close" class="quiet">Close</button>
+        </h2>
+        <pre id="log" tabindex="0"></pre>
+      </section>
+
+      <section>
+        <h2>Repos</h2>
+        <div id="repos" class="rows"></div>
+        <p id="repos-help" class="muted"></p>
+      </section>
+
+      <section>
+        <h2>This Mac</h2>
+        <div id="health" class="rows"></div>
+        <form id="settings">
+          <label>
+            <span>Linux VMs at once</span>
+            <input type="number" name="linux" min="0" max="8" inputmode="numeric" />
+          </label>
+          <label>
+            <span>macOS VMs at once</span>
+            <input type="number" name="macos" min="0" max="2" inputmode="numeric" />
+          </label>
+          <label>
+            <span>CPUs per VM</span>
+            <input type="number" name="cpu" min="1" inputmode="numeric" />
+          </label>
+          <label>
+            <span>Memory per VM, GB</span>
+            <input type="number" name="memory" min="2" inputmode="numeric" />
+          </label>
+          <button type="submit">Save</button>
+          <span id="settings-note" class="muted" role="status"></span>
+        </form>
+      </section>
+
+      <section>
+        <h2>Activity</h2>
+        <div id="activity" class="rows activity"></div>
+      </section>
+    </main>
+  </body>
+</html>

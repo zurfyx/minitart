@@ -1,0 +1,273 @@
+#!/usr/bin/env node
+// The command line. `minitart start` is the manager and its dashboard; the other commands
+// set this Mac up and check it.
+
+import { availableParallelism, totalmem } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { demoWorld } from './demo.ts';
+import { runChecks, type Check } from './doctor.ts';
+import { AppAuth, parseAppCredentials, type AppCredentials } from './github/app.ts';
+import { GitHubClient } from './github/client.ts';
+import type { GitHub } from './github/types.ts';
+import { Home } from './home.ts';
+import { buildImage, latestRunner, UPSTREAM } from './image.ts';
+import { Manager, type DoneView, type LogLine } from './manager.ts';
+import { defaultGateway, hostAddresses, selftest } from './selftest.ts';
+import { createDashboardServer } from './server.ts';
+import { installService, LABEL, uninstallService } from './service.ts';
+import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
+import { TartCli, type Network, type Tart } from './tart.ts';
+
+const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a fresh VM
+
+  minitart start                  run the manager and its dashboard
+      --port <n>                  the dashboard's port (default 4141)
+      --host <address>            the address it listens on (default 127.0.0.1)
+      --allow-host <name>         another name the dashboard is opened by; repeatable
+      --unsafe-shared-network     let VMs reach your LAN (for trying minitart out only)
+      --demo                      made-up jobs and VMs, to look at the dashboard
+  minitart doctor                 check that this Mac is set up
+  minitart image build <kind>     build the image job VMs are cloned from: linux or macos
+      --from <image>              the image to start from
+  minitart selftest               boot a VM and check what it can reach
+  minitart service install        start minitart at login (takes the same flags as start)
+  minitart service uninstall
+
+https://minitart.rovira.sh`;
+
+const machine = { cpus: availableParallelism(), memoryBytes: totalmem() };
+
+function loadSettings(home: Home): Settings {
+  const defaults = defaultSettings(machine);
+  const saved = home.readJson('settings.json');
+  return saved === undefined ? defaults : mergeSettings(defaults, saved, machine);
+}
+
+function loadApp(home: Home): AppCredentials | null {
+  return parseAppCredentials(home.readJson('app.json'));
+}
+
+async function images(tart: Tart): Promise<Set<string> | null> {
+  try {
+    return new Set((await tart.list()).map((vm) => vm.name));
+  } catch {
+    return null;
+  }
+}
+
+function printChecks(checks: readonly Check[]): boolean {
+  for (const check of checks) {
+    console.log(`${check.ok ? '  ok ' : ' FIX '} ${check.title}: ${check.detail}`);
+    if (check.fix) console.log(`        ${check.fix}`);
+  }
+  return checks.every((check) => check.ok);
+}
+
+async function start(flags: {
+  port: number;
+  host: string;
+  allowedHosts: string[];
+  network: Network;
+  demo: boolean;
+}): Promise<void> {
+  const demo = flags.demo ? demoWorld() : null;
+  const home = demo ? null : new Home();
+  const tart: Tart = demo?.tart ?? new TartCli();
+  let app = home ? loadApp(home) : null;
+  let github: GitHub | null = demo?.github ?? (app ? new GitHubClient(new AppAuth(app)) : null);
+  let health: Check[] = [];
+
+  const stamp = (at: number) => new Date(at).toISOString();
+  const manager = new Manager({
+    github: () => github,
+    tart,
+    network: flags.network,
+    settings: home ? loadSettings(home) : defaultSettings(machine),
+    saveSettings: (settings) => home?.writeJson('settings.json', settings),
+    history: home
+      ? ((home.readJson('history.json') as DoneView[] | undefined) ?? [])
+      : (demo?.history ?? []),
+    saveHistory: (history) => home?.writeJson('history.json', history),
+    vmLog: (vm, line) => home?.appendLog(`${vm}.log`, line),
+    log: (line: LogLine) =>
+      console.log(`${stamp(line.at)} ${line.level === 'warn' ? 'WARN ' : ''}${line.text}`),
+  });
+
+  const check = async () => {
+    health = demo
+      ? []
+      : await runChecks({
+          network: flags.network,
+          settings: manager.settings,
+          images: await images(tart),
+          hasApp: app !== null,
+        });
+  };
+  await check();
+  const checking = setInterval(() => void check(), 60_000);
+  manager.onChange(() => {
+    // The health line follows a settings change without waiting a minute.
+    if (health.some((c) => c.id.startsWith('image-'))) void check();
+  });
+
+  const server = createDashboardServer({
+    manager,
+    github: () => github,
+    app: () => app,
+    saveApp: (created) => {
+      home?.writeJson('app.json', created);
+      app = created;
+      github = new GitHubClient(new AppAuth(created));
+      void check();
+    },
+    health: () => health,
+    machine,
+    ...(demo ? { machineName: 'mac-mini.local' } : {}),
+    host: flags.host,
+    port: flags.port,
+    allowedHosts: flags.allowedHosts,
+    dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
+  });
+  server.listen(flags.port, flags.host, () => {
+    console.log(`minitart: the dashboard is at http://${flags.host}:${flags.port}`);
+    if (flags.network === 'shared') {
+      console.log('minitart: WARNING: --unsafe-shared-network lets jobs reach your LAN.');
+    }
+    if (!demo && !app) console.log('minitart: open it on this Mac to create the GitHub App.');
+  });
+
+  let stopping = false;
+  const shutdown = () => {
+    if (stopping) return;
+    stopping = true;
+    console.log('minitart: stopping, and deleting every VM');
+    clearInterval(checking);
+    demo?.stop();
+    server.close();
+    server.closeAllConnections();
+    void manager.stop().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  await manager.start();
+}
+
+async function main(): Promise<number> {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      port: { type: 'string', default: process.env['MINITART_PORT'] ?? '4141' },
+      host: { type: 'string', default: process.env['MINITART_HOST'] ?? '127.0.0.1' },
+      'allow-host': { type: 'string', multiple: true, default: [] },
+      'unsafe-shared-network': { type: 'boolean', default: false },
+      demo: { type: 'boolean', default: false },
+      from: { type: 'string' },
+      help: { type: 'boolean', short: 'h', default: false },
+    },
+  });
+  const [command, ...rest] = positionals;
+  const network: Network = values['unsafe-shared-network'] ? 'shared' : 'softnet';
+  const port = Number(values.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('--port must be a port');
+
+  if (values.help || command === undefined || command === 'help') {
+    console.log(USAGE);
+    return 0;
+  }
+
+  if (command === 'start') {
+    await start({
+      port,
+      host: values.host,
+      allowedHosts: values['allow-host'],
+      network,
+      demo: values.demo,
+    });
+    return new Promise(() => {});
+  }
+
+  if (command === 'doctor') {
+    const home = new Home();
+    const ok = printChecks(
+      await runChecks({
+        network,
+        settings: loadSettings(home),
+        images: await images(new TartCli()),
+        hasApp: loadApp(home) !== null,
+      }),
+    );
+    return ok ? 0 : 1;
+  }
+
+  if (command === 'image' && rest[0] === 'build') {
+    const pool = rest[1];
+    if (pool !== 'linux' && pool !== 'macos')
+      throw new Error('Say which: minitart image build linux, or macos');
+    const settings = loadSettings(new Home());
+    await buildImage({
+      tart: new TartCli(),
+      pool: pool satisfies Pool,
+      from: values.from ?? UPSTREAM[pool],
+      name: settings[pool].image,
+      network,
+      runner: await latestRunner(pool),
+      print: (line) => console.log(line),
+    });
+    return 0;
+  }
+
+  if (command === 'selftest') {
+    const settings = loadSettings(new Home());
+    const results = await selftest({
+      tart: new TartCli(),
+      image: settings.linux.image,
+      network,
+      host: { addresses: hostAddresses(), gateway: await defaultGateway() },
+      print: (line) => console.log(line),
+    });
+    for (const result of results) {
+      const verdict = result.ok ? '  ok ' : ' FAIL';
+      console.log(`${verdict} ${result.what}: ${result.saw} (should be ${result.expect})`);
+    }
+    const ok = results.every((result) => result.ok);
+    console.log(
+      ok
+        ? 'A job reaches the internet and nothing of yours.'
+        : 'A job can reach more than the internet. Do not run jobs until this passes.',
+    );
+    return ok ? 0 : 1;
+  }
+
+  if (command === 'service' && rest[0] === 'install') {
+    const home = new Home();
+    const args = ['--port', String(port), '--host', values.host];
+    for (const name of values['allow-host']) args.push('--allow-host', name);
+    if (network === 'shared') args.push('--unsafe-shared-network');
+    const path = await installService({
+      main: fileURLToPath(import.meta.url),
+      args,
+      log: home.path('logs', 'manager.log'),
+    });
+    console.log(`Installed ${path}. minitart now starts at login.`);
+    console.log(`Its log: ${home.path('logs', 'manager.log')}`);
+    return 0;
+  }
+
+  if (command === 'service' && rest[0] === 'uninstall') {
+    await uninstallService();
+    console.log(`Removed ${LABEL}.`);
+    return 0;
+  }
+
+  console.error(USAGE);
+  return 2;
+}
+
+main().then(
+  (code) => process.exit(code),
+  (error: unknown) => {
+    console.error(`minitart: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  },
+);

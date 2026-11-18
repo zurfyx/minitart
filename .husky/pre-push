@@ -1,3 +1,6 @@
-# Mirrors CI's static and test jobs so a red never reaches GitHub.
-# Bypass: git push --no-verify
-pnpm format:check && pnpm test
+# Mirrors CI's static and test jobs, so a red never reaches GitHub. Bypass: git push --no-verify
+# One guarded statement: husky runs hooks under `sh -e`, which exempts every non-final link of an
+# && chain, so a failing typecheck in a chain would still push.
+if ! pnpm typecheck || ! pnpm lint || ! pnpm format:check || ! pnpm test; then
+  exit 1
+fi
