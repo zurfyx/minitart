@@ -5,6 +5,8 @@
 import { availableParallelism, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
 import { runChecks, type Check } from './doctor.ts';
 import { AppAuth, parseAppCredentials, type AppCredentials } from './github/app.ts';
@@ -15,10 +17,12 @@ import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts'
 import { Manager, type DoneView, type LogLine } from './manager.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
-import { installService, LABEL, uninstallService } from './service.ts';
+import { installService, LABEL, plistPath, uninstallService } from './service.ts';
 import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
 import { readTailnet, type TailnetName } from './tailnet.ts';
 import { TartCli, type Network, type Tart } from './tart.ts';
+import { installKind, Running, upgradeSteps } from './upgrade.ts';
+import { VERSION } from './version.ts';
 
 const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a fresh VM
 
@@ -27,11 +31,16 @@ const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a 
       --unsafe-shared-network     let VMs reach your LAN (for trying minitart out only)
       --demo                      made-up jobs and VMs, to look at the dashboard
   minitart doctor                 check that this Mac is set up
+      --fix                       run the fixes that need the Mac's password, asking for it
+  minitart upgrade                a new minitart: jobs finish, the software changes, it restarts
+      --now                       do not wait for running jobs; they fail and can be re-run
+  minitart drain | resume         start no new jobs (the running ones finish) | start them again
   minitart image build <kind>     build the image job VMs are cloned from: linux or macos
       --from <image>              the image to start from
   minitart selftest               boot a VM and check what it can reach
   minitart service install        start minitart at login (takes the same flags as start)
   minitart service uninstall
+  minitart --version
 
 https://minitart.rovira.sh`;
 
@@ -99,6 +108,28 @@ function builtRunners(home: Home): Partial<Record<Pool, string>> {
   return have;
 }
 
+/** The newest minitart released, as `1.2.3`, or `null` when GitHub cannot be asked. */
+async function newestMinitart(): Promise<string | null> {
+  try {
+    const response = await fetch('https://api.github.com/repos/zurfyx/minitart/releases/latest', {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'minitart' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return null;
+    const tag = ((await response.json()) as { tag_name?: unknown }).tag_name;
+    return typeof tag === 'string' ? (/^v(\d+\.\d+\.\d+)$/.exec(tag)?.[1] ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Runs a command with the terminal attached, so it can ask for a password. */
+function runAttached(command: readonly string[]): number {
+  const [program, ...args] = command;
+  if (program === undefined) return 1;
+  return spawnSync(program, args, { stdio: 'inherit' }).status ?? 1;
+}
+
 async function newestRunner(): Promise<string | null> {
   try {
     return (await latestRunner('linux')).version;
@@ -164,6 +195,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   let checking = false;
   let tailnet: TailnetName[] = [];
   let newest: string | null = null;
+  let latestVersion: string | null = null;
   let newestAt = 0;
   async function check(): Promise<void> {
     // One at a time: each check runs a few commands.
@@ -173,6 +205,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
       if (demo) return;
       // GitHub's newest runner version is asked for once a day.
       if (Date.now() - newestAt > 24 * 60 * 60_000) {
+        latestVersion = await newestMinitart();
         newest = await newestRunner();
         newestAt = Date.now();
       }
@@ -182,6 +215,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
         images: await images(tart, manager.settings),
         hasApp: app !== null,
         runners: { have: home ? builtRunners(home) : {}, latest: newest },
+        versions: { running: VERSION, latest: latestVersion },
         tailnet,
       });
     } finally {
@@ -258,6 +292,9 @@ async function main(): Promise<number> {
       'unsafe-shared-network': { type: 'boolean', default: false },
       demo: { type: 'boolean', default: false },
       from: { type: 'string' },
+      fix: { type: 'boolean', default: false },
+      now: { type: 'boolean', default: false },
+      version: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -265,6 +302,11 @@ async function main(): Promise<number> {
   const network: Network = values['unsafe-shared-network'] ? 'shared' : 'softnet';
   const port = Number(values.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('--port must be a port');
+
+  if (values.version) {
+    console.log(`minitart ${VERSION}`);
+    return 0;
+  }
 
   if (values.help || command === undefined || command === 'help') {
     console.log(USAGE);
@@ -283,17 +325,72 @@ async function main(): Promise<number> {
   if (command === 'doctor') {
     const home = new Home();
     const settings = loadSettings(home);
-    const ok = printChecks(
-      await runChecks({
+    const check = async () =>
+      runChecks({
         network,
         settings,
         images: await images(new TartCli(), settings),
         hasApp: loadApp(home) !== null,
         runners: { have: builtRunners(home), latest: await newestRunner() },
+        versions: { running: VERSION, latest: await newestMinitart() },
         tailnet: await readTailnet(port),
-      }),
+      });
+    let checks = await check();
+    if (values.fix) {
+      // Only the fixes that are a command to run as root; sudo asks for the password itself.
+      const fixable = checks.filter((c) => !c.ok && c.sudo !== undefined);
+      for (const broken of fixable) {
+        console.log(`Fixing ${broken.title}: ${broken.fix}`);
+        for (const args of broken.sudo ?? []) {
+          if (runAttached(['sudo', ...args]) !== 0) break;
+        }
+      }
+      if (fixable.length > 0) checks = await check();
+    }
+    return printChecks(checks) ? 0 : 1;
+  }
+
+  if (command === 'drain' || command === 'resume') {
+    const running = new Running(port);
+    if (!(await running.drain(command === 'drain'))) {
+      throw new Error(`No minitart is answering on port ${port}`);
+    }
+    console.log(
+      command === 'drain'
+        ? 'Draining: the jobs that are running finish, and no new one starts. `minitart resume` undoes it.'
+        : 'Resumed.',
     );
-    return ok ? 0 : 1;
+    return 0;
+  }
+
+  if (command === 'upgrade') {
+    const install = installKind(fileURLToPath(import.meta.url));
+    const running = new Running(port);
+    if (values.now) {
+      console.log('Not waiting for running jobs: they fail on GitHub and can be re-run.');
+    } else if (await running.drained((line) => console.log(line))) {
+      console.log('No job is running.');
+    } else {
+      console.log('No minitart is running, so there is nothing to wait for.');
+    }
+    const serviceArgs = ['--port', String(port)];
+    if (network === 'shared') serviceArgs.push('--unsafe-shared-network');
+    const steps = upgradeSteps(install, {
+      node: process.execPath,
+      ownService: existsSync(plistPath()),
+      serviceArgs,
+    });
+    for (const step of steps) {
+      console.log(`${step.what}: ${step.command.join(' ')}`);
+      const status = runAttached(step.command);
+      if (status !== 0 && !step.optional) {
+        // minitart is still draining, on purpose: nothing new starts on a half-done upgrade.
+        throw new Error(
+          `That step failed (exit ${status}). Put it right and run \`minitart upgrade\` again, or \`minitart resume\` to carry on with the version that is running.`,
+        );
+      }
+    }
+    return 0;
   }
 
   if (command === 'image' && rest[0] === 'build') {

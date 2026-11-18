@@ -14,6 +14,7 @@ smallness and the security model come before features.
   that touches a row of its table changes the table in the same pull request.**
 - `docs/setup.md`: setting a Mac up, step by step. A change to a command, a flag or what
   `doctor` prints changes this file in the same pull request.
+- `docs/release.md`: how a push to `main` becomes a release and reaches the Homebrew tap
 - `docs/design.md`: the look of the dashboard and the site, and the rules it follows
 - `docs/testing.md`: the test layers, and what can only be tested on the Mac
 - `docs/decisions/README.md`: **the decision register.** Every consequential choice lives
@@ -28,6 +29,7 @@ src/         the manager: TypeScript that Node runs as it is (D07)
 dashboard/   the page the manager serves: plain HTML, CSS and one script
 images/      the scripts that turn an upstream image into a job image (D11)
 firewall/    the pf rule that keeps a VM off the Mac's own services, and its removal (D21)
+Formula/     the Homebrew formula's template; a release fills in its version (D16)
 site/        minitart.rovira.sh, one static page (D15)
 docs/        product, architecture, security, design, testing, and the decision register
 scripts/     repo tooling, with its tests
@@ -43,7 +45,8 @@ pnpm typecheck        # strict TS (tsc, no emit): must pass before every commit
 pnpm lint             # ESLint
 pnpm format:check     # Prettier
 pnpm test             # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
-node src/main.ts doctor | selftest | image build <kind> | service install
+node src/main.ts doctor [--fix] | upgrade | drain | resume | selftest | image build <kind> | service install
+node scripts/release.mjs plan   # what a push to main would release (docs/release.md)
 ```
 
 ## Conventions
@@ -82,6 +85,10 @@ node src/main.ts doctor | selftest | image build <kind> | service install
   `main`, never commit to `main` directly. The owner reviews every PR and squash-merges it
   himself: open the PR and stop there. Commits: concise imperative subject, authored by the
   repo owner, no AI trailers. PR descriptions carry no AI attribution either.
+- **Versions are not edited** (D16). `package.json` and `Formula/minitart.rb` say `0.0.0`
+  and stay that way; a release takes the next patch number by itself. A change to what
+  ships (`src/`, `dashboard/`, `images/`, `firewall/`, `package.json`) is released when it
+  reaches `main`: it must be fit to run on the owner's Mac the moment it merges.
 - Never deploy by hand (D15). Vercel deploys the website on pushes to `main`. No deploy
   secret is stored in GitHub.
 - Workflows: every action pinned to a full commit sha with a version comment, `contents:

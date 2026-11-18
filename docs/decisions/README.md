@@ -52,6 +52,7 @@ How expensive is this to get wrong?
 | [D11](D11-images-are-built-on-the-mac.md)   | Images are built on the Mac from an upstream image and a readable script                  | MED    | `DECIDED` |
 | [D15](D15-a-static-site-on-vercel.md)       | minitart.rovira.sh is one static page, on Vercel                                          | LOW    | `DECIDED` |
 | [D20](D20-the-dashboard-on-a-tailnet.md)    | The dashboard on the tailnet, through Tailscale Serve, with the same access as at the Mac | MED    | `DECIDED` |
+| [D16](D16-how-minitart-is-installed.md)     | Installed with Homebrew, released from every green main, upgraded by `minitart upgrade`   | MED    | `DECIDED` |
 
 ## Tier 3: how the repo is worked on
 
@@ -63,8 +64,7 @@ How expensive is this to get wrong?
 
 ## Tier 4: open, or deferred until something forces it
 
-| ID                                      | Decision                                             | Status     | Forced by                                             |
-| --------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
-| [D16](D16-how-minitart-is-installed.md) | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
-| [D18](D18-warm-vms.md)                  | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
-| [D19](D19-egress-by-domain.md)          | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |
+| ID                             | Decision                                        | Status     | Forced by                                             |
+| ------------------------------ | ----------------------------------------------- | ---------- | ----------------------------------------------------- |
+| [D18](D18-warm-vms.md)         | Keeping VMs booted ahead of jobs                | `DEFERRED` | Boot time becoming what people wait for               |
+| [D19](D19-egress-by-domain.md) | Limiting a job's internet access to named hosts | `DEFERRED` | A repo whose jobs should not reach the whole internet |

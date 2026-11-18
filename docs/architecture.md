@@ -54,24 +54,27 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 
 ## Parts
 
-| File              | What it is                                                                |
-| ----------------- | ------------------------------------------------------------------------- |
-| `src/main.ts`     | The command line: `start`, `doctor`, `image build`, `selftest`, `service` |
-| `src/manager.ts`  | The loop above, and the state the dashboard shows                         |
-| `src/schedule.ts` | Which jobs are minitart's, and which VMs to start (pure)                  |
-| `src/tart.ts`     | The `tart` command line, and the flags that isolate a VM                  |
-| `src/github/`     | The REST client, and the GitHub App: its JWT, tokens and manifest         |
-| `src/server.ts`   | The dashboard's HTTP server                                               |
-| `src/tailnet.ts`  | The tailnet names Tailscale forwards to the dashboard                     |
-| `src/settings.ts` | Defaults from the machine; validation of what the dashboard saves         |
-| `src/doctor.ts`   | Is this Mac set up the way the security model assumes                     |
-| `src/selftest.ts` | Boots a VM and checks what it can reach                                   |
-| `src/image.ts`    | Builds the image job VMs are cloned from, with `images/*.sh`              |
-| `src/service.ts`  | Installs the LaunchAgent                                                  |
-| `src/testing/`    | A GitHub and a Tart in memory, for the tests and `--demo`                 |
-| `firewall/`       | The pf rule that lets a VM reach the Mac for DHCP and DNS only            |
-| `dashboard/`      | The page: plain HTML, CSS and one script, no build                        |
-| `site/`           | minitart.rovira.sh                                                        |
+| File                              | What it is                                                                                    |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| `src/main.ts`                     | The command line: `start`, `doctor`, `upgrade`, `drain`, `image build`, `selftest`, `service` |
+| `src/manager.ts`                  | The loop above, and the state the dashboard shows                                             |
+| `src/schedule.ts`                 | Which jobs are minitart's, and which VMs to start (pure)                                      |
+| `src/tart.ts`                     | The `tart` command line, and the flags that isolate a VM                                      |
+| `src/github/`                     | The REST client, and the GitHub App: its JWT, tokens and manifest                             |
+| `src/server.ts`                   | The dashboard's HTTP server                                                                   |
+| `src/tailnet.ts`                  | The tailnet names Tailscale forwards to the dashboard                                         |
+| `src/settings.ts`                 | Defaults from the machine; validation of what the dashboard saves                             |
+| `src/doctor.ts`                   | Is this Mac set up the way the security model assumes                                         |
+| `src/selftest.ts`                 | Boots a VM and checks what it can reach                                                       |
+| `src/image.ts`                    | Builds the image job VMs are cloned from, with `images/*.sh`                                  |
+| `src/service.ts`                  | Installs the LaunchAgent                                                                      |
+| `src/upgrade.ts`                  | `minitart upgrade`: drain, upgrade, put right, restart                                        |
+| `src/version.ts`                  | The version a release wrote, or `0.0.0-dev` for a checkout                                    |
+| `src/testing/`                    | A GitHub and a Tart in memory, for the tests and `--demo`                                     |
+| `firewall/`                       | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                |
+| `dashboard/`                      | The page: plain HTML, CSS and one script, no build                                            |
+| `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
+| `site/`                           | minitart.rovira.sh                                                                            |
 
 There is no build step and no runtime dependency: Node runs the TypeScript files as they are
 ([D07](decisions/D07-typescript-run-as-it-is.md)).
@@ -124,6 +127,7 @@ Everything else is rebuilt from GitHub and Tart on start.
 - `GET /api/vms/{name}/log`: what a VM printed. `GET /api/jobs/{id}/log`: a finished job's
   log, fetched from GitHub, for jobs minitart ran.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.
+- `POST /api/drain`: start no new jobs and let the running ones finish, or resume.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.
 
 It listens on `127.0.0.1` and answers only connections from the Mac itself. To be on the

@@ -21,15 +21,20 @@ Everything else is commands.
 ## 1. Install
 
 ```bash
-brew install openai/tools/tart openai/tools/softnet
-git clone https://github.com/zurfyx/minitart ~/minitart
-cd ~/minitart
+brew install zurfyx/tap/minitart openai/tools/tart openai/tools/softnet
+brew pin softnet
 ```
 
-Homebrew may ask to trust the `openai/tools` tap first: `brew trust openai/tools`.
+Homebrew may ask to trust a tap first: `brew trust openai/tools`.
 
-Check: `node src/main.ts doctor` prints a list. Lines marked `FIX` are the steps below; each
-comes with its command.
+Softnet is pinned so that a routine `brew upgrade` does not replace its binary, which would
+cost it the permission of step 2. `minitart upgrade` is what upgrades it (see "Later").
+
+Check: `minitart doctor` prints a list. Lines marked `FIX` are the steps below; each comes
+with its command.
+
+To run it from the source instead, clone the repo and write `node src/main.ts` wherever
+this page says `minitart`.
 
 ## 2. Close the network (**Owner**, `sudo`)
 
@@ -48,15 +53,15 @@ the dashboard say so.
 
 **The firewall rule** is what keeps a job off the Mac itself. A VM can always reach the Mac
 at one address, for DHCP and DNS, and macOS serves other things there too (AirPlay,
-Handoff, sharing). The rule lets DHCP and DNS through and drops the rest:
-
-```bash
-sudo sh firewall/install.sh
-```
+Handoff, sharing). The rule lets DHCP and DNS through and drops the rest. `doctor` prints
+the line, a `sudo sh …/firewall/install.sh`.
 
 It writes two files (`/etc/pf.anchors/minitart` and a LaunchDaemon that loads it at boot)
-and touches nothing else. Read it first if you like: it is short. `sudo sh
-firewall/uninstall.sh` removes it.
+and touches nothing else. Read it first if you like: it is short. Its neighbour,
+`uninstall.sh`, removes it.
+
+Instead of copying the lines, `minitart doctor --fix` runs these and step 3 for you, asking
+for the password once.
 
 Check: `doctor` shows `ok  Network: Softnet: jobs reach the internet and nothing private` and
 `ok  Firewall: A VM reaches this Mac for DHCP and DNS only`. Step 5 tests both for real.
@@ -72,15 +77,15 @@ Check: `doctor` shows `ok  Sleep: This Mac stays awake`.
 ## 4. Build the images
 
 ```bash
-node src/main.ts image build linux     # about a minute
-node src/main.ts image build macos     # downloads tens of gigabytes the first time
+minitart image build linux     # about a minute
+minitart image build macos     # downloads tens of gigabytes the first time
 ```
 
 Skip the one you do not need, and set that kind to 0 VMs in the dashboard later. For jobs
 that need Xcode, build the macOS image from one that has it:
 
 ```bash
-node src/main.ts image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
+minitart image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
 ```
 
 Check: `doctor` shows `ok` for each image you built.
@@ -88,7 +93,7 @@ Check: `doctor` shows `ok` for each image you built.
 ## 5. Test the isolation
 
 ```bash
-node src/main.ts selftest
+minitart selftest
 ```
 
 It boots a VM the way a job VM boots and, from inside it, tries to reach the internet (must
@@ -104,7 +109,7 @@ firewall rule of step 2 is not installed or not loaded.
 ## 6. Start it
 
 ```bash
-node src/main.ts start
+minitart start
 ```
 
 Check: it prints `the dashboard is at http://127.0.0.1:4141`, and that page opens in a
@@ -149,14 +154,17 @@ VM, then **Done**. Afterwards `tart list` shows no `minitart-linux-…` VM.
 
 ## 9. Keep it running
 
+Stop the one you started in step 6 (Ctrl-C), then:
+
 ```bash
-node src/main.ts service install
+brew services start minitart
 ```
 
-This stops nothing you started in step 6 by itself: stop that one first (Ctrl-C).
+It starts at login and comes back if it stops. (From a source checkout:
+`node src/main.ts service install`.)
 
-Check: `launchctl print gui/$(id -u)/sh.rovira.minitart` shows `state = running`, and the
-dashboard still opens. The log is `~/.minitart/logs/manager.log`.
+Check: `brew services list` shows `minitart  started`, and the dashboard still opens. The
+log is `/opt/homebrew/var/log/minitart.log`.
 
 ## 10. Decide what happens after a restart (**Owner**)
 
@@ -199,7 +207,7 @@ and approve the Mac as the Service's host in the console.
 Without a Service, a port on the Mac's own tailnet name works too, with nothing to do in the
 console: `tailscale serve --bg --https=8443 http://127.0.0.1:4141`.
 
-Check: `node src/main.ts doctor` shows `ok  Tailnet: The dashboard is at https://…`, and that
+Check: `minitart doctor` shows `ok  Tailnet: The dashboard is at https://…`, and that
 address opens from another device on your tailnet. The first request can take a few seconds
 while Tailscale gets the certificate.
 
@@ -214,7 +222,13 @@ forward on the Mac.
 - **`doctor` says a runner is behind.** GitHub stops accepting old runner versions some
   weeks after a new one is out. Rebuild that image (step 4); it replaces the old one only
   when the build succeeds.
-- **Updating minitart.** `git pull`, then `node src/main.ts service install` again.
+- **Upgrading.** `minitart upgrade`, not `brew upgrade`. It lets running jobs finish and
+  starts no new ones, upgrades minitart, Tart and Softnet together, asks for the Mac's
+  password once to give the new Softnet its permission back, restarts minitart, and runs
+  `doctor`. `doctor` and the dashboard say when a newer minitart is out. With `--now` it
+  does not wait: running jobs fail on GitHub and can be re-run.
+- **Pausing for something else.** `minitart drain` starts no new jobs and lets the running
+  ones finish; `minitart resume`, or a restart, undoes it.
 - **Backing up.** `~/.minitart/settings.json` is the whole configuration: the repos that
   are served, VM counts and size, timings. It is plain JSON, written by the dashboard and
   checked every time it is read. `~/.minitart/app.json` holds the App's key: back it up like
@@ -223,6 +237,8 @@ forward on the Mac.
 - **Running it as its own macOS user.** It works: do every step above logged in as that
   user, and make it the user that logs in automatically
   ([D09](decisions/D09-a-launchagent-in-your-account.md)).
-- **Removing it.** `node src/main.ts service uninstall`, delete the App on GitHub (Settings,
-  Developer settings, GitHub Apps), run `sudo sh firewall/uninstall.sh`, and delete `~/.minitart` and the two images
+- **Removing it.** `brew services stop minitart`, delete the App on GitHub (Settings,
+  Developer settings, GitHub Apps), run the firewall's `uninstall.sh` with `sudo` (it is
+  beside `install.sh`, whose path `doctor` printed), then `brew uninstall minitart`, and
+  delete `~/.minitart` and the two images
   (`tart delete minitart-base-linux minitart-base-macos`).

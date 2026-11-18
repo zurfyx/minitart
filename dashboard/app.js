@@ -106,9 +106,19 @@ function render() {
     alerts.push('Started with --unsafe-shared-network: jobs can reach your LAN.');
   }
   if (state.githubError) alerts.push(`GitHub: ${state.githubError}`);
-  $('alerts').replaceChildren(
-    ...alerts.map((text) => h('p', { class: 'alert' }, status('fix', text))),
-  );
+  const notices = alerts.map((text) => h('p', { class: 'alert' }, status('fix', text)));
+  if (state.draining) {
+    notices.push(
+      h(
+        'p',
+        { class: 'alert' },
+        status('note', 'Draining: the jobs that are running finish, and no new one starts.'),
+        ' ',
+        h('button', { type: 'button', onclick: () => setDraining(false) }, 'Resume'),
+      ),
+    );
+  }
+  $('alerts').replaceChildren(...notices);
 
   $('setup').hidden = state.app !== null || state.repos.length > 0;
 
@@ -327,6 +337,17 @@ async function saveSettings(patch) {
     body: JSON.stringify(patch),
   });
   if (!response.ok) throw new Error(await response.text());
+  state = await response.json();
+  render();
+}
+
+async function setDraining(draining) {
+  const response = await fetch('/api/drain', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ draining }),
+  });
+  if (!response.ok) return alert(await response.text());
   state = await response.json();
   render();
 }

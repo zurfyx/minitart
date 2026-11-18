@@ -55,14 +55,15 @@ short version is below; [docs/setup.md](docs/setup.md) is the full one, step by 
 how to tell each step worked and which three need you in person.
 
 ```bash
-brew install openai/tools/tart openai/tools/softnet
-git clone https://github.com/zurfyx/minitart && cd minitart
+brew install zurfyx/tap/minitart openai/tools/tart openai/tools/softnet
+brew pin softnet
 
-node src/main.ts doctor              # says what is missing, and the command that fixes it
-node src/main.ts image build linux   # under a minute
-node src/main.ts image build macos   # downloads tens of gigabytes the first time
-node src/main.ts selftest            # boots a VM and checks what it can reach
-node src/main.ts start               # the manager, and the dashboard at 127.0.0.1:4141
+minitart doctor              # says what is missing, and the command that fixes it
+minitart doctor --fix        # runs the fixes that need your password, asking for it once
+minitart image build linux   # under a minute
+minitart image build macos   # downloads tens of gigabytes the first time
+minitart selftest            # boots a VM and checks what it can reach
+minitart start               # the manager, and the dashboard at 127.0.0.1:4141
 ```
 
 `doctor` will ask for three things that need `sudo`, once: letting Softnet (the network
@@ -76,8 +77,11 @@ GitHub choose "Only select repositories" and pick yours. Back in the dashboard, 
 To keep it running across restarts:
 
 ```bash
-node src/main.ts service install     # a LaunchAgent: starts at login, restarts if it stops
+brew services start minitart     # starts at login, restarts if it stops
 ```
+
+To upgrade, `minitart upgrade`: it waits for running jobs, upgrades minitart, Tart and
+Softnet together, and asks for your password once to put Softnet's permission back.
 
 The Mac has to stay logged in. After a restart nothing runs until someone logs in, unless
 automatic login is on, and that needs FileVault off. Which you prefer is yours to choose;
@@ -89,7 +93,7 @@ The Linux image is Ubuntu with Docker and a 50 GB disk. The macOS image is Cirru
 base image, which has no Xcode. For iOS and macOS builds, start from one that does:
 
 ```bash
-node src/main.ts image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
+minitart image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
 ```
 
 Rebuild an image when `doctor` says its runner has fallen behind: GitHub stops accepting old
@@ -102,7 +106,7 @@ runner versions a few weeks after a new one is out.
   includes a macOS VM of your own, or an image being built.
 - **"Its runner never reached GitHub."** The VM booted and could not get out. A VPN on the
   Mac with a small MTU (an exit node, a corporate VPN) stalls TLS inside VMs.
-- **Nothing happens at all.** `node src/main.ts doctor`.
+- **Nothing happens at all.** `minitart doctor`.
 
 ## What it does not do
 

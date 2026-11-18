@@ -374,3 +374,48 @@ test('the service runs Node by a path that outlives a Homebrew upgrade', () => {
   // launchd needs a full path: an empty or relative PATH entry is never used.
   assert.equal(stableNode(exec, ['', '.', 'bin'], realpath), exec);
 });
+
+test('doctor: a fix that is only a command can be run for the owner, and a newer version is advice', async () => {
+  const checks = await runChecks({
+    network: 'softnet',
+    settings,
+    images: new Set(['minitart-base-linux', 'minitart-base-macos']),
+    hasApp: true,
+    run: async (command) =>
+      command === 'tart' ? '2.42.0\n' : command === 'pmset' ? ' sleep 1\n' : null,
+    softnet: () => ({
+      path: '/opt/homebrew/Cellar/softnet/0.27.0/bin/softnet',
+      uid: 501,
+      mode: 0o100755,
+    }),
+    firewall: () => ({ rules: null, daemon: false }),
+    versions: { running: '0.3.1', latest: '0.4.0' },
+  });
+  const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
+  assert.deepEqual(byId['network']?.sudo, [
+    ['chown', 'root', '/opt/homebrew/Cellar/softnet/0.27.0/bin/softnet'],
+    ['chmod', 'u+s', '/opt/homebrew/Cellar/softnet/0.27.0/bin/softnet'],
+  ]);
+  assert.equal(byId['firewall']?.sudo?.[0]?.[0], 'sh');
+  assert.match(byId['firewall']?.sudo?.[0]?.[1] ?? '', /\/firewall\/install\.sh$/);
+  assert.deepEqual(byId['sleep']?.sudo, [['pmset', '-a', 'sleep', '0']]);
+  // Things only the owner can do are never run for them.
+  assert.equal(byId['github']?.sudo, undefined);
+  assert.deepEqual(
+    [byId['version']?.ok, byId['version']?.optional, byId['version']?.fix],
+    [false, true, 'minitart upgrade'],
+  );
+
+  const current = await runChecks({
+    network: 'softnet',
+    settings,
+    images: new Set(),
+    hasApp: true,
+    run: async () => null,
+    softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    firewall: () => ({ rules: `# ${FIREWALL_VERSION}.`, daemon: true }),
+    versions: { running: '0.4.0', latest: '0.4.0' },
+  });
+  assert.ok(!current.some((check) => check.id === 'version'));
+  assert.ok(current.filter((check) => check.ok).every((check) => check.sudo === undefined));
+});
