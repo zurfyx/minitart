@@ -23,7 +23,7 @@ export interface Probe {
 }
 
 export interface ProbeResult extends Probe {
-  /** What the VM saw: `open`, `refused`, `timeout`, `unreachable`, or `not run`. */
+  /** What the VM saw: `open`, `refused`, `timeout`, `unreachable`, `nogateway`, or `not run`. */
   saw: string;
   ok: boolean;
 }
@@ -96,8 +96,13 @@ export function probeScript(list: readonly Probe[]): string {
       'gateway' in probe.target
         ? `$GW/${probe.target.gateway}`
         : `${probe.target.host}/${probe.target.port}`;
+    // With no gateway found, a probe of it would connect to the VM itself and prove nothing.
+    const guard =
+      'gateway' in probe.target
+        ? `[ -z "$GW" ] && { echo "probe ${index} nogateway"; exit; }; `
+        : '';
     return [
-      `( err=$(timeout 4 bash -c "exec 3<>/dev/tcp/${address}" 2>&1); code=$?`,
+      `( ${guard}err=$(timeout 4 bash -c "exec 3<>/dev/tcp/${address}" 2>&1); code=$?`,
       `if [ $code -eq 0 ]; then saw=open; elif [ $code -eq 124 ]; then saw=timeout;`,
       `elif echo "$err" | grep -qi refused; then saw=refused; else saw=unreachable; fi`,
       `echo "probe ${index} $saw" ) &`,
@@ -114,7 +119,8 @@ export function reached(saw: string): boolean {
 /** Whether a probe that saw `saw` went the way it should. A probe that never ran proves nothing. */
 export function passed(expect: Probe['expect'], saw: string): boolean {
   if (saw === 'not run') return false;
-  if (expect === 'closed') return saw !== 'open';
+  // Only an answer from the gateway shows the port was really tried: a refusal, or silence.
+  if (expect === 'closed') return saw === 'refused' || saw === 'timeout';
   return reached(saw) === (expect === 'reachable');
 }
 
@@ -131,7 +137,12 @@ export function wildcardListeners(lsof: string): Listener[] {
 /** Asks `lsof`. It sees this user's programs; the common system ports are probed anyway. */
 export function listening(): Promise<Listener[]> {
   return new Promise((resolve) => {
-    execFile('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], (_error, stdout) => {
+    // +c0: the program's whole name, not its first nine letters.
+    execFile('lsof', ['+c0', '-nP', '-iTCP', '-sTCP:LISTEN'], (error, stdout) => {
+      // lsof exits 1 when nothing listens at all; what it printed is still the answer.
+      if (error && stdout === '') {
+        console.warn('minitart: lsof failed; only the common ports are tried');
+      }
       resolve(wildcardListeners(stdout));
     });
   });

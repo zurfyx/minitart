@@ -267,10 +267,14 @@ test("selftest: what this Mac serves to every network is looked for at the VM's 
   assert.ok(gateway.some((probe) => probe.what === "this Mac at the VM's gateway, port 22"));
   assert.ok(gateway.every((probe) => probe.expect === 'closed'));
   // The gateway answers by design, so only an open port is a failure there.
+  // A probe that could not find the gateway, or got no clear answer from it, proves nothing.
   assert.deepEqual(
-    ['open', 'refused', 'timeout', 'not run'].map((saw) => passed('closed', saw)),
-    [false, true, true, false],
+    ['open', 'refused', 'timeout', 'unreachable', 'nogateway', 'not run'].map((saw) =>
+      passed('closed', saw),
+    ),
+    [false, true, true, false, false, false],
   );
+  assert.match(probeScript(gateway), /\[ -z "\$GW" \] && \{ echo "probe 0 nogateway"; exit; \}/);
   assert.deepEqual(
     ['open', 'refused', 'timeout', 'not run'].map((saw) => passed('blocked', saw)),
     [false, false, true, false],
