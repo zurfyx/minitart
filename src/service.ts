@@ -5,7 +5,7 @@
 import { execFile } from 'node:child_process';
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, isAbsolute, join } from 'node:path';
 
 export const LABEL = 'sh.rovira.minitart';
 
@@ -91,9 +91,14 @@ export function stableNode(
     return execPath;
   }
   for (const dir of pathDirs) {
+    // launchd needs a full path. And a folder that is itself a link (a version manager's
+    // per-shell folder) is no more lasting than the path it stands in for.
+    if (!isAbsolute(dir)) continue;
     const candidate = join(dir, 'node');
     try {
-      if (candidate !== real && realpath(candidate) === real) return candidate;
+      if (realpath(dir) === dir && candidate !== real && realpath(candidate) === real) {
+        return candidate;
+      }
     } catch {
       // No node in this directory.
     }
@@ -116,9 +121,10 @@ export async function installService(options: {
 }): Promise<string> {
   const path = plistPath();
   const domain = `gui/${userInfo().uid}`;
+  // The well-known folders first: they are where a lasting link to Node lives.
   const node = stableNode(process.execPath, [
-    ...(process.env['PATH'] ?? '').split(delimiter),
     ...SYSTEM_PATH,
+    ...(process.env['PATH'] ?? '').split(delimiter),
   ]);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(

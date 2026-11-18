@@ -247,10 +247,16 @@ test('the service runs Node by a path that outlives a Homebrew upgrade', () => {
     '/opt/homebrew/bin/node': '/opt/homebrew/Cellar/node/26.13.1/bin/node',
     '/usr/local/bin/node': '/usr/local/lib/another/node',
   };
+  const linkedDirs: Record<string, string> = {
+    '/tmp/shell-123/bin': '/opt/homebrew/Cellar/node/26.13.1/bin',
+  };
   const realpath = (path: string) => {
-    const real = links[path];
-    if (real === undefined) throw new Error('ENOENT');
-    return real;
+    if (path.endsWith('/node')) {
+      const real = links[path] ?? (path.startsWith('/tmp/shell-123/bin') ? exec : undefined);
+      if (real === undefined) throw new Error('ENOENT');
+      return real;
+    }
+    return linkedDirs[path] ?? path;
   };
   const exec = '/opt/homebrew/Cellar/node/26.13.1/bin/node';
   const dirs = [
@@ -263,4 +269,12 @@ test('the service runs Node by a path that outlives a Homebrew upgrade', () => {
   // No link to it anywhere: the real path is all there is.
   assert.equal(stableNode(exec, ['/usr/local/bin', '/usr/bin'], realpath), exec);
   assert.equal(stableNode('/gone/node', dirs, realpath), '/gone/node');
+  // A folder that is itself a link, as a version manager makes per shell, is not lasting.
+  assert.equal(stableNode(exec, ['/tmp/shell-123/bin'], realpath), exec);
+  assert.equal(
+    stableNode(exec, ['/tmp/shell-123/bin', '/opt/homebrew/bin'], realpath),
+    '/opt/homebrew/bin/node',
+  );
+  // launchd needs a full path: an empty or relative PATH entry is never used.
+  assert.equal(stableNode(exec, ['', '.', 'bin'], realpath), exec);
 });
