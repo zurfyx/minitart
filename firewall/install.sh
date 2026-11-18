@@ -29,8 +29,8 @@ trap 'rm -f "$NEW"' EXIT
 
 # Every VM gets a network of its own, and macOS names their interfaces as they come:
 # bridge100, bridge101, and so on, the lowest free one each time. minitart never runs more
-# than thirty VMs at once (src/settings.ts counts against this list); thirty-two names
-# leave room. A rule for an interface that does not exist yet waits for it.
+# than twenty-eight VMs at once (src/settings.ts counts against this list); thirty-two
+# names leave room. A rule for an interface that does not exist yet waits for it.
 {
   echo "# minitart firewall v1. Written by firewall/install.sh; do not edit, run it again."
   echo "# A VM reaches this Mac for DHCP and DNS, and for nothing else."

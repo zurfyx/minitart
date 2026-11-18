@@ -41,9 +41,11 @@ replace.
   (`bridge100`, `bridge101`, …), giving a new VM the lowest number that is free (checked:
   a VM started after another stopped took the freed number). The rules name the first
   thirty-two. **That is where the limit on Linux VMs comes from**: minitart runs at most
-  thirty VMs at once (two macOS, twenty-eight Linux), leaving two interfaces for a VM that
-  `selftest` or `image build` boots and one of the owner's own. A test holds the limit and
-  the rules to the same number. Linux VMs have no other limit; memory decides the rest.
+  twenty-eight VMs at once (two macOS, twenty-six Linux), leaving four interfaces for the
+  VMs it does not count: an image being built of each kind, the one `selftest` boots, and
+  one of the owner's own. A VM that could not be deleted keeps its place in the count until
+  it is gone, and while the VMs cannot be listed none is started. A test holds the limit
+  and the rules to the same number. Linux VMs have no other limit; memory decides the rest.
 - The rules apply to every VM on those interfaces, not only minitart's: a VM of the owner's
   own also stops reaching the Mac's services at its gateway. What the Mac itself starts
   toward a VM (`ssh` into one, say) still works, and so do DHCP, DNS and the internet.

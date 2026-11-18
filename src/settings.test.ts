@@ -55,19 +55,27 @@ test('Linux VMs are limited by what the firewall rule covers, and by nothing els
   const script = readFileSync(new URL('../firewall/install.sh', import.meta.url), 'utf8');
   const first = Number(/^\s*n=(\d+)$/m.exec(script)?.[1]);
   const last = Number(/while \[ "\$n" -le (\d+) \]/.exec(script)?.[1]);
+  // macOS names a VM's interface bridge100 and up: the rules must name those, and in a row.
+  assert.equal(first, 100);
+  const rules = script.split('\n').filter((line) => /^\s*echo "(pass|block) /.test(line));
+  assert.ok(rules.length > 0);
+  for (const rule of rules) assert.match(rule, / on bridge\$n /, rule);
   assert.equal(last - first + 1, FIREWALL_INTERFACES, 'the script and the limit agree');
-  // Every VM minitart can run, and two it does not count, fit in the list.
-  assert.equal(LINUX_VM_LIMIT + MACOS_VM_LIMIT + SPARE_INTERFACES, FIREWALL_INTERFACES);
-  assert.equal(LINUX_VM_LIMIT, 28);
+  // Written out, so that changing one number without the others fails here: 32 interfaces
+  // hold 2 macOS VMs, 26 Linux ones, and 4 that minitart does not count.
+  assert.deepEqual(
+    [FIREWALL_INTERFACES, MACOS_VM_LIMIT, LINUX_VM_LIMIT, SPARE_INTERFACES],
+    [32, 2, 26, 4],
+  );
 
   const huge = { cpus: 64, memoryBytes: 512 * GB };
   const base = defaultSettings(huge);
   assert.equal(
-    mergeSettings(base, { linux: { max: 28 }, vm: { memoryMb: 4096 } }, huge).linux.max,
-    28,
+    mergeSettings(base, { linux: { max: 26 }, vm: { memoryMb: 4096 } }, huge).linux.max,
+    26,
   );
   assert.throws(
-    () => mergeSettings(base, { linux: { max: 29 }, vm: { memoryMb: 4096 } }, huge),
+    () => mergeSettings(base, { linux: { max: 27 }, vm: { memoryMb: 4096 } }, huge),
     SettingsError,
   );
 });

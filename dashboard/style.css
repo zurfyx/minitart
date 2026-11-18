@@ -241,6 +241,7 @@ section > p {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .slot-name {
@@ -250,6 +251,7 @@ section > p {
 
 .pips {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 

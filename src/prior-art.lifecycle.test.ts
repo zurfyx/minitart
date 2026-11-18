@@ -352,6 +352,61 @@ test('leftovers: one that cannot be deleted does not stop the rest, and pulled i
   assert.deepEqual(jobVms(tart), ['minitart-linux-000003']);
 });
 
+// The firewall rule covers a fixed number of VM interfaces (D21), so a VM that is still on
+// this Mac counts for as long as it is, whether or not it has a job.
+test('a VM that cannot be deleted keeps its slot until it is gone', async () => {
+  const base = defaultSettings(machine);
+  const { github, tart, manager, settle, advance } = setup({
+    settings: { linux: { ...base.linux, max: 1 } },
+  });
+  const a = github.queue('octo/app', ['minitart-linux'], 'a');
+  await manager.tick();
+  await settle();
+  const [first] = tart.runners();
+  assert.ok(first);
+  github.take(first);
+  tart.print(first, 'Running job: a');
+  github.complete(a);
+  // Once when the job ends, once more when the sweep that follows tries.
+  tart.failNext('remove', new Error('tart delete: resource busy'), 2);
+  tart.exit(first, 0);
+  await settle();
+  assert.deepEqual(manager.snapshot().vms, [], 'the manager is done with it');
+  assert.deepEqual(jobVms(tart), [first], 'and it is still on disk');
+
+  github.queue('octo/app', ['minitart-linux'], 'b');
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), [first], 'no second VM beside the one that is stuck');
+
+  // A minute on, the sweep deletes it and the waiting job gets its VM.
+  advance(60_000);
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
+  assert.notEqual(jobVms(tart)[0], first);
+});
+
+test('no VM is started while the VMs on this Mac cannot be listed', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  tart.addImage('minitart-linux-00000a');
+  tart.failNext('list', new Error('tart list: timed out'));
+  assert.equal(await manager.removeOrphans(), false);
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), ['minitart-linux-00000a'], 'how many there are is not known');
+  assert.match(manager.snapshot().queued[0]?.note ?? '', /could not be listed/);
+
+  assert.equal(await manager.removeOrphans(), true);
+  advance(5_000);
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
+  assert.notEqual(jobVms(tart)[0], 'minitart-linux-00000a');
+  assert.equal(manager.snapshot().queued[0]?.note ?? null, null);
+});
+
 // After sand Tests/sandTests/ProcessRunnerTests.swift: testRedactReplacesSecrets
 test("a runner's single-use config appears in no log and no state the dashboard is sent", async () => {
   const { github, tart, manager, settle } = setup();

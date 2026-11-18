@@ -17,10 +17,10 @@ export const MACOS_VM_LIMIT = 2;
 export const FIREWALL_INTERFACES = 32;
 
 /**
- * Interfaces left for VMs the manager does not count: the one `selftest` or `image build`
- * boots, and one of the owner's own.
+ * Interfaces left for VMs the manager does not count: an image being built of each kind,
+ * the one `selftest` boots, and one of the owner's own.
  */
-export const SPARE_INTERFACES = 2;
+export const SPARE_INTERFACES = 4;
 
 /**
  * Linux VMs have no limit of their own. This is the most there can be with every VM still
