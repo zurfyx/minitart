@@ -26,6 +26,7 @@ export interface RunnerRelease {
 export async function latestRunner(pool: Pool, fetchImpl: Fetch = fetch): Promise<RunnerRelease> {
   const response = await fetchImpl('https://api.github.com/repos/actions/runner/releases/latest', {
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'minitart' },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Could not read the runner release (${response.status})`);
   const release = (await response.json()) as { tag_name: string; body: string };

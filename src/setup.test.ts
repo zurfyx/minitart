@@ -102,6 +102,22 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
     softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
     runners: { have: { linux: '2.330.0', macos: '2.338.2' }, latest: '2.338.2' },
     freeDiskGb: 12,
+    tailnet: [
+      {
+        host: 'minitart.example.ts.net',
+        origin: 'https://minitart.example.ts.net',
+        service: 'svc:minitart',
+        refused: null,
+        fix: null,
+      },
+      {
+        host: 'mini.example.ts.net:8443',
+        origin: 'https://mini.example.ts.net:8443',
+        service: null,
+        refused: 'funnel',
+        fix: 'tailscale serve --bg --https=8443 http://127.0.0.1:4141',
+      },
+    ],
   });
   const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
   assert.equal(byId['tart']?.fix, 'brew upgrade tart');
@@ -111,6 +127,15 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
   assert.equal(byId['runner-macos'], undefined);
   assert.equal(byId['disk']?.ok, false);
   assert.deepEqual([byId['login']?.ok, byId['login']?.optional], [false, true]);
+  assert.match(
+    byId['tailnet-minitart.example.ts.net']?.detail ?? '',
+    /https:\/\/minitart\.example\.ts\.net/,
+  );
+  assert.equal(byId['tailnet-mini.example.ts.net:8443']?.ok, false);
+  assert.equal(
+    byId['tailnet-mini.example.ts.net:8443']?.fix,
+    'tailscale serve --bg --https=8443 http://127.0.0.1:4141',
+  );
   assert.match(byId['login']?.fix ?? '', /FileVault/);
 });
 

@@ -40,16 +40,17 @@ How expensive is this to get wrong?
 
 ## Tier 2: how it is built
 
-| ID                                          | Decision                                                                               | Radius | Status    |
-| ------------------------------------------- | -------------------------------------------------------------------------------------- | ------ | --------- |
-| [D02](D02-the-manager-polls.md)             | The manager polls GitHub; nothing listens for it                                       | MED    | `DECIDED` |
-| [D06](D06-no-config-file.md)                | No file to write: defaults from the machine, changes from the dashboard, saved as JSON | MED    | `DECIDED` |
-| [D07](D07-typescript-run-as-it-is.md)       | TypeScript that Node runs as it is: no build, no runtime dependencies                  | MED    | `DECIDED` |
-| [D08](D08-two-labels.md)                    | Two labels route jobs: `minitart-linux` and `minitart-macos`                           | LOW    | `DECIDED` |
-| [D09](D09-a-launchagent-in-your-account.md) | The manager is a LaunchAgent in whichever account runs it                              | MED    | `DECIDED` |
-| [D10](D10-the-dashboard.md)                 | The dashboard is served to the Mac itself only, and GitHub keeps the logs              | MED    | `DECIDED` |
-| [D11](D11-images-are-built-on-the-mac.md)   | Images are built on the Mac from an upstream image and a readable script               | MED    | `DECIDED` |
-| [D15](D15-a-static-site-on-vercel.md)       | minitart.rovira.sh is one static page, on Vercel                                       | LOW    | `DECIDED` |
+| ID                                          | Decision                                                                                  | Radius | Status    |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- | ------ | --------- |
+| [D02](D02-the-manager-polls.md)             | The manager polls GitHub; nothing listens for it                                          | MED    | `DECIDED` |
+| [D06](D06-no-config-file.md)                | No file to write: defaults from the machine, changes from the dashboard, saved as JSON    | MED    | `DECIDED` |
+| [D07](D07-typescript-run-as-it-is.md)       | TypeScript that Node runs as it is: no build, no runtime dependencies                     | MED    | `DECIDED` |
+| [D08](D08-two-labels.md)                    | Two labels route jobs: `minitart-linux` and `minitart-macos`                              | LOW    | `DECIDED` |
+| [D09](D09-a-launchagent-in-your-account.md) | The manager is a LaunchAgent in whichever account runs it                                 | MED    | `DECIDED` |
+| [D10](D10-the-dashboard.md)                 | The dashboard listens on the Mac itself only, and GitHub keeps the logs                   | MED    | `DECIDED` |
+| [D11](D11-images-are-built-on-the-mac.md)   | Images are built on the Mac from an upstream image and a readable script                  | MED    | `DECIDED` |
+| [D15](D15-a-static-site-on-vercel.md)       | minitart.rovira.sh is one static page, on Vercel                                          | LOW    | `DECIDED` |
+| [D20](D20-the-dashboard-on-a-tailnet.md)    | The dashboard on the tailnet, through Tailscale Serve, with the same access as at the Mac | MED    | `DECIDED` |
 
 ## Tier 3: how the repo is worked on
 
@@ -61,9 +62,8 @@ How expensive is this to get wrong?
 
 ## Tier 4: open, or deferred until something forces it
 
-| ID                                       | Decision                                             | Status     | Forced by                                             |
-| ---------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
-| [D16](D16-how-minitart-is-installed.md)  | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
-| [D18](D18-warm-vms.md)                   | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
-| [D19](D19-egress-by-domain.md)           | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |
-| [D20](D20-the-dashboard-on-a-tailnet.md) | The dashboard on a tailnet, at a name of its own     | `OPEN`     | The owner asked for it; the next pull request         |
+| ID                                      | Decision                                             | Status     | Forced by                                             |
+| --------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
+| [D16](D16-how-minitart-is-installed.md) | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
+| [D18](D18-warm-vms.md)                  | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
+| [D19](D19-egress-by-domain.md)          | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |

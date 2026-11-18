@@ -6,6 +6,7 @@ import { realpathSync, statfsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import type { Pool, Settings } from './settings.ts';
+import type { TailnetName } from './tailnet.ts';
 import type { Network } from './tart.ts';
 
 export interface Check {
@@ -49,6 +50,8 @@ export interface DoctorInput {
   runners?: { have: Partial<Record<Pool, string>>; latest: string | null };
   /** Free space on the disk that holds the VMs, in GB. */
   freeDiskGb?: number | null;
+  /** The tailnet names Tailscale forwards to the dashboard. */
+  tailnet?: readonly TailnetName[];
 }
 
 /** Softnet creates a network interface, which takes root: the binary must be setuid root. */
@@ -187,6 +190,25 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
           : fileVault
             ? 'Automatic login needs FileVault off. Leaving it on is a fair choice: log in after a restart'
             : 'System Settings, Users & Groups: Automatically log in as',
+    });
+  }
+
+  for (const name of input.tailnet ?? []) {
+    const why = {
+      // A page with no login, that changes settings, on the internet.
+      funnel: `Tailscale Funnel publishes ${name.host} to the internet, so the dashboard does not answer to it`,
+      'plain-http': `${name.host} is plain HTTP, so the dashboard does not answer to it`,
+      'raw-tcp': `Tailscale forwards bare TCP (${name.host}) to the dashboard, which no name check can guard`,
+    };
+    checks.push({
+      id: `tailnet-${name.host}`,
+      ok: name.refused === null,
+      title: 'Tailnet',
+      detail:
+        name.refused === null
+          ? `The dashboard is at ${name.origin} for your tailnet`
+          : why[name.refused],
+      fix: name.fix,
     });
   }
 

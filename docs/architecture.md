@@ -62,6 +62,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/tart.ts`     | The `tart` command line, and the flags that isolate a VM                  |
 | `src/github/`     | The REST client, and the GitHub App: its JWT, tokens and manifest         |
 | `src/server.ts`   | The dashboard's HTTP server                                               |
+| `src/tailnet.ts`  | The tailnet names Tailscale forwards to the dashboard                     |
 | `src/settings.ts` | Defaults from the machine; validation of what the dashboard saves         |
 | `src/doctor.ts`   | Is this Mac set up the way the security model assumes                     |
 | `src/selftest.ts` | Boots a VM and checks what it can reach                                   |
@@ -124,4 +125,7 @@ Everything else is rebuilt from GitHub and Tart on start.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.
 
-It listens on `127.0.0.1` and answers only connections from the Mac itself.
+It listens on `127.0.0.1` and answers only connections from the Mac itself. To be on the
+owner's tailnet, Tailscale Serve forwards a tailnet name to that port, and minitart answers
+to the names `tailscale serve status` says are forwarded there
+([D20](decisions/D20-the-dashboard-on-a-tailnet.md), `src/tailnet.ts`).
