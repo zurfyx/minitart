@@ -9,7 +9,7 @@ import {
   softnetIsSetuidRoot,
 } from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
-import { plist } from './service.ts';
+import { plist, stableNode } from './service.ts';
 import { passed, probes, probeScript, reached, wildcardListeners } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
 import { networkArgs, lineSplitter } from './tart.ts';
@@ -335,4 +335,42 @@ test('the firewall script writes the version doctor looks for, and passes only D
   assert.ok(script.indexOf('pfctl -n') < script.indexOf('install -m 644'));
   assert.match(script, /if \[ "\$RULES" -eq 0 \]; then/);
   assert.ok(!/>\s*\/etc\/pf\.conf/.test(script));
+});
+
+test('the service runs Node by a path that outlives a Homebrew upgrade', () => {
+  const links: Record<string, string> = {
+    '/opt/homebrew/Cellar/node/26.13.1/bin/node': '/opt/homebrew/Cellar/node/26.13.1/bin/node',
+    '/opt/homebrew/bin/node': '/opt/homebrew/Cellar/node/26.13.1/bin/node',
+    '/usr/local/bin/node': '/usr/local/lib/another/node',
+  };
+  const linkedDirs: Record<string, string> = {
+    '/tmp/shell-123/bin': '/opt/homebrew/Cellar/node/26.13.1/bin',
+  };
+  const realpath = (path: string) => {
+    if (path.endsWith('/node')) {
+      const real = links[path] ?? (path.startsWith('/tmp/shell-123/bin') ? exec : undefined);
+      if (real === undefined) throw new Error('ENOENT');
+      return real;
+    }
+    return linkedDirs[path] ?? path;
+  };
+  const exec = '/opt/homebrew/Cellar/node/26.13.1/bin/node';
+  const dirs = [
+    '/opt/homebrew/Cellar/node/26.13.1/bin',
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/usr/bin',
+  ];
+  assert.equal(stableNode(exec, dirs, realpath), '/opt/homebrew/bin/node');
+  // No link to it anywhere: the real path is all there is.
+  assert.equal(stableNode(exec, ['/usr/local/bin', '/usr/bin'], realpath), exec);
+  assert.equal(stableNode('/gone/node', dirs, realpath), '/gone/node');
+  // A folder that is itself a link, as a version manager makes per shell, is not lasting.
+  assert.equal(stableNode(exec, ['/tmp/shell-123/bin'], realpath), exec);
+  assert.equal(
+    stableNode(exec, ['/tmp/shell-123/bin', '/opt/homebrew/bin'], realpath),
+    '/opt/homebrew/bin/node',
+  );
+  // launchd needs a full path: an empty or relative PATH entry is never used.
+  assert.equal(stableNode(exec, ['', '.', 'bin'], realpath), exec);
 });
