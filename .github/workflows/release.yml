@@ -30,8 +30,7 @@ jobs:
     name: release
     runs-on: ubuntu-latest
     permissions:
-      # Creating the tag and the release.
-      contents: write
+      contents: write # creating the tag and the release
     outputs:
       action: ${{ steps.plan.outputs.action }}
       version: ${{ steps.plan.outputs.version }}
@@ -93,6 +92,9 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: zurfyx
           repositories: homebrew-tap
+          # Only what proposing and merging the formula takes, on the tap alone.
+          permission-contents: write
+          permission-pull-requests: write
       - run: sh scripts/update-tap.sh
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}

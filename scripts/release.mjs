@@ -15,12 +15,15 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
 /** What the archive holds, and so what a change must touch to be worth a release. */
@@ -94,6 +97,41 @@ export function renderFormula(template, version, sha256) {
   return rendered;
 }
 
+/**
+ * One file as tar writes it (the ustar format): a 512-byte header, then the bytes, padded to
+ * a multiple of 512. Everything that could differ between two runs is fixed.
+ */
+export function tarEntry(name, bytes, mode) {
+  let prefix = '';
+  let base = name;
+  if (Buffer.byteLength(base) > 100) {
+    // A long path is split at a slash: its folders in one field, the rest in the other.
+    const cut = name.lastIndexOf('/', 155);
+    prefix = name.slice(0, cut);
+    base = name.slice(cut + 1);
+    if (cut < 1 || Buffer.byteLength(base) > 100) throw new Error(`Path too long for tar: ${name}`);
+  }
+  const header = Buffer.alloc(512);
+  const field = (text, offset, length) => header.write(text, offset, length, 'utf8');
+  const octal = (value, offset, length) =>
+    field(value.toString(8).padStart(length - 1, '0'), offset, length);
+  field(base, 0, 100);
+  octal(mode, 100, 8);
+  octal(0, 108, 8); // owner
+  octal(0, 116, 8); // group
+  octal(bytes.length, 124, 12);
+  octal(0, 136, 12); // modified: the epoch
+  field('        ', 148, 8); // the checksum counts its own field as spaces
+  field('0', 156, 1); // a regular file
+  field('ustar\0', 257, 6);
+  field('00', 263, 2);
+  field(prefix, 345, 155);
+  const sum = header.reduce((total, byte) => total + byte, 0);
+  field(`${sum.toString(8).padStart(6, '0')}\0 `, 148, 8);
+  const padding = Buffer.alloc((512 - (bytes.length % 512)) % 512);
+  return [header, bytes, padding];
+}
+
 function git(...args) {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
@@ -129,32 +167,21 @@ export function pack(version, dir, root = process.cwd()) {
 
     mkdirSync(dir, { recursive: true });
     const archive = join(dir, `${name}.tar.gz`);
-    // No timestamps, owners or ordering that differ from one run to the next. bsdtar is on
-    // macOS and on GitHub's Ubuntu runners alike.
-    const files = lines(
-      execFileSync('find', [name, '-type', 'f'], { cwd: stage, encoding: 'utf8' }),
-    ).sort();
-    for (const file of files) execFileSync('touch', ['-t', '200001010000', join(stage, file)]);
-    const tar = execFileSync(
-      'bsdtar',
-      [
-        '--format',
-        'ustar',
-        '--uid',
-        '0',
-        '--gid',
-        '0',
-        '--uname',
-        '',
-        '--gname',
-        '',
-        '-cf',
-        '-',
-        ...files,
-      ],
-      { cwd: stage, maxBuffer: 256 * 1024 * 1024 },
-    );
-    const gz = execFileSync('gzip', ['-n', '-9'], { input: tar, maxBuffer: 256 * 1024 * 1024 });
+    // Written here rather than by a `tar` program: those differ between macOS and Linux,
+    // in what they have and in what they write. Sorted names, no timestamps, no owners.
+    const files = readdirSync(tree, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(stage, join(entry.parentPath, entry.name)).split(sep).join('/'))
+      .sort();
+    const tar = Buffer.concat([
+      ...files.flatMap((file) => {
+        const path = join(stage, file);
+        const executable = (statSync(path).mode & 0o100) !== 0;
+        return tarEntry(file, readFileSync(path), executable ? 0o755 : 0o644);
+      }),
+      Buffer.alloc(1024),
+    ]);
+    const gz = gzipSync(tar, { level: 9 });
     writeFileSync(archive, gz);
     const sha256 = createHash('sha256').update(gz).digest('hex');
     writeFileSync(`${archive}.sha256`, `${sha256}  ${name}.tar.gz\n`);

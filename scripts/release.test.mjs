@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { highest, pack, plan, renderFormula, ships } from './release.mjs';
+import { highest, pack, plan, renderFormula, ships, tarEntry } from './release.mjs';
 
 test('what ships is the code and what it runs, not its tests or the docs', () => {
   for (const file of [
@@ -128,4 +128,18 @@ test('the archive holds what runs, says its version, and is the same bytes every
   assert.equal(manifest.version, '9.8.7');
   assert.equal(manifest.devDependencies, undefined);
   assert.equal(manifest.dependencies, undefined, 'minitart has no runtime dependencies');
+});
+
+test('a path too long for one tar field is split at a folder, and one that cannot be is refused', () => {
+  const long = `minitart-1.2.3/docs/decisions/${'a-very-long-folder-name/'.repeat(4)}D99-a-decision.md`;
+  assert.ok(Buffer.byteLength(long) > 100);
+  const [header] = tarEntry(long, Buffer.from('x'), 0o644);
+  const text = (offset, length) =>
+    header
+      .subarray(offset, offset + length)
+      .toString()
+      .replace(/\0+$/, '');
+  assert.equal(`${text(345, 155)}/${text(0, 100)}`, long);
+  assert.equal(text(257, 5), 'ustar');
+  assert.throws(() => tarEntry(`${'b'.repeat(120)}.md`, Buffer.from('x'), 0o644), /too long/);
 });
