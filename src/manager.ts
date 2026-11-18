@@ -155,6 +155,8 @@ export interface ManagerDeps {
 const HISTORY_LIMIT = 200;
 const LOG_LIMIT = 300;
 const VM_LOG_LIMIT = 2000;
+/** How many finished VMs keep their output for the dashboard: two rounds of a full Mac. */
+const PAST_LOGS = 60;
 const BOOT_TIMEOUT_MS: Record<Pool, number> = { linux: 120_000, macos: 300_000 };
 /** Past GitHub's own six-hour job limit, a VM is stuck. */
 const VM_LIFETIME_MS = 7 * 60 * 60_000;
@@ -202,6 +204,14 @@ export class Manager {
   #tickFailed = false;
   /** Set when a VM could not be deleted, so the next round looks for it again. */
   #sweepAt = Number.POSITIVE_INFINITY;
+  /**
+   * The VMs that could not be deleted. Each may still hold a network interface, and the
+   * firewall rule covers only so many (D21), so each holds its kind's slot until a sweep
+   * finds it gone.
+   */
+  readonly #leftBehind = new Set<string>();
+  /** Set while the VMs on this Mac could not be listed: how many there are is not known. */
+  #unlisted = false;
   /** Starts that failed in a row, per kind, and when the kind may try again. */
   readonly #startFailures: Record<Pool, number> = { linux: 0, macos: 0 };
   readonly #startAfter: Record<Pool, number> = { linux: 0, macos: 0 };
@@ -227,7 +237,7 @@ export class Manager {
 
   /** Deletes the job VMs a previous run left behind, then polls until `stop()`. */
   async start(): Promise<void> {
-    if (!(await this.removeOrphans())) this.#sweepAt = this.#now() + 60_000;
+    await this.removeOrphans();
     const loop = async () => {
       await this.tick();
       if (!this.#stopping) {
@@ -247,24 +257,51 @@ export class Manager {
 
   /** Deletes job VMs the manager does not know. Resolves with whether every one went. */
   async removeOrphans(): Promise<boolean> {
+    // Only these may be forgotten for not being listed: one added while the list is being
+    // read may be newer than the list.
+    const known = [...this.#leftBehind];
+    // A VM the manager has now is its own to delete, even if it lets go of it meanwhile.
+    const mine = new Set(this.#vms.keys());
+    // A sweep that leaves something behind is tried again in a minute, whoever asked for it.
+    const again = () => {
+      this.#sweepAt = Math.min(this.#sweepAt, this.#now() + 60_000);
+      this.#changed();
+      return false;
+    };
     let vms;
     try {
       vms = await this.#deps.tart.list();
     } catch (error) {
+      this.#unlisted = true;
       this.#say('warn', `Could not list VMs: ${message(error)}`);
-      return false;
+      return again();
     }
+    this.#unlisted = false;
+    const listed = new Set(vms.map((vm) => vm.name));
+    for (const name of known) if (!listed.has(name)) this.#leftBehind.delete(name);
     let clean = true;
     for (const vm of vms) {
-      if (vm.source !== 'local' || !isJobVm(vm.name) || this.#vms.has(vm.name)) continue;
+      if (vm.source !== 'local' || !isJobVm(vm.name)) continue;
+      if (mine.has(vm.name) || this.#vms.has(vm.name)) continue;
       this.#say('info', `Removing ${vm.name}, left over from an earlier run`);
       if (vm.running) await this.#deps.tart.stop(vm.name).catch(() => {});
-      await this.#deps.tart.remove(vm.name).catch((error: unknown) => {
+      try {
+        await this.#deps.tart.remove(vm.name);
+        this.#leftBehind.delete(vm.name);
+      } catch (error) {
+        // Gone by another hand is gone all the same. Not knowing counts as still there.
+        if (!(await this.#deps.tart.has(vm.name).catch(() => true))) {
+          this.#leftBehind.delete(vm.name);
+          continue;
+        }
         clean = false;
+        this.#leftBehind.add(vm.name);
         this.#say('warn', `Could not remove ${vm.name}: ${message(error)}`);
-      });
+      }
     }
-    return clean;
+    if (!clean) return again();
+    this.#changed();
+    return true;
   }
 
   /** One round: read the queue, start VMs for it, stop the VMs nothing needs. */
@@ -282,8 +319,7 @@ export class Manager {
     if (now >= this.#sweepAt) {
       // Only after a VM could not be deleted: listing VMs is not free (tart.ts).
       this.#sweepAt = Number.POSITIVE_INFINITY;
-      // A sweep that left something behind is tried again in a minute.
-      if (!(await this.removeOrphans())) this.#sweepAt = Math.min(this.#sweepAt, now + 60_000);
+      await this.removeOrphans();
     }
     await this.#refreshImages(now);
     try {
@@ -339,7 +375,8 @@ export class Manager {
       }
     }
 
-    if (!this.#stopping && !this.#draining && this.#blocked() === null) {
+    // Not while the VMs could not be listed either: one more might be one too many.
+    if (!this.#stopping && !this.#draining && !this.#unlisted && this.#blocked() === null) {
       const limits = this.#limits();
       // A VM is started only when the Mac has the memory for it now (D22): each one started
       // this round counts against what is available, since none has taken its share yet.
@@ -386,6 +423,8 @@ export class Manager {
         note = `No VM is started until this is put right. ${this.#blocked()}`;
       } else if (this.#draining) {
         note = 'minitart is draining: it starts no job until it is resumed or restarted';
+      } else if (this.#unlisted) {
+        note = 'The VMs on this Mac could not be listed; trying again within a minute';
       } else if (!this.#images[pool]) {
         note = `No ${pool} image yet: minitart image build ${pool}`;
       } else if (this.#now() < this.#startAfter[pool]) {
@@ -537,7 +576,7 @@ export class Manager {
   }
 
   #slots(): { repo: string; pool: Pool; busy: boolean }[] {
-    return [...this.#vms.values()].map((vm) => ({
+    const slots = [...this.#vms.values()].map((vm) => ({
       repo: vm.repo,
       pool: vm.pool,
       // A VM on its way out covers no job, but still holds its slot. A VM whose runner says
@@ -548,6 +587,11 @@ export class Manager {
         vm.stopReason !== null ||
         (vm.status === 'running' && vm.job?.id != null),
     }));
+    for (const name of this.#leftBehind) {
+      const pool = VM_NAME.exec(name)?.[1];
+      if (pool === 'linux' || pool === 'macos') slots.push({ repo: '', pool, busy: true });
+    }
+    return slots;
   }
 
   async #refreshImages(now: number): Promise<void> {
@@ -616,6 +660,8 @@ export class Manager {
       .catch((error: unknown) => {
         // A lifecycle that throws must not take the manager, and every other job, with it.
         this.#vms.delete(vm.name);
+        // Whether it is still there is not known: it holds its slot until a sweep has looked.
+        this.#leftBehind.add(vm.name);
         this.#sweepAt = 0;
         this.#say('warn', `${vm.name}: ${message(error)}`);
       })
@@ -771,9 +817,14 @@ export class Manager {
     }
     this.#vms.delete(vm.name);
     // Only now: a sweep skips the VMs the manager still knows.
-    if (vm.removeFailed) this.#sweepAt = 0;
+    if (vm.removeFailed) {
+      this.#leftBehind.add(vm.name);
+      this.#sweepAt = 0;
+    }
     this.#pastLogs.set(vm.name, vm.log);
-    for (const name of [...this.#pastLogs.keys()].slice(0, -30)) this.#pastLogs.delete(name);
+    for (const name of [...this.#pastLogs.keys()].slice(0, -PAST_LOGS)) {
+      this.#pastLogs.delete(name);
+    }
     this.#changed();
   }
 

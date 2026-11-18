@@ -241,6 +241,7 @@ section > p {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .slot-name {
@@ -248,8 +249,14 @@ section > p {
   font-weight: 600;
 }
 
+/* Many pips wrap onto more rows; the words either side of them stay whole. */
+.slot > :not(.pips) {
+  flex: none;
+}
+
 .pips {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 

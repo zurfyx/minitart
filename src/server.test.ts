@@ -133,7 +133,7 @@ test('a connection that is not from this Mac gets nothing', async () => {
   assert.equal((await fetch(`${origin}/api/state`)).status, 403);
   assert.equal((await fetch(`${origin}/api/events`)).status, 403);
   assert.equal((await post({ linux: { max: 3 } })).status, 403);
-  assert.equal(manager.settings.linux.max, 2);
+  assert.equal(manager.settings.linux.max, defaultSettings(machine).linux.max, 'unchanged');
   assert.equal((await fetch(`${origin}/setup/manifest`)).status, 403);
 });
 

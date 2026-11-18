@@ -154,7 +154,11 @@ export class FakeTart implements Tart {
   readonly #failures = new Map<string, Error[]>();
 
   /** Makes the next `times` calls of `command` throw `error`, then behave again. */
-  failNext(command: 'clone' | 'configure' | 'stop' | 'remove', error: Error, times = 1): void {
+  failNext(
+    command: 'list' | 'clone' | 'configure' | 'stop' | 'remove',
+    error: Error,
+    times = 1,
+  ): void {
     const queue = this.#failures.get(command) ?? [];
     for (let i = 0; i < times; i++) queue.push(error);
     this.#failures.set(command, queue);
@@ -187,6 +191,7 @@ export class FakeTart implements Tart {
 
   async list(): Promise<TartVm[]> {
     this.lists++;
+    this.#failIfAsked('list');
     return [...this.vms].map(([name, vm]) => ({ name, running: vm.running, source: vm.source }));
   }
 
