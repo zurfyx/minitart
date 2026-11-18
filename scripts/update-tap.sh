@@ -31,6 +31,17 @@ retry() {
   done
 }
 
+open_pr() {
+  gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number // empty'
+}
+
+propose() {
+  gh pr create --repo "$TAP" --head "$BRANCH" --base main \
+    --title "minitart $VERSION" \
+    --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null ||
+    [ -n "$(open_pr)" ]
+}
+
 current() {
   gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true
 }
@@ -57,13 +68,13 @@ while :; do
     -f message="minitart $VERSION" -f branch="$BRANCH" ${BLOB:+-f sha="$BLOB"} \
     -f content="$(base64 < formula.rb | tr -d '\n')" >/dev/null
 
-  # An open proposal for this branch is picked up; a merged or closed one is not.
-  PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+  # An open proposal for this branch is picked up; a merged or closed one is not. Creating
+  # one counts as done when one is open afterwards: GitHub can fail the answer to a request
+  # it carried out, and asking again would then be refused as a duplicate.
+  PR=$(open_pr)
   if [ -z "$PR" ]; then
-    retry gh pr create --repo "$TAP" --head "$BRANCH" --base main \
-      --title "minitart $VERSION" \
-      --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null
-    PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number')
+    retry propose
+    PR=$(open_pr)
   fi
 
   # The tap's own CI installs the formula and runs its test. It takes a moment to start:

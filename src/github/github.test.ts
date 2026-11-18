@@ -325,7 +325,12 @@ test('the App is known by what GitHub calls it now, so a rename does not leave a
   assert.match(calls[0]?.headers['authorization'] ?? '', /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
 
   // The dashboard links to this address: nothing but an App's page on github.com is taken.
-  for (const html_url of ['https://evil.example/apps/minitart', 'javascript:alert(1)', 7]) {
+  for (const html_url of [
+    'https://evil.example/apps/minitart',
+    'javascript:alert(1)',
+    'https://github.com/apps/another-app',
+    7,
+  ]) {
     const odd = fakeFetch({ 'GET /app': () => json({ slug: 'minitart', html_url }) });
     await assert.rejects(appIdentity(app, odd.fetch));
   }

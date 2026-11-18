@@ -174,9 +174,12 @@ export async function appIdentity(
   if (typeof body.slug !== 'string' || typeof body.html_url !== 'string') {
     throw new Error('GitHub did not say what the App is called');
   }
-  // Only ever a page on github.com: the dashboard links to it.
-  if (!/^https:\/\/github\.com\/apps\/[A-Za-z0-9-]+$/.test(body.html_url)) {
-    throw new Error('GitHub gave an address for the App that is not an App page');
+  // Only ever this App's page on github.com: the dashboard links to it.
+  if (
+    !/^[A-Za-z0-9-]+$/.test(body.slug) ||
+    body.html_url !== `https://github.com/apps/${body.slug}`
+  ) {
+    throw new Error('GitHub gave an address for the App that is not its page');
   }
   return { slug: body.slug, htmlUrl: body.html_url };
 }

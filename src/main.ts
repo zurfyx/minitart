@@ -174,7 +174,8 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     app = { ...app, ...now };
     home.writeJson('app.json', app);
   };
-  void refreshApp();
+  // A link that stays stale is the worst of it: nothing here may stop minitart starting.
+  refreshApp().catch(() => {});
   let health: Check[] = [];
 
   const stamp = (at: number) => new Date(at).toISOString();
