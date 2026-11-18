@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>minitart: GitHub Actions runners on your own Mac mini</title>
+    <meta
+      name="description"
+      content="A very small manager for GitHub Actions runners on your own Mac. Every job runs in a fresh Tart VM that reaches the internet and nothing of yours, and is deleted when the job ends."
+    />
+    <meta property="og:title" content="minitart" />
+    <meta
+      property="og:description"
+      content="GitHub Actions runners on your own Mac mini. Every job in a fresh VM, deleted when it ends."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://minitart.rovira.sh" />
+    <meta property="og:image" content="https://minitart.rovira.sh/dashboard-light.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://minitart.rovira.sh" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="name" href="/"><img src="/favicon.svg" alt="" width="22" height="22" /> minitart</a>
+      <nav>
+        <a href="https://github.com/zurfyx/minitart/blob/main/docs/security.md">Security</a>
+        <a href="https://github.com/zurfyx/minitart">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>GitHub Actions runners on your own Mac mini.</h1>
+        <p class="lead">
+          minitart runs every job in a fresh virtual machine and deletes it when the job ends. A job
+          reaches the internet and nothing of yours: not your files, not your keychain, not your
+          home network.
+        </p>
+        <p class="actions">
+          <a class="button" href="https://github.com/zurfyx/minitart#set-it-up">Set it up</a>
+          <a href="https://github.com/zurfyx/minitart">Read the code</a>
+        </p>
+        <p class="status">
+          <span aria-hidden="true">!</span> Early. Built for one Mac mini and a handful of private
+          repos; read it before you trust it.
+        </p>
+      </section>
+
+      <figure class="shot">
+        <picture>
+          <source srcset="/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
+          <img
+            src="/dashboard-light.png"
+            width="1280"
+            height="800"
+            alt="The minitart dashboard: two macOS and two Linux slots, three jobs running in their own VMs, two queued, and a list of finished jobs marked passed or failed."
+          />
+        </picture>
+        <figcaption>
+          The dashboard, served from the Mac: what is queued, running and done.
+        </figcaption>
+      </figure>
+
+      <section>
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li>
+            <h3>A workflow asks for it</h3>
+            <p>
+              <code>runs-on: minitart-linux</code> or <code>minitart-macos</code>. Every other job
+              stays where it was.
+            </p>
+          </li>
+          <li>
+            <h3>The job gets a new VM</h3>
+            <p>
+              minitart clones an image in under a second, boots it and registers a runner that
+              exists for that one job.
+            </p>
+          </li>
+          <li>
+            <h3>The VM is deleted</h3>
+            <p>
+              When the job ends, so does everything it wrote, installed or left running. The next
+              job starts from the image again.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>What keeps it safe</h2>
+        <dl class="facts">
+          <div>
+            <dt>The same isolation hosted runners have</dt>
+            <dd>
+              One VM per job, on Apple's hypervisor, driven by
+              <a href="https://tart.run">Tart</a>. No folder is shared with a VM.
+            </dd>
+          </div>
+          <div>
+            <dt>The network is an allowlist</dt>
+            <dd>
+              A VM can send to public internet addresses and nowhere else. Your router, your NAS and
+              your tailnet are out of reach without being listed, and so is the next thing you add.
+            </dd>
+          </div>
+          <div>
+            <dt>GitHub holds the list of repos</dt>
+            <dd>
+              minitart is a GitHub App you create in one click and install on the repos you choose.
+              It cannot register a runner anywhere else. Public repos are skipped.
+            </dd>
+          </div>
+          <div>
+            <dt>A job never sees a key</dt>
+            <dd>
+              The App's key stays on the Mac. A VM holds the single-use config of its own runner,
+              already spent.
+            </dd>
+          </div>
+          <div>
+            <dt>You can check</dt>
+            <dd>
+              <code>minitart selftest</code> boots a VM and tries to reach your router and your Mac
+              from inside it.
+            </dd>
+          </div>
+          <div>
+            <dt>Small enough to read</dt>
+            <dd>
+              A manager and a page. TypeScript that Node runs as it is, with no runtime
+              dependencies.
+            </dd>
+          </div>
+        </dl>
+        <p>
+          What it does not cover is written down too:
+          <a href="https://github.com/zurfyx/minitart/blob/main/docs/security.md"
+            >the security model</a
+          >.
+        </p>
+      </section>
+
+      <section>
+        <h2>What it is not</h2>
+        <p>
+          It is not for a team with a fleet of Macs. It does not fall back to hosted runners when
+          the Mac is off, it runs arm64 only, and it keeps no caches between jobs. Switching a job
+          back to GitHub's runners is a one-word change.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        MIT. By <a href="https://github.com/zurfyx">Gerard Rovira</a>. Built on
+        <a href="https://tart.run">Tart</a> and GitHub's
+        <a href="https://github.com/actions/runner">runner</a>.
+      </p>
+    </footer>
+  </body>
+</html>

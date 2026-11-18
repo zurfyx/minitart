@@ -1,0 +1,31 @@
+{
+  "name": "minitart",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A very small manager for GitHub Actions runners on your own Mac mini: every job in a fresh Tart VM, deleted when it ends",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zurfyx/minitart.git"
+  },
+  "homepage": "https://minitart.rovira.sh",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --test \"scripts/**/*.test.mjs\"",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs,json,jsonc,css,md,yml,yaml,html}": "prettier --write"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.1",
+    "prettier": "^3.10.1"
+  }
+}

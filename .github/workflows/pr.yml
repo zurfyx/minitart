@@ -1,0 +1,45 @@
+name: PR
+
+# The pr-checklist job (D13): a required status check on main. CI has no AI in
+# it, so it cannot look at a screen or review a diff. It checks that the pull
+# request body says someone did, for the commit that is now its head
+# (scripts/pr-checklist.mjs).
+#
+# Its own workflow, because it must run again when the body is edited, and the
+# jobs in ci.yml must not.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-checklist:
+    name: pr-checklist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The script lists the changed files with git diff base...head.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # The body reaches the script through the environment, never through
+      # the shell: it is text anyone who opens a pull request controls.
+      - run: node scripts/pr-checklist.mjs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}

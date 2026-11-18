@@ -1,0 +1,54 @@
+/*
+ * minitart's tokens: every colour, font and radius the dashboard and the website use
+ * (docs/design.md). site/tokens.css is a copy of this file; a test keeps the two the same.
+ *
+ * One accent (raspberry). Status colours mean a state and nothing else, and always sit
+ * beside a word.
+ */
+:root {
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --ink: #16150f;
+  --body: #3b3a33;
+  --muted: #6b6a61;
+  --rule: #e9e8e1;
+  --rule-strong: #d3d2c8;
+  --hover: #f6f5f0;
+
+  --accent: #b3214a;
+  --accent-ink: #ffffff;
+
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #c62828;
+  --busy: #1f6feb;
+
+  --code-bg: #f6f5f0;
+
+  --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --radius: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141412;
+    --ink: #f3f2ec;
+    --body: #cfcec6;
+    --muted: #96958c;
+    --rule: #262622;
+    --rule-strong: #3a3a35;
+    --hover: #1c1c19;
+
+    --accent: #f0688c;
+    --accent-ink: #1a0a10;
+
+    --ok: #4ac26b;
+    --warn: #d9a520;
+    --bad: #f47067;
+    --busy: #6cb0ff;
+
+    --code-bg: #1c1c19;
+  }
+}
