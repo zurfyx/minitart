@@ -69,6 +69,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/image.ts`    | Builds the image job VMs are cloned from, with `images/*.sh`              |
 | `src/service.ts`  | Installs the LaunchAgent                                                  |
 | `src/testing/`    | A GitHub and a Tart in memory, for the tests and `--demo`                 |
+| `firewall/`       | The pf rule that lets a VM reach the Mac for DHCP and DNS only            |
 | `dashboard/`      | The page: plain HTML, CSS and one script, no build                        |
 | `site/`           | minitart.rovira.sh                                                        |
 

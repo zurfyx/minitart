@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { atLeast, neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
+import {
+  atLeast,
+  FIREWALL_VERSION,
+  neverSleeps,
+  runChecks,
+  softnetIsSetuidRoot,
+} from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist, stableNode } from './service.ts';
-import { probes, probeScript, reached } from './selftest.ts';
+import { passed, probes, probeScript, reached, wildcardListeners } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
 import { networkArgs, lineSplitter } from './tart.ts';
 import { FakeTart } from './testing/fakes.ts';
@@ -100,6 +106,7 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
         fdesetup: 'FileVault is On.\n',
       })[command] ?? null,
     softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    firewall: () => ({ rules: '# minitart firewall v1. Written by…', daemon: true }),
     runners: { have: { linux: '2.330.0', macos: '2.338.2' }, latest: '2.338.2' },
     freeDiskGb: 12,
     tailnet: [
@@ -149,6 +156,9 @@ test('selftest: the internet must answer; the router and this Mac must not', () 
   assert.ok(list.some((probe) => probe.what === 'this Mac at 100.64.0.7:22'));
   const script = probeScript(list);
   assert.match(script, /\/dev\/tcp\/192\.168\.1\.1\/443/);
+  // The VM's own gateway is this Mac, and only the VM knows its address.
+  assert.match(script, /^GW=\$\(ip route/);
+  assert.match(script, /\/dev\/tcp\/\$GW\/5000/);
   assert.match(script, /wait$/);
   // A refused connection means the packet arrived: that address is not blocked.
   assert.deepEqual(['open', 'refused', 'timeout', 'unreachable'].map(reached), [
@@ -239,6 +249,92 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   assert.ok(!xml.includes('MINITART_HOME'));
   const elsewhere = plist({ node: 'n', main: 'm', args: [], log: 'l', path: 'p', home: '/tmp/mt' });
   assert.match(elsewhere, /<key>MINITART_HOME<\/key>\n {4}<string>\/tmp\/mt<\/string>/);
+});
+
+test("selftest: what this Mac serves to every network is looked for at the VM's gateway", () => {
+  const lsof = [
+    'COMMAND     PID   USER   FD   TYPE DEVICE SIZE/OFF NODE NAME',
+    'ControlCe  1234 owner   10u  IPv4 0x1      0t0  TCP *:5000 (LISTEN)',
+    'ControlCe  1234 owner   11u  IPv6 0x2      0t0  TCP *:7000 (LISTEN)',
+    'node       2345 owner   20u  IPv4 0x3      0t0  TCP 127.0.0.1:4141 (LISTEN)',
+    'rapportd   3456 owner    4u  IPv4 0x4      0t0  TCP *:49362 (LISTEN)',
+  ].join('\n');
+  const listening = wildcardListeners(lsof);
+  assert.deepEqual(listening, [
+    { port: 5000, command: 'ControlCe' },
+    { port: 7000, command: 'ControlCe' },
+    { port: 49362, command: 'rapportd' },
+  ]);
+  const gateway = probes({ addresses: [], gateway: null, listening }).filter(
+    (probe) => 'gateway' in probe.target,
+  );
+  assert.ok(
+    gateway.some((probe) => probe.what === "this Mac at the VM's gateway, port 49362 (rapportd)"),
+  );
+  assert.ok(gateway.some((probe) => probe.what === "this Mac at the VM's gateway, port 22"));
+  assert.ok(gateway.every((probe) => probe.expect === 'closed'));
+  // The gateway answers by design, so only an open port is a failure there.
+  // A probe that could not find the gateway, or got no clear answer from it, proves nothing.
+  assert.deepEqual(
+    ['open', 'refused', 'timeout', 'unreachable', 'nogateway', 'not run'].map((saw) =>
+      passed('closed', saw),
+    ),
+    [false, true, true, false, false, false],
+  );
+  assert.match(probeScript(gateway), /\[ -z "\$GW" \] && \{ echo "probe 0 nogateway"; exit; \}/);
+  assert.deepEqual(
+    ['open', 'refused', 'timeout', 'not run'].map((saw) => passed('blocked', saw)),
+    [false, false, true, false],
+  );
+  assert.deepEqual(
+    ['open', 'unreachable', 'not run'].map((saw) => passed('reachable', saw)),
+    [true, false, false],
+  );
+});
+
+test('doctor: the firewall that closes this Mac to its VMs is part of the setup', async () => {
+  const check = async (firewall: { rules: string | null; daemon: boolean }) =>
+    (
+      await runChecks({
+        network: 'softnet',
+        settings,
+        images: new Set(),
+        hasApp: true,
+        run: async () => null,
+        softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+        firewall: () => firewall,
+      })
+    ).find((c) => c.id === 'firewall');
+  const missing = await check({ rules: null, daemon: false });
+  assert.equal(missing?.ok, false);
+  assert.match(missing?.fix ?? '', /^sudo sh \/.*\/firewall\/install\.sh$/);
+  assert.equal(
+    (await check({ rules: `# ${FIREWALL_VERSION}.\npass in …`, daemon: true }))?.ok,
+    true,
+  );
+  // Rules that will not come back after a restart, or that an update has replaced, do not count.
+  assert.equal((await check({ rules: `# ${FIREWALL_VERSION}.`, daemon: false }))?.ok, false);
+  assert.equal((await check({ rules: '# minitart firewall v0.', daemon: true }))?.ok, false);
+});
+
+test('the firewall script writes the version doctor looks for, and passes only DHCP and DNS', () => {
+  const script = read('../firewall/install.sh');
+  assert.ok(script.includes(`echo "# ${FIREWALL_VERSION}.`));
+  const rules = script
+    .split('\n')
+    .map((line) => /^\s*echo "((?:pass|block) .*)"$/.exec(line)?.[1])
+    .filter((rule) => rule !== undefined);
+  assert.deepEqual(rules, [
+    'pass  out quick on bridge$n keep state',
+    'pass  in quick on bridge$n proto udp from any to { (bridge$n), 255.255.255.255 } port { 53, 67 }',
+    'pass  in quick on bridge$n proto tcp from any to (bridge$n) port 53',
+    'block in quick on bridge$n from any to { (bridge$n), (bridge$n:broadcast), 255.255.255.255, 224.0.0.0/4, ff00::/8 }',
+  ]);
+  // Checked before anything is written, loaded before it is called installed, and nothing
+  // but its own two files is touched.
+  assert.ok(script.indexOf('pfctl -n') < script.indexOf('install -m 644'));
+  assert.match(script, /if \[ "\$RULES" -eq 0 \]; then/);
+  assert.ok(!/>\s*\/etc\/pf\.conf/.test(script));
 });
 
 test('the service runs Node by a path that outlives a Homebrew upgrade', () => {

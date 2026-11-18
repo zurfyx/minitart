@@ -27,6 +27,7 @@ smallness and the security model come before features.
 src/         the manager: TypeScript that Node runs as it is (D07)
 dashboard/   the page the manager serves: plain HTML, CSS and one script
 images/      the scripts that turn an upstream image into a job image (D11)
+firewall/    the pf rule that keeps a VM off the Mac's own services, and its removal (D21)
 site/        minitart.rovira.sh, one static page (D15)
 docs/        product, architecture, security, design, testing, and the decision register
 scripts/     repo tooling, with its tests

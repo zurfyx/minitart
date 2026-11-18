@@ -30,13 +30,14 @@ How expensive is this to get wrong?
 
 ## Tier 1: the promises
 
-| ID                                             | Decision                                                                             | Radius | Status    |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ | ------ | --------- |
-| [D01](D01-every-job-in-a-fresh-vm.md)          | Every job runs in a fresh Tart VM, deleted when the job ends                         | HIGH   | `DECIDED` |
-| [D03](D03-a-github-app-is-the-allowlist.md)    | A GitHub App is the credential; a repo is served when the App is on it and turned on | HIGH   | `DECIDED` |
-| [D04](D04-the-internet-and-nothing-private.md) | A VM reaches the internet and nothing private; no VM starts otherwise                | HIGH   | `DECIDED` |
-| [D05](D05-private-repos-only.md)               | Public repos are skipped unless the owner allows them                                | MED    | `DECIDED` |
-| [D17](D17-secrets-that-live-on-the-mac.md)     | A job gets its secrets from GitHub, never from the Mac                               | HIGH   | `DECIDED` |
+| ID                                                 | Decision                                                                                 | Radius | Status    |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------ | --------- |
+| [D01](D01-every-job-in-a-fresh-vm.md)              | Every job runs in a fresh Tart VM, deleted when the job ends                             | HIGH   | `DECIDED` |
+| [D03](D03-a-github-app-is-the-allowlist.md)        | A GitHub App is the credential; a repo is served when the App is on it and turned on     | HIGH   | `DECIDED` |
+| [D04](D04-the-internet-and-nothing-private.md)     | A VM reaches the internet and nothing private; no VM starts otherwise                    | HIGH   | `DECIDED` |
+| [D05](D05-private-repos-only.md)                   | Public repos are skipped unless the owner allows them                                    | MED    | `DECIDED` |
+| [D21](D21-what-a-job-reaches-on-the-mac-itself.md) | A VM reaches the Mac itself for DHCP and DNS only, by a firewall rule the setup installs | HIGH   | `DECIDED` |
+| [D17](D17-secrets-that-live-on-the-mac.md)         | A job gets its secrets from GitHub, never from the Mac                                   | HIGH   | `DECIDED` |
 
 ## Tier 2: how it is built
 

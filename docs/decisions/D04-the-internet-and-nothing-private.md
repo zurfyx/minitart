@@ -37,7 +37,8 @@ VM: there is no host configuration to drift, and nothing to restore after a macO
 - A job cannot reach anything on the home network, including things it might legitimately
   want (a local cache, a device farm). There is no setting for exceptions; a need for one is
   a new decision.
-- A job can reach the Mac at the VM's gateway address, so a service on the Mac that listens
-  on all interfaces is exposed to jobs. `selftest` reports it.
+- Softnet lets a VM reach the Mac at the VM's own gateway address, where a service that
+  listens on all interfaces would answer. A firewall rule closes that
+  ([D21](D21-what-a-job-reaches-on-the-mac-itself.md)), and `selftest` checks it.
 - IPv6 does not work in a VM. The images turn it off so nothing waits for it.
 - The rule is by address, not by name ([D19](D19-egress-by-domain.md)).
