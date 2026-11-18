@@ -13,7 +13,7 @@ import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
 import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
 import { Manager, type DoneView, type LogLine } from './manager.ts';
-import { defaultGateway, hostAddresses, selftest } from './selftest.ts';
+import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
 import { installService, LABEL, uninstallService } from './service.ts';
 import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
@@ -324,12 +324,22 @@ async function main(): Promise<number> {
       tart: new TartCli(),
       image: settings.linux.image,
       network,
-      host: { addresses: hostAddresses(), gateway: await defaultGateway() },
+      host: {
+        addresses: hostAddresses(),
+        gateway: await defaultGateway(),
+        listening: await listening(),
+      },
       print: (line) => console.log(line),
     });
+    const want = { reachable: 'reachable', blocked: 'blocked', closed: 'not open' };
     for (const result of results) {
       const verdict = result.ok ? '  ok ' : ' FAIL';
-      console.log(`${verdict} ${result.what}: ${result.saw} (should be ${result.expect})`);
+      console.log(`${verdict} ${result.what}: ${result.saw} (should be ${want[result.expect]})`);
+    }
+    if (results.some((result) => !result.ok && result.expect === 'closed')) {
+      console.log(
+        "A port open at the VM's gateway is a service on this Mac that listens on every network: a job can talk to it. Turn that service off, or have it listen on 127.0.0.1.",
+      );
     }
     const ok = results.every((result) => result.ok);
     console.log(

@@ -8,22 +8,22 @@ stands between the two, what is checked, and what is not covered.
 
 A job runs as an administrator inside its VM. Assume it controls the VM completely.
 
-| A job…                                              |        |                                                                                                     |
-| --------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM.                   |
-| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                                    |
-| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                                                 |
-| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                                       |
-| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                                               |
-| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP. Read in its source; `selftest` does not test it. |
-| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                                      |
-| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it. See "The gateway" below.                                                      |
-| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                                        |
-| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                                          |
-| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                                      |
-| reads the config of its own runner                  | can    | It runs as the runner's user. The config is good for that one job and nothing more.                 |
-| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.                             |
-| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. What a VM prints is kept up to 4 MB, for the newest 50 VMs.                    |
+| A job…                                              |        |                                                                                                                |
+| --------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
+| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM.                              |
+| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                                               |
+| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                                                            |
+| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                                                  |
+| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                                                          |
+| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP. Read in its source; `selftest` does not test it.            |
+| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                                                 |
+| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it, and whatever else the Mac serves to every network is there too. See "The gateway" below. |
+| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                                                   |
+| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                                                     |
+| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                                                 |
+| reads the config of its own runner                  | can    | It runs as the runner's user. The config is good for that one job and nothing more.                            |
+| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.                                        |
+| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. What a VM prints is kept up to 4 MB, for the newest 50 VMs.                               |
 
 ## The network is an allowlist
 
@@ -54,8 +54,15 @@ The VM can reach one address of the Mac: the gateway of its own virtual network
 that listens on **all interfaces** is therefore reachable from a job at that address.
 Services bound to `127.0.0.1` are not.
 
-`minitart selftest` tests exactly this. The dashboard itself listens on `127.0.0.1` by
-default.
+`minitart selftest` looks for exactly this: from inside a VM it tries the gateway on the
+ports a Mac commonly serves and on every port `lsof` shows this Mac listening on for all
+networks, and fails for each one that opens. macOS itself is the usual culprit: AirPlay
+Receiver (5000 and 7000), Kerberos (88) when a sharing service is on, and Handoff. Turn off
+the ones you do not use (System Settings, General, AirDrop & Handoff). minitart does not
+close them for you: what would is a firewall rule on the Mac that lets VMs reach it for
+DHCP and DNS and nothing else ([D21](decisions/D21-what-a-job-reaches-on-the-mac-itself.md)).
+
+The dashboard itself listens on `127.0.0.1`, which a VM cannot reach.
 
 ### Narrower than "the internet"
 

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { atLeast, neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist } from './service.ts';
-import { probes, probeScript, reached } from './selftest.ts';
+import { passed, probes, probeScript, reached, wildcardListeners } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
 import { networkArgs, lineSplitter } from './tart.ts';
 import { FakeTart } from './testing/fakes.ts';
@@ -149,6 +149,9 @@ test('selftest: the internet must answer; the router and this Mac must not', () 
   assert.ok(list.some((probe) => probe.what === 'this Mac at 100.64.0.7:22'));
   const script = probeScript(list);
   assert.match(script, /\/dev\/tcp\/192\.168\.1\.1\/443/);
+  // The VM's own gateway is this Mac, and only the VM knows its address.
+  assert.match(script, /^GW=\$\(ip route/);
+  assert.match(script, /\/dev\/tcp\/\$GW\/5000/);
   assert.match(script, /wait$/);
   // A refused connection means the packet arrived: that address is not blocked.
   assert.deepEqual(['open', 'refused', 'timeout', 'unreachable'].map(reached), [
@@ -239,4 +242,41 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   assert.ok(!xml.includes('MINITART_HOME'));
   const elsewhere = plist({ node: 'n', main: 'm', args: [], log: 'l', path: 'p', home: '/tmp/mt' });
   assert.match(elsewhere, /<key>MINITART_HOME<\/key>\n {4}<string>\/tmp\/mt<\/string>/);
+});
+
+test("selftest: what this Mac serves to every network is looked for at the VM's gateway", () => {
+  const lsof = [
+    'COMMAND     PID   USER   FD   TYPE DEVICE SIZE/OFF NODE NAME',
+    'ControlCe  1234 owner   10u  IPv4 0x1      0t0  TCP *:5000 (LISTEN)',
+    'ControlCe  1234 owner   11u  IPv6 0x2      0t0  TCP *:7000 (LISTEN)',
+    'node       2345 owner   20u  IPv4 0x3      0t0  TCP 127.0.0.1:4141 (LISTEN)',
+    'rapportd   3456 owner    4u  IPv4 0x4      0t0  TCP *:49362 (LISTEN)',
+  ].join('\n');
+  const listening = wildcardListeners(lsof);
+  assert.deepEqual(listening, [
+    { port: 5000, command: 'ControlCe' },
+    { port: 7000, command: 'ControlCe' },
+    { port: 49362, command: 'rapportd' },
+  ]);
+  const gateway = probes({ addresses: [], gateway: null, listening }).filter(
+    (probe) => 'gateway' in probe.target,
+  );
+  assert.ok(
+    gateway.some((probe) => probe.what === "this Mac at the VM's gateway, port 49362 (rapportd)"),
+  );
+  assert.ok(gateway.some((probe) => probe.what === "this Mac at the VM's gateway, port 22"));
+  assert.ok(gateway.every((probe) => probe.expect === 'closed'));
+  // The gateway answers by design, so only an open port is a failure there.
+  assert.deepEqual(
+    ['open', 'refused', 'timeout', 'not run'].map((saw) => passed('closed', saw)),
+    [false, true, true, false],
+  );
+  assert.deepEqual(
+    ['open', 'refused', 'timeout', 'not run'].map((saw) => passed('blocked', saw)),
+    [false, false, true, false],
+  );
+  assert.deepEqual(
+    ['open', 'unreachable', 'not run'].map((saw) => passed('reachable', saw)),
+    [true, false, false],
+  );
 });

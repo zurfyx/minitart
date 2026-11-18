@@ -62,8 +62,9 @@ How expensive is this to get wrong?
 
 ## Tier 4: open, or deferred until something forces it
 
-| ID                                      | Decision                                             | Status     | Forced by                                             |
-| --------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
-| [D16](D16-how-minitart-is-installed.md) | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
-| [D18](D18-warm-vms.md)                  | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
-| [D19](D19-egress-by-domain.md)          | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |
+| ID                                                 | Decision                                                  | Status     | Forced by                                             |
+| -------------------------------------------------- | --------------------------------------------------------- | ---------- | ----------------------------------------------------- |
+| [D16](D16-how-minitart-is-installed.md)            | How minitart is installed: npm, Homebrew, or a clone      | `DEFERRED` | The first person who is not the owner installing it   |
+| [D18](D18-warm-vms.md)                             | Keeping VMs booted ahead of jobs                          | `DEFERRED` | Boot time becoming what people wait for               |
+| [D19](D19-egress-by-domain.md)                     | Limiting a job's internet access to named hosts           | `DEFERRED` | A repo whose jobs should not reach the whole internet |
+| [D21](D21-what-a-job-reaches-on-the-mac-itself.md) | What a job reaches on the Mac itself, at the VM's gateway | `OPEN`     | `selftest` on Softnet found four open ports           |

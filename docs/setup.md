@@ -77,12 +77,15 @@ node src/main.ts selftest
 ```
 
 It boots a VM the way a job VM boots and, from inside it, tries to reach the internet (must
-work), and your router and this Mac on every address it has (must not).
+work), your router and this Mac on every address it has (must not), and the VM's own
+gateway, which is also this Mac, on the ports this Mac serves to every network (none may be
+open).
 
 Check: it ends with `A job reaches the internet and nothing of yours.` **Do not go on until
-it does.** A `FAIL` line names what a job could reach: usually a service on the Mac that
-listens on every network interface (AirPlay Receiver on port 5000 is a common one; turn it
-off in System Settings, General, AirDrop & Handoff).
+it does.** A `FAIL` line names what a job could reach. At the VM's gateway it is a service of
+this Mac that listens on every network, with the program's name beside the port: AirPlay
+Receiver (`ControlCe`, ports 5000 and 7000) and Handoff (`rapportd`) are the usual ones.
+Turn them off in System Settings, General, AirDrop & Handoff, and run it again.
 
 ## 6. Start it
 
