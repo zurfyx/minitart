@@ -1,19 +1,26 @@
-# D09: The manager is a LaunchAgent in the owner's account
+# D09: The manager is a LaunchAgent in whichever account runs it
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 
 `minitart service install` writes a LaunchAgent (`sh.rovira.minitart`) that starts the
-manager at login and restarts it if it stops. It runs as the owner, in the owner's session.
-There is no dedicated user and no system daemon.
+manager at login and restarts it if it stops. It runs as the user who installed it, in that
+user's session. minitart creates no user and installs no system daemon.
+
+Which user is the owner's choice. Their own account is the simple one. A macOS user made
+for the purpose works the same way: everything minitart keeps (`~/.minitart`, Tart's
+images) is under the home of whoever runs it, and nothing assumes an administrator.
 
 ## Why
 
 A dedicated user is what protects a Mac from a runner that runs jobs on the Mac. Here jobs
 run in VMs ([D01](D01-every-job-in-a-fresh-vm.md)); the process on the Mac only runs `tart`
-and calls GitHub. A second account would protect the App's key from the owner's own
-processes, which already hold a more powerful GitHub token.
+and calls GitHub. What a second account adds is keeping the App's key and Tart's images away
+from the owner's everyday processes, and those usually hold a more powerful GitHub token
+already. So minitart does not set one up or ask for one. It costs something, too: that user
+has to be the one logged in at the Mac, which on a Mac someone also works at means two
+sessions.
 
 Tart runs VMs from a logged-in session; from a system daemon with nobody logged in it is
 unreliable. And one account means one home folder and no switching users to debug.

@@ -8,21 +8,22 @@ stands between the two, what is checked, and what is not covered.
 
 A job runs as an administrator inside its VM. Assume it controls the VM completely.
 
-| A job…                                              |        |                                                                                   |
-| --------------------------------------------------- | ------ | --------------------------------------------------------------------------------- |
-| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM. |
-| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                  |
-| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                               |
-| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                     |
-| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                             |
-| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP.                                |
-| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                    |
-| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it. See "The gateway" below.                                    |
-| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                      |
-| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                        |
-| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                    |
-| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.           |
-| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. It can be noisy; it cannot starve the host of memory.        |
+| A job…                                              |        |                                                                                                     |
+| --------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM.                   |
+| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                                    |
+| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                                                 |
+| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                                       |
+| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                                               |
+| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP. Read in its source; `selftest` does not test it. |
+| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                                      |
+| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it. See "The gateway" below.                                                      |
+| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                                        |
+| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                                          |
+| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                                      |
+| reads the config of its own runner                  | can    | It runs as the runner's user. The config is good for that one job and nothing more.                 |
+| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.                             |
+| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. What a VM prints is kept up to 4 MB, for the newest 50 VMs.                    |
 
 ## The network is an allowlist
 
@@ -70,17 +71,20 @@ the way a job VM boots and, from inside it, tries to connect to:
 
 - the internet (must succeed);
 - your router, on the ports routers answer on (must time out);
-- this Mac, at every address it has, on common service ports (must time out);
-- an IPv6-only site (must fail).
+- this Mac, at every address it has, on common service ports (must time out).
 
 A connection that is _refused_ counts as a failure of the test: a refusal means the packet
 arrived. Run it after setting up, and again after changing how the Mac is networked.
 
 ## Which repos, and who can run code
 
-- **The allowlist is the App's installation.** minitart serves the repos its GitHub App is
-  installed on, as chosen on GitHub ("Only select repositories"). GitHub enforces it: the
-  App's token cannot register a runner anywhere else.
+- **A repo is served when two lists agree.** The GitHub App must be installed on it, and
+  the owner must have turned it on in the dashboard. GitHub enforces the first: the App's
+  token cannot register a runner anywhere else. The second is there because the first is
+  easy to get wrong: GitHub's install page offers "All repositories" first, and one click
+  there would otherwise put every repo of the account, present and future, on this Mac. A
+  repo the App can see and nobody turned on is listed as "Not served", and its queue is not
+  even read.
 - **Public repos are skipped** unless you turn that off. On a public repo, anyone can open a
   pull request that changes a workflow, and that workflow would run on your Mac. The VM and
   the network would still hold, but a stranger would be choosing what your Mac runs.
@@ -106,13 +110,12 @@ permission.
 
 ## The dashboard
 
-- Listens on `127.0.0.1` unless started with `--host`.
-- There are no accounts. Anyone who can reach the port can read: repo names, job names,
-  logs. If you put it on your tailnet, that is everyone on your tailnet.
-- **Changes are accepted only from the Mac itself** (a loopback connection): settings,
-  pausing a repo, creating the App.
+- **It is served to the Mac itself and to nothing else.** It listens on `127.0.0.1`, there
+  is no option to listen elsewhere, and a connection that did not come from the Mac is
+  refused. So there are no accounts: there is nobody else to tell apart.
 - Requests under an unknown `Host` are refused, so a web page cannot read the dashboard by
-  pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
+  pointing a name of its own at `127.0.0.1`, and a proxy in front of it gets nothing until
+  minitart is taught its name. Changes also need a same-origin `Origin`.
 - Job, workflow and repo names come from GitHub and are written to the page as text, never
   as HTML. The page loads nothing from anywhere else.
 

@@ -1,6 +1,6 @@
 # D01: Every job runs in a fresh Tart VM, deleted when the job ends
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

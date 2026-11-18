@@ -1,6 +1,6 @@
 # D02: The manager polls GitHub; nothing listens for it
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 
@@ -24,7 +24,10 @@ repo at a time, which is what the polling does.
 ## Consequences
 
 - A job starts a poll interval plus a boot later than it could: about ten to forty seconds.
-- Cost grows with the number of served repos and active runs. A handful of repos is far
-  inside an App's 5,000 requests an hour.
+- It costs nothing in money, and next to nothing in GitHub's rate limit. An idle repo is
+  three requests a poll, each answered 304, and a 304 is not counted: measured, ten
+  conditional requests in a row left the counter where it was, and three unconditional ones
+  moved it by three. What counts is change: a few requests per job, against an App's 5,000
+  an hour.
 - A VM is started for a job, not handed to it: the runner takes the oldest matching job in
   its repo. If something else took the job, the VM waits three minutes and is deleted.

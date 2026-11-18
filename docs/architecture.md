@@ -40,9 +40,14 @@ Mac needs no open port, no public address and no tunnel ([D02](decisions/D02-the
    done list with GitHub's link to it.
 
 A VM that no job comes for (the run was cancelled, another runner took it) is deleted after
-three minutes and its runner registration removed. A VM that does not boot is deleted and
-the job gets another. On start, the manager deletes any job VM left by an earlier run: job
-VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched.
+three minutes: its runner registration is removed first, and the VM is stopped only once
+GitHub has let go of it. A VM that does not boot, or whose runner has not reached GitHub
+within three minutes, is deleted and the job gets another; a kind whose VMs keep failing
+waits longer before each new try, up to five minutes. A VM still up five minutes after
+GitHub called its job done is stopped. On start, the manager deletes any job VM left by an earlier run: job
+VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched. That is one of the two
+times it runs `tart list` (the other is after a VM could not be deleted): on macOS 27 each
+listing leaks kernel memory, so the loop asks Tart about nothing it can read from disk.
 
 When the manager stops, it deletes every VM. A job that was running fails on GitHub as
 "runner lost" and can be re-run.
@@ -72,7 +77,8 @@ There is no build step and no runtime dependency: Node runs the TypeScript files
 ## GitHub
 
 minitart is a GitHub App that the owner creates from the dashboard with one click (the App
-manifest flow) and installs on the repos of their choice
+manifest flow) and installs on the repos of their choice. A repo is served when the App is
+installed on it and the owner has turned it on in the dashboard
 ([D03](decisions/D03-a-github-app-is-the-allowlist.md)).
 
 | Permission                     | Why                                              |
@@ -83,26 +89,27 @@ manifest flow) and installs on the repos of their choice
 
 The App subscribes to no events and its webhook is inactive.
 
-| Request                                                    | When                         |
-| ---------------------------------------------------------- | ---------------------------- |
-| `GET /app/installations`, `GET /installation/repositories` | Once a minute: the allowlist |
-| `POST /app/installations/{id}/access_tokens`               | When a token nears its hour  |
-| `GET /repos/{repo}/actions/runs?per_page=50`               | Every poll, per watched repo |
-| `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run   |
-| `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                  |
-| `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job     |
-| `GET /repos/{repo}/actions/jobs/{id}/logs`                 | When a log is opened         |
+| Request                                                    | When                                |
+| ---------------------------------------------------------- | ----------------------------------- |
+| `GET /app/installations`, `GET /installation/repositories` | Once a minute: what the App can see |
+| `POST /app/installations/{id}/access_tokens`               | When a token nears its hour         |
+| `GET /repos/{repo}/actions/runs?per_page=50`               | Every poll, per watched repo        |
+| `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run          |
+| `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                         |
+| `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job            |
+| `GET /repos/{repo}/actions/jobs/{id}/logs`                 | When a log is opened                |
 
 ## On disk
 
 `~/.minitart/`, readable by the owner only:
 
-| File            | What                                          |
-| --------------- | --------------------------------------------- |
-| `app.json`      | The App's id and private key. The one secret. |
-| `settings.json` | What the owner changed in the dashboard       |
-| `history.json`  | The last 200 finished jobs                    |
-| `logs/`         | The manager's log and each VM's output        |
+| File            | What                                                                   |
+| --------------- | ---------------------------------------------------------------------- |
+| `app.json`      | The App's id and private key. The one secret.                          |
+| `settings.json` | The repos that are served, and what the owner changed in the dashboard |
+| `images.json`   | The runner version each image was built with, and when                 |
+| `history.json`  | The last 200 finished jobs                                             |
+| `logs/`         | The manager's log and each VM's output                                 |
 
 Everything else is rebuilt from GitHub and Tart on start.
 
@@ -114,8 +121,7 @@ Everything else is rebuilt from GitHub and Tart on start.
   done, repos, health, activity.
 - `GET /api/vms/{name}/log`: what a VM printed. `GET /api/jobs/{id}/log`: a finished job's
   log, fetched from GitHub, for jobs minitart ran.
-- `POST /api/settings`: VM counts and size, paused repos.
+- `POST /api/settings`: which repos are served, VM counts and size, timings.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.
 
-Reading works from any address the server listens on. Changing anything works only from a
-browser on the Mac itself.
+It listens on `127.0.0.1` and answers only connections from the Mac itself.

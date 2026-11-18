@@ -27,8 +27,9 @@ purpose.
 2. **A job reaches the internet and nothing of yours.** Not this Mac's files, not its
    keychain, not your router, not your NAS, not your tailnet. The network is an allowlist:
    public internet addresses, and nothing else ([security](security.md)).
-3. **GitHub decides which repos are served.** The allowlist is the list of repos the GitHub
-   App is installed on, changed on GitHub and nowhere else. Public repos are skipped unless
+3. **A repo is served only when you said so twice.** The GitHub App must be installed on
+   it, which GitHub enforces, and you must have turned it on in the dashboard, so installing
+   the App on a whole account serves nothing by itself. Public repos are skipped unless
    you say otherwise.
 4. **No secret a job can use against you.** A VM holds one thing of value: the single-use
    config of its own runner. The App's key stays on the Mac.
@@ -63,8 +64,7 @@ x86 binary) stays on `ubuntu-latest`; that is a choice each repo makes, job by j
 
 - **No fallback.** If the Mac is off or asleep, jobs wait in GitHub's queue.
 - **No x86.** See above.
-- **No secrets from the Mac.** A job gets its secrets from GitHub, like on a hosted runner.
-  Signing keys that live in the Mac's keychain are not visible to a job
-  ([D17](decisions/D17-secrets-that-live-on-the-mac.md)).
+- **No secrets from the Mac.** A job gets its secrets from GitHub, like on a hosted runner,
+  signing keys included ([D17](decisions/D17-secrets-that-live-on-the-mac.md)).
 - **No warm caches between jobs.** That is the price of promise 1; use `actions/cache`, or
   put what every job needs into the image.

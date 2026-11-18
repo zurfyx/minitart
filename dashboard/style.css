@@ -1,0 +1,398 @@
+/*
+ * The dashboard's styles (docs/design.md): a plain page, hairlines instead of boxes, one
+ * accent, and motion only when something changes. Colours come from tokens.css.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--body);
+  font: 14px/1.5 var(--font);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 1040px;
+  padding: 28px 24px 96px;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+code,
+pre {
+  font: 12.5px/1.5 var(--mono);
+}
+
+code {
+  color: var(--muted);
+}
+
+/* Header */
+
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+.top h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.top p {
+  margin: 0;
+}
+
+.top #live {
+  margin-left: auto;
+}
+
+/* Sections */
+
+section {
+  margin-top: 36px;
+}
+
+h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+h2 .count {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+h2 button {
+  margin-left: auto;
+}
+
+section > p {
+  max-width: 70ch;
+}
+
+/* Rows: one line each, a hairline between */
+
+.rows {
+  border-top: 1px solid var(--rule);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 40px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.row > * {
+  flex: none;
+}
+
+.row > .status {
+  width: 150px;
+}
+
+.row > .main {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.row .main a,
+.row .main > span:first-child {
+  font-weight: 500;
+}
+
+.row .note {
+  display: block;
+  font-weight: 400;
+}
+
+.row code.fix {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--body);
+  overflow-x: auto;
+  white-space: pre;
+  user-select: all;
+}
+
+.activity .row {
+  min-height: 0;
+  padding: 5px 0;
+  border-bottom: 0;
+  font-size: 13px;
+}
+
+.activity .row > .main {
+  color: var(--body);
+}
+
+.activity time {
+  width: 150px;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.empty {
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+}
+
+/* A state: a glyph and a word in the state's colour */
+
+.status {
+  white-space: nowrap;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+.status.warn {
+  color: var(--warn);
+  white-space: normal;
+}
+.status.bad {
+  color: var(--bad);
+}
+.status.busy {
+  color: var(--busy);
+}
+.status.muted {
+  color: var(--muted);
+}
+
+.alert {
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+}
+
+/* Slots: how many VMs of each kind are in use, as pips */
+
+#slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 48px;
+  margin-top: 8px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slot-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.pips {
+  display: flex;
+  gap: 4px;
+}
+
+.pip {
+  width: 22px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--rule-strong);
+  transition: background-color 0.2s;
+}
+
+.pip.on {
+  background: var(--accent);
+}
+
+/* Controls */
+
+button {
+  padding: 5px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--hover);
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.quiet {
+  padding: 1px 8px;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+button.quiet:hover {
+  color: var(--ink);
+}
+
+#settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+#settings[hidden] {
+  display: none;
+}
+
+#settings label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#settings label.check {
+  display: flex;
+  flex-basis: 100%;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 70ch;
+}
+
+#settings label.check input {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+#settings input {
+  width: 9.5em;
+  padding: 5px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The log */
+
+#log {
+  max-height: 60vh;
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--body);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 700px) {
+  body {
+    padding: 20px 16px 64px;
+  }
+
+  .top {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .row {
+    flex-wrap: wrap;
+    gap: 2px 12px;
+  }
+
+  .row > .status {
+    width: auto;
+  }
+
+  .row > .main {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .activity time {
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

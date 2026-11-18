@@ -6,6 +6,13 @@ Three layers. The first two run everywhere, on every push. The third needs this 
 
 `node --test` over `src/**/*.test.ts` and `scripts/**/*.test.mjs`. No VM, no network.
 
+The files named `src/prior-art.*.test.ts` hold scenarios taken from the test suites of the
+projects that did this before: Runscaler, ephemerd, Sand, Graftery, KnobanLabs'
+macos-ephemeral-runners, Cirrus CLI and Cilicon. Each is rewritten against minitart's own
+fakes, with a comment naming the test it comes from. They are what other people's bugs look
+like here: a runner that exits before it connects, a repo turned off while its job runs, one
+unreachable installation among several.
+
 The manager is tested whole, against a GitHub and a Tart that live in memory
 (`src/testing/fakes.ts`): a job is queued, a VM appears, the runner takes the job, the VM is
 deleted. The fakes are driven by hand, with a clock the test owns, so every case is
@@ -15,7 +22,7 @@ rate limit, a public repo, a full pool, leftovers from a crash.
 What is security-relevant has a test that names it: the runner config is never an argument;
 the App's key is never sent or shown; a VM always gets the network the manager was started
 with; settings from a request are validated, not coerced; the dashboard refuses another
-`Host`, another `Origin`, and changes from another machine; a job log is served only for a
+`Host`, another `Origin`, and any connection from another machine; a job log is served only for a
 job minitart ran.
 
 ## 2. Static: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`
@@ -37,3 +44,7 @@ network is what `docs/security.md` says.
   dashboard until its VM is gone from `tart list`.
 
 Layer 3 is run by hand and recorded in the pull request that changes what it covers.
+
+A macOS guest differs from a Linux one in ways the fakes do not model: how long it takes to
+boot, DNS on Softnet, the two-VM limit, and what a job needs from the login session
+(codesign, simulators). A change to how VMs start is run with both kinds.

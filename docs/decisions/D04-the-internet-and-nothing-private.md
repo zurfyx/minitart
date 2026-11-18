@@ -1,6 +1,6 @@
 # D04: A VM reaches the internet and nothing private; no VM starts otherwise
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

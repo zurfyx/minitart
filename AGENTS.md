@@ -12,6 +12,8 @@ smallness and the security model come before features.
 - `docs/architecture.md`: the system shape: the life of a job, the parts, the GitHub calls
 - `docs/security.md`: what a job can and cannot do, and what is not covered. **A change
   that touches a row of its table changes the table in the same pull request.**
+- `docs/setup.md`: setting a Mac up, step by step. A change to a command, a flag or what
+  `doctor` prints changes this file in the same pull request.
 - `docs/design.md`: the look of the dashboard and the site, and the rules it follows
 - `docs/testing.md`: the test layers, and what can only be tested on the Mac
 - `docs/decisions/README.md`: **the decision register.** Every consequential choice lives
@@ -32,17 +34,16 @@ scripts/     repo tooling, with its tests
 
 ## Commands
 
-The manager is not on `main` yet: `src/`, `dashboard/` and `images/` arrive with the pull
-request that implements the design in `docs/`. Until then:
-
 ```bash
-pnpm install          # root tooling only
-pnpm format           # Prettier, write
-pnpm format:check     # Prettier, check: must pass before every commit
-pnpm test             # node --test over scripts/**/*.test.mjs
+pnpm install          # development tools only; minitart itself has no dependencies
+pnpm demo             # the dashboard with made-up jobs and VMs, at 127.0.0.1:4141
+pnpm start            # the real manager
+pnpm typecheck        # strict TS (tsc, no emit): must pass before every commit
+pnpm lint             # ESLint
+pnpm format:check     # Prettier
+pnpm test             # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
+node src/main.ts doctor | selftest | image build <kind> | service install
 ```
-
-The pull request that adds the code replaces this section with its commands.
 
 ## Conventions
 
@@ -53,13 +54,16 @@ The pull request that adds the code replaces this section with its commands.
 - **The security rules are code rules** (D01, D03, D04):
   - A VM is started only through `src/tart.ts`, which never passes `--dir` and always passes
     the network it was given. No code path shares a folder with a VM.
-  - The App's key is read in `src/github/app.ts` and goes nowhere else: not into a VM, a
-    log, a response or an error message.
+  - The App's key is used only in `src/github/app.ts`, to sign. `src/main.ts` loads and
+    saves it; it goes nowhere else: not into a VM, a log, a response or an error message.
   - A runner's config reaches the guest on standard input, never as an argument.
   - Everything from outside is untrusted: request bodies, `settings.json`, and every name
     that comes from GitHub (jobs, workflows, repos). Validate, never coerce; write to the
     page as text, never HTML; pass to `tart` as arguments, never through a shell.
-  - Changes to settings come only from a loopback connection (D10).
+  - The dashboard is served to the Mac itself only: it listens on 127.0.0.1 and refuses any
+    other connection (D10).
+  - A repo is served only when the App is installed on it and it is in `settings.repos`
+    (D03). A fresh install serves nothing.
 - **Tests use the fakes**, not mocks of modules: `src/testing/fakes.ts` is a GitHub and a
   Tart in memory, and the manager is tested whole against them (`docs/testing.md`).
 - **Every feature ships with tests**, and anything security-relevant gets a test that names
@@ -94,8 +98,8 @@ that you did them well.
 2. **Have it reviewed.** Run a code review on the final diff (`/code-review` in Claude Code,
    or a fresh agent that has not seen your reasoning). Fix each finding or answer it in the
    PR.
-3. **Test it.** `pnpm format:check && pnpm test` (the pre-push hook runs both), plus the
-   commands of the code you changed. A change to how VMs start, to the network or to the images is
+3. **Test it.** `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` (the
+   pre-push hook runs them). A change to how VMs start, to the network or to the images is
    also run on the Mac: `docs/testing.md`, layer 3. Say in the PR what you ran.
 4. **Fill in the PR template**, tick its boxes, and set `Verified at:` to the head commit you
    verified.

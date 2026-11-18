@@ -1,6 +1,6 @@
 # D08: Two labels route jobs: `minitart-linux` and `minitart-macos`
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 
