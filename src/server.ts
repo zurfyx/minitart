@@ -118,6 +118,10 @@ export function createDashboardServer(deps: ServerDeps): Server {
       if (path === '/setup/manifest') {
         if (!local) return send(response, 403, 'Open the dashboard on the Mac itself');
         if (deps.app()) return send(response, 409, 'The GitHub App already exists');
+        // Only this page may start the round trip: a browser says where a request came from.
+        const site = request.headers['sec-fetch-site'];
+        if (site !== undefined && site !== 'same-origin')
+          return send(response, 403, 'Wrong origin');
         setup = { state: randomBytes(24).toString('hex'), expiresAt: Date.now() + 15 * 60_000 };
         const origin = `http://${host}`;
         const name = `minitart-${
@@ -135,11 +139,12 @@ export function createDashboardServer(deps: ServerDeps): Server {
       if (path === '/setup/callback') {
         if (!local) return send(response, 403, 'Open the dashboard on the Mac itself');
         const pending = setup;
-        setup = null;
         const given = url.searchParams.get('state') ?? '';
+        // A request with the wrong secret changes nothing: it cannot cancel the real one.
         if (!pending || Date.now() > pending.expiresAt || !same(given, pending.state)) {
           return send(response, 400, 'This link has expired. Start again from the dashboard.');
         }
+        setup = null;
         if (deps.app()) return send(response, 409, 'The GitHub App already exists');
         try {
           const app = await convertManifestCode(url.searchParams.get('code') ?? '', fetchImpl);

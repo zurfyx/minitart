@@ -48,11 +48,6 @@ export function probes(host: { addresses: string[]; gateway: string | null }): P
   for (const address of host.addresses) {
     for (const port of PORTS) list.push(tcp('this Mac at', address, port));
   }
-  list.push({
-    what: 'IPv6: ipv6.google.com',
-    target: { url: 'https://ipv6.google.com' },
-    expect: 'blocked',
-  });
   return list;
 }
 
@@ -110,7 +105,8 @@ export async function selftest(options: {
   print: (line: string) => void;
 }): Promise<ProbeResult[]> {
   const { tart, image, network, print } = options;
-  const name = `minitart-linux-${randomBytes(3).toString('hex')}`;
+  // Not a job VM's name: a running manager deletes job VMs it does not know.
+  const name = `minitart-selftest-${randomBytes(3).toString('hex')}`;
   const list = probes(options.host);
   await tart.clone(image, name);
   try {

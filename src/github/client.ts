@@ -65,20 +65,28 @@ export class GitHubClient implements GitHub {
   }
 
   async activeRuns(repo: string): Promise<number[]> {
-    // The newest fifty runs of any status: one request finds the queued ones and the ones in
-    // progress, whose later jobs queue as earlier ones finish.
-    const body = (await this.#get(repo, `/repos/${repo}/actions/runs?per_page=50`)) as {
-      workflow_runs?: { id: number; status: string }[];
-    };
-    return (body.workflow_runs ?? []).filter((run) => run.status !== 'completed').map((r) => r.id);
+    // Asked by status, so a burst of finished runs never pushes a waiting one out of view.
+    // A run in progress matters as much as a queued one: its later jobs queue as earlier
+    // ones finish. A waiting run (an approval is pending) can still have jobs to run.
+    const ids = new Set<number>();
+    for (const status of ['queued', 'in_progress', 'waiting']) {
+      const runs = (await this.#pages(
+        repo,
+        `/repos/${repo}/actions/runs?status=${status}`,
+        (page) => (page as { workflow_runs?: unknown[] }).workflow_runs ?? [],
+      )) as { id: number }[];
+      for (const run of runs) ids.add(run.id);
+    }
+    return [...ids];
   }
 
   async jobs(repo: string, runId: number): Promise<Job[]> {
-    const body = (await this.#get(
+    const jobs = (await this.#pages(
       repo,
-      `/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`,
-    )) as { jobs?: RawJob[] };
-    return (body.jobs ?? []).map((job) => ({
+      `/repos/${repo}/actions/runs/${runId}/jobs?filter=latest`,
+      (page) => (page as { jobs?: unknown[] }).jobs ?? [],
+    )) as RawJob[];
+    return jobs.map((job) => ({
       id: job.id,
       runId: job.run_id,
       repo,
@@ -140,6 +148,21 @@ export class GitHubClient implements GitHub {
     return response.text();
   }
 
+  /** Every page of a list, a hundred items at a time, up to a thousand. */
+  async #pages(
+    repo: string,
+    path: string,
+    items: (page: unknown) => unknown[],
+  ): Promise<unknown[]> {
+    const all: unknown[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const found = items(await this.#get(repo, `${path}&per_page=100&page=${page}`));
+      all.push(...found);
+      if (found.length < 100) break;
+    }
+    return all;
+  }
+
   async #get(repo: string, path: string): Promise<unknown> {
     const token = await this.#auth.token(repo);
     const cached = this.#cache.get(path);
@@ -152,7 +175,7 @@ export class GitHubClient implements GitHub {
     const etag = response.headers.get('etag');
     if (etag) {
       // Finished runs are never asked for again; dropping everything now and then is enough.
-      if (this.#cache.size > 500) this.#cache.clear();
+      if (this.#cache.size > 2000) this.#cache.clear();
       this.#cache.set(path, { etag, body });
     }
     return body;

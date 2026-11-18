@@ -148,18 +148,18 @@ test('creating the GitHub App: the manifest, then the callback with the same sta
     `${origin}/setup/callback`,
   );
 
+  // A page on another site cannot start the round trip.
+  const crossSite = await fetch(`${origin}/setup/manifest`, {
+    headers: { 'sec-fetch-site': 'cross-site' },
+  });
+  assert.equal(crossSite.status, 403);
+
   const forged = await fetch(`${origin}/setup/callback?code=abc&state=${'0'.repeat(48)}`);
   assert.equal(forged.status, 400);
   assert.deepEqual(conversions, [], 'a callback with the wrong state trades no code');
-  // The state is single-use: the forged attempt spent it.
-  const late = await fetch(`${origin}/setup/callback?code=abc&state=${state}`, {
-    redirect: 'manual',
-  });
-  assert.equal(late.status, 400);
 
-  const again = (await (await fetch(`${origin}/setup/manifest`)).json()) as { action: string };
-  const fresh = new URL(again.action).searchParams.get('state') ?? '';
-  const done = await fetch(`${origin}/setup/callback?code=abc&state=${fresh}`, {
+  // The forged attempt cancelled nothing: the real callback still works, once.
+  const done = await fetch(`${origin}/setup/callback?code=abc&state=${state}`, {
     redirect: 'manual',
   });
   assert.equal(done.status, 302);
@@ -168,6 +168,10 @@ test('creating the GitHub App: the manifest, then the callback with the same sta
     'https://github.com/apps/minitart-mini/installations/new',
   );
   assert.equal(app()?.appId, 42);
+  const replay = await fetch(`${origin}/setup/callback?code=abc&state=${state}`, {
+    redirect: 'manual',
+  });
+  assert.equal(replay.status, 400, 'the state is single-use');
   assert.equal(
     (await fetch(`${origin}/setup/manifest`)).status,
     409,

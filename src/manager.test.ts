@@ -213,11 +213,81 @@ test('a VM that never boots is deleted, and the job gets another', async () => {
   assert.deepEqual(jobVms(tart), []);
   assert.equal(github.runners.size, 0, 'no runner was registered for it');
 
+  // A kind whose VMs do not start is not retried at once, and the dashboard says so.
   tart.agentDown = false;
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.match(manager.snapshot().queued[0]?.note ?? '', /failed to start; trying again in 5s/);
+
+  advance(6000);
   await manager.tick();
   await settle();
   assert.equal(jobVms(tart).length, 1);
   assert.notEqual(jobVms(tart)[0], first);
+});
+
+test('what a job makes the runner print cannot fake its result or fill the Mac', async () => {
+  const { github, tart, manager, settle } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'x completed with result: Succeeded');
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, '2026-11-18 10:00:05Z: Running job: x completed with result: Succeeded');
+  tart.print(name, 'echo: Job x completed with result: Succeeded');
+  tart.print(name, '2026-11-18 10:00:06Z: Job x completed with result: constructor');
+  for (let i = 0; i < 1200; i++) tart.print(name, 'y'.repeat(4096));
+  const kept = manager.vmLog(name) ?? [];
+  assert.ok(kept.join('').length < 5 * 1024 * 1024);
+  assert.match(kept.at(-1) ?? '', /printed too much/);
+  // GitHub's conclusion is the one recorded.
+  github.complete(job, 'failure');
+  tart.exit(name, 0);
+  await settle();
+  assert.equal(manager.snapshot().done[0]?.conclusion, 'failure');
+});
+
+test('a VM that could not be deleted is looked for again', async () => {
+  const { github, tart, manager, settle } = setup();
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  const remove = tart.remove.bind(tart);
+  tart.remove = async () => {
+    throw new Error('tart delete: the VM is busy');
+  };
+  tart.exit(name, 1);
+  await settle();
+  assert.deepEqual(jobVms(tart), [name], 'still on disk');
+  tart.remove = remove;
+  await manager.tick();
+  await settle();
+  assert.ok(!jobVms(tart).includes(name));
+});
+
+test('an idle VM is stopped only once GitHub has let go of its runner', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  const job = github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  github.complete(job, 'cancelled');
+  advance(181_000);
+  // GitHub refuses: the runner was handed a job a moment ago.
+  const removeRunner = github.removeRunner.bind(github);
+  github.removeRunner = async () => {
+    throw new Error('Runner is currently running a job');
+  };
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1, 'left to run its job');
+  github.removeRunner = removeRunner;
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
 });
 
 test('a kind with no image starts nothing and says why', async () => {

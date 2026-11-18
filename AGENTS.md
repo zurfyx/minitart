@@ -52,8 +52,8 @@ node src/main.ts doctor | selftest | image build <kind> | service install
 - **The security rules are code rules** (D01, D03, D04):
   - A VM is started only through `src/tart.ts`, which never passes `--dir` and always passes
     the network it was given. No code path shares a folder with a VM.
-  - The App's key is read in `src/github/app.ts` and goes nowhere else: not into a VM, a
-    log, a response or an error message.
+  - The App's key is used only in `src/github/app.ts`, to sign. `src/main.ts` loads and
+    saves it; it goes nowhere else: not into a VM, a log, a response or an error message.
   - A runner's config reaches the guest on standard input, never as an argument.
   - Everything from outside is untrusted: request bodies, `settings.json`, and every name
     that comes from GitHub (jobs, workflows, repos). Validate, never coerce; write to the

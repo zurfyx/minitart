@@ -18,6 +18,8 @@ export interface ExecOptions {
   /** Sent to the command's standard input, which is then closed. */
   stdin?: string;
   onLine?: (line: string) => void;
+  /** The command is killed, and the exit code is 124, if it runs longer than this. */
+  timeoutMs?: number;
 }
 
 export interface Tart {
@@ -44,6 +46,9 @@ export function networkArgs(network: Network): string[] {
   return network === 'softnet' ? ['--net-softnet', '--net-softnet-block=100.64.0.0/10'] : [];
 }
 
+/** No line of a VM's output is kept longer than this. */
+const MAX_LINE = 4096;
+
 /** Calls `onLine` for each complete line of what a stream emits. */
 export function lineSplitter(onLine: (line: string) => void): {
   push(chunk: string): void;
@@ -54,7 +59,12 @@ export function lineSplitter(onLine: (line: string) => void): {
     push(chunk) {
       const lines = (rest + chunk).split(/\r?\n/);
       rest = lines.pop() ?? '';
-      for (const line of lines) onLine(line);
+      for (const line of lines) onLine(line.slice(0, MAX_LINE));
+      // Output with no newline in it is cut into lines rather than held without end.
+      while (rest.length > MAX_LINE) {
+        onLine(rest.slice(0, MAX_LINE));
+        rest = rest.slice(MAX_LINE);
+      }
     },
     end() {
       if (rest !== '') onLine(rest);
@@ -142,11 +152,20 @@ export class TartCli implements Tart {
       child.stdin.on('error', () => {});
       child.stdin.end(stdin);
     }
+    let timedOut = false;
+    const timer =
+      options.timeoutMs === undefined
+        ? null
+        : setTimeout(() => {
+            timedOut = true;
+            child.kill('SIGKILL');
+          }, options.timeoutMs);
     return new Promise((resolve) => {
       child.on('error', () => resolve(127));
       child.on('close', (code) => {
+        if (timer) clearTimeout(timer);
         lines.end();
-        resolve(code ?? 1);
+        resolve(timedOut ? 124 : (code ?? 1));
       });
     });
   }

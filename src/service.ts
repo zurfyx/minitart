@@ -22,6 +22,8 @@ export function plist(options: {
   args: readonly string[];
   log: string;
   path: string;
+  /** Where minitart keeps its files, when that is not ~/.minitart. */
+  home?: string;
 }): string {
   const args = [options.node, options.main, 'start', ...options.args]
     .map((arg) => `    <string>${escape(arg)}</string>`)
@@ -39,7 +41,11 @@ ${args}
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>${escape(options.path)}</string>
+    <string>${escape(options.path)}</string>${
+      options.home === undefined
+        ? ''
+        : `\n    <key>MINITART_HOME</key>\n    <string>${escape(options.home)}</string>`
+    }
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -81,10 +87,17 @@ export async function installService(options: {
       log: options.log,
       // Homebrew's bin, where tart and softnet live, is not on a LaunchAgent's PATH.
       path: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+      ...(process.env['MINITART_HOME'] ? { home: process.env['MINITART_HOME'] } : {}),
     }),
   );
   await launchctl(['bootout', `${domain}/${LABEL}`]);
-  const loaded = await launchctl(['bootstrap', domain, path]);
+  // A running minitart deletes its VMs before it exits, and launchd refuses to load the
+  // service again until it has: keep trying for a minute.
+  let loaded = await launchctl(['bootstrap', domain, path]);
+  for (let attempt = 0; !loaded.ok && attempt < 30; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    loaded = await launchctl(['bootstrap', domain, path]);
+  }
   if (!loaded.ok) throw new Error(`launchctl could not load ${path}: ${loaded.output}`);
   return path;
 }

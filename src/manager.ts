@@ -111,6 +111,9 @@ interface Vm extends VmView {
   /** Set once minitart has decided to stop the VM. */
   stopReason: string | null;
   log: string[];
+  logBytes: number;
+  logFull: boolean;
+  retiring: boolean;
 }
 
 export interface ManagerDeps {
@@ -135,6 +138,14 @@ const VM_LOG_LIMIT = 2000;
 const BOOT_TIMEOUT_MS: Record<Pool, number> = { linux: 120_000, macos: 300_000 };
 /** Past GitHub's own six-hour job limit, a VM is stuck. */
 const VM_LIFETIME_MS = 7 * 60 * 60_000;
+/** A VM's output is kept up to this size, in memory and on disk. */
+const VM_LOG_BYTES = 4 * 1024 * 1024;
+/** The two lines the runner prints about its job, each a whole line after its timestamp. */
+const STAMP = String.raw`(?:\d{4}-\d\d-\d\d \d\d:\d\d:\d\dZ: )?`;
+const RUNNER_STARTED = new RegExp(`^${STAMP}Running job: (.+)$`);
+const RUNNER_ENDED = new RegExp(
+  `^${STAMP}Job .+ completed with result: (Succeeded|Failed|Canceled)$`,
+);
 const RESULTS: Record<string, string> = {
   Succeeded: 'success',
   Failed: 'failure',
@@ -163,6 +174,12 @@ export class Manager {
   #imagesAt = 0;
   #githubError: string | null = null;
   #backoffUntil = 0;
+  #tickFailed = false;
+  /** Set when a VM could not be deleted, so the next round looks for it again. */
+  #sweepAt = 0;
+  /** Starts that failed in a row, per kind, and when the kind may try again. */
+  readonly #startFailures: Record<Pool, number> = { linux: 0, macos: 0 };
+  readonly #startAfter: Record<Pool, number> = { linux: 0, macos: 0 };
   #timer: NodeJS.Timeout | null = null;
   #stopping = false;
 
@@ -224,13 +241,18 @@ export class Manager {
     const now = this.#now();
     if (now < this.#backoffUntil) return;
 
+    this.#tickFailed = false;
+    if (now >= this.#sweepAt) {
+      // Every few minutes, and right after a VM could not be deleted.
+      this.#sweepAt = now + 5 * 60_000;
+      await this.removeOrphans();
+    }
     await this.#refreshImages(now);
     try {
       if (now - this.#reposAt >= 60_000 || this.#repos.length === 0) {
         this.#repos = await github.repos();
         this.#reposAt = now;
       }
-      this.#githubError = null;
     } catch (error) {
       this.#githubFailed(error);
       this.#changed();
@@ -259,7 +281,8 @@ export class Manager {
         this.#launch(github, launch.repo, launch.pool);
       }
     }
-    this.#reap(jobs, now);
+    this.#reap(github, jobs, now);
+    if (!this.#tickFailed) this.#githubError = null;
     this.#changed();
   }
 
@@ -276,6 +299,9 @@ export class Manager {
         note = `No minitart runner has all of: ${job.labels.join(', ')}`;
       } else if (!this.#images[pool]) {
         note = `No ${pool} image yet: minitart image build ${pool}`;
+      } else if (this.#now() < this.#startAfter[pool]) {
+        const seconds = Math.ceil((this.#startAfter[pool] - this.#now()) / 1000);
+        note = `The last ${pool} VM failed to start; trying again in ${seconds}s`;
       } else if (limits[pool] === 0) {
         note = `${pool} VMs are turned off`;
       }
@@ -339,10 +365,10 @@ export class Manager {
   }
 
   #limits(): Record<Pool, number> {
-    return {
-      linux: this.#images.linux ? this.#settings.linux.max : 0,
-      macos: this.#images.macos ? this.#settings.macos.max : 0,
-    };
+    const now = this.#now();
+    const limit = (pool: Pool) =>
+      this.#images[pool] && now >= this.#startAfter[pool] ? this.#settings[pool].max : 0;
+    return { linux: limit('linux'), macos: limit('macos') };
   }
 
   #waiting(jobs: readonly Job[]): Waiting[] {
@@ -396,6 +422,7 @@ export class Manager {
 
   #githubFailed(error: unknown): void {
     const text = message(error);
+    this.#tickFailed = true;
     if (text !== this.#githubError) this.#say('warn', `GitHub: ${text}`);
     this.#githubError = text;
     if (error instanceof GitHubError && error.retryAt !== null) {
@@ -417,12 +444,22 @@ export class Manager {
       result: null,
       stopReason: null,
       log: [],
+      logBytes: 0,
+      logFull: false,
+      retiring: false,
     };
     this.#vms.set(vm.name, vm);
     this.#say('info', `${vm.name}: starting for ${repo}`);
-    const lifecycle = this.#lifecycle(github, vm).finally(() => {
-      this.#lifecycles.delete(lifecycle);
-    });
+    const lifecycle = this.#lifecycle(github, vm)
+      .catch((error: unknown) => {
+        // A lifecycle that throws must not take the manager, and every other job, with it.
+        this.#vms.delete(vm.name);
+        this.#sweepAt = 0;
+        this.#say('warn', `${vm.name}: ${message(error)}`);
+      })
+      .finally(() => {
+        this.#lifecycles.delete(lifecycle);
+      });
     this.#lifecycles.add(lifecycle);
   }
 
@@ -446,6 +483,7 @@ export class Manager {
 
       const runner = await github.registerRunner(vm.repo, vm.name, [...LABELS[vm.pool]]);
       vm.runnerId = runner.runnerId;
+      this.#startFailures[vm.pool] = 0;
       this.#setStatus(vm, 'waiting');
       const code = await tart.exec(vm.name, guestShell(vm.pool, RUN_SCRIPT), {
         stdin: `${runner.jitConfig}\n`,
@@ -458,23 +496,32 @@ export class Manager {
       if (vm.stopReason === null) {
         print(`minitart: ${message(error)}`);
         this.#say('warn', `${vm.name}: ${message(error)}`);
+        if (vm.runnerId === null) this.#startFailed(vm.pool);
       }
     } finally {
       this.#setStatus(vm, 'stopping');
       if (cloned) {
         await tart.stop(vm.name).catch(() => {});
         await tart.remove(vm.name).catch((error: unknown) => {
-          this.#say('warn', `Could not remove ${vm.name}: ${message(error)}`);
+          this.#say('warn', `Could not remove ${vm.name}: ${message(error)}; trying again`);
+          this.#sweepAt = 0;
         });
       }
       await this.#finish(github, vm);
     }
   }
 
+  /** A kind whose VMs do not start waits longer after each failure, up to five minutes. */
+  #startFailed(pool: Pool): void {
+    const failures = ++this.#startFailures[pool];
+    const wait = Math.min(5 * 60_000, 5000 * 2 ** (failures - 1));
+    this.#startAfter[pool] = this.#now() + wait;
+  }
+
   async #untilReady(vm: Vm, exited: () => boolean): Promise<void> {
     const deadline = this.#now() + BOOT_TIMEOUT_MS[vm.pool];
     while (vm.stopReason === null) {
-      if ((await this.#deps.tart.exec(vm.name, ['true'])) === 0) return;
+      if ((await this.#deps.tart.exec(vm.name, ['true'], { timeoutMs: 10_000 })) === 0) return;
       if (exited()) throw new Error('the VM stopped while booting');
       if (this.#now() > deadline) throw new Error('the VM did not come up in time');
       await this.#sleep(1000);
@@ -482,17 +529,29 @@ export class Manager {
   }
 
   #vmPrinted(vm: Vm, line: string): void {
+    // A job is root in its VM and can make the runner print anything, at any rate: what is
+    // kept is bounded, and what it says is a hint that GitHub's own answer overrides.
+    vm.logBytes += line.length + 1;
+    if (vm.logBytes > VM_LOG_BYTES) {
+      if (!vm.logFull) {
+        vm.logFull = true;
+        const note = 'minitart: this VM printed too much; the rest is not kept';
+        vm.log.push(note);
+        this.#deps.vmLog?.(vm.name, note);
+      }
+      return;
+    }
     vm.log.push(line);
     if (vm.log.length > VM_LOG_LIMIT) vm.log.splice(0, vm.log.length - VM_LOG_LIMIT);
     this.#deps.vmLog?.(vm.name, line);
     // The runner says when it takes its job and how the job ended, sooner than a poll would.
-    const started = /Running job: (.+)$/.exec(line);
+    const started = RUNNER_STARTED.exec(line);
     if (started?.[1] !== undefined) {
       vm.job ??= { id: null, name: started[1], workflow: '', url: '' };
       if (vm.status === 'waiting') this.#setStatus(vm, 'running');
     }
-    const ended = /completed with result: (\w+)/.exec(line);
-    if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? ended[1].toLowerCase();
+    const ended = RUNNER_ENDED.exec(line);
+    if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
     this.#changed();
   }
 
@@ -509,7 +568,8 @@ export class Manager {
       const ref = job
         ? { id: job.id, name: job.name, workflow: job.workflow, url: job.url }
         : (vm.job ?? { id: null, name: 'unknown job', workflow: '', url: '' });
-      const conclusion = vm.result ?? job?.conclusion ?? 'lost';
+      // GitHub's word for how the job ended; the runner's own only until GitHub has one.
+      const conclusion = job?.conclusion ?? vm.result ?? 'lost';
       this.#history.push({
         vm: vm.name,
         repo: vm.repo,
@@ -520,7 +580,11 @@ export class Manager {
         endedAt: this.#now(),
       });
       this.#history = this.#history.slice(-HISTORY_LIMIT);
-      this.#deps.saveHistory(this.#history);
+      try {
+        this.#deps.saveHistory(this.#history);
+      } catch (error) {
+        this.#say('warn', `Could not save the history: ${message(error)}`);
+      }
       this.#say('info', `${vm.name}: ${ref.name} ended: ${conclusion}`);
     } else {
       this.#say('info', `${vm.name}: removed (${vm.stopReason ?? 'it never got a job'})`);
@@ -544,7 +608,7 @@ export class Manager {
     return null;
   }
 
-  #reap(jobs: readonly Job[], now: number): void {
+  #reap(github: GitHub, jobs: readonly Job[], now: number): void {
     const wanted = new Set(this.#waiting(jobs).map((job) => `${job.pool} ${job.repo}`));
     const watching = new Set(
       this.#repos.filter((r) => this.#repoState(r) === 'watching').map((r) => r.fullName),
@@ -560,8 +624,27 @@ export class Manager {
         now - vm.since > this.#settings.idleSeconds * 1000 &&
         !wanted.has(`${vm.pool} ${vm.repo}`)
       ) {
-        this.#stopVm(vm, 'no job came for it');
+        void this.#retire(github, vm);
       }
+    }
+  }
+
+  /**
+   * Stops a VM no job came for. Its runner is removed from GitHub first, and the VM is
+   * stopped only once that worked: GitHub refuses to remove a runner that is running a
+   * job, and then the VM is left to run it.
+   */
+  async #retire(github: GitHub, vm: Vm): Promise<void> {
+    if (vm.retiring) return;
+    vm.retiring = true;
+    try {
+      if (vm.runnerId !== null) await github.removeRunner(vm.repo, vm.runnerId);
+      vm.runnerId = null;
+      if (vm.status === 'waiting') this.#stopVm(vm, 'no job came for it');
+    } catch {
+      // Still wanted, or GitHub is unreachable: the next round decides again.
+    } finally {
+      vm.retiring = false;
     }
   }
 

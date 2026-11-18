@@ -113,24 +113,40 @@ test('reads are conditional: an unchanged answer comes from the cache', async ()
     'GET /repos/octo/app/actions/runs': (call) => {
       if (call.headers['if-none-match'] === '"v1"') return new Response(null, { status: 304 });
       served++;
-      return json(
-        {
-          workflow_runs: [
-            { id: 1, status: 'queued' },
-            { id: 2, status: 'completed' },
-            { id: 3, status: 'in_progress' },
-          ],
-        },
-        { etag: '"v1"' },
-      );
+      const status = new URL(call.url).searchParams.get('status');
+      const runs = { queued: [{ id: 1 }], in_progress: [{ id: 3 }, { id: 1 }], waiting: [] }[
+        status ?? ''
+      ];
+      return json({ workflow_runs: runs }, { etag: '"v1"' });
     },
   });
   const client = new GitHubClient(auth, fetch);
+  // Asked by status, so finished runs never crowd a waiting one out.
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
-  assert.equal(served, 1);
-  assert.equal(calls[1]?.headers['if-none-match'], '"v1"');
+  assert.equal(served, 3, 'one request per status, then nothing new to serve');
+  assert.equal(calls[3]?.headers['if-none-match'], '"v1"');
   assert.equal(calls[0]?.headers['authorization'], 'Bearer ghs_x');
+});
+
+test('a list longer than a page is read to its end', async () => {
+  const page = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: from + i,
+      run_id: 9,
+      name: `job ${from + i}`,
+      status: 'queued',
+      created_at: '2026-11-18T10:00:00Z',
+    }));
+  const { fetch, calls } = fakeFetch({
+    'GET /repos/octo/app/actions/runs/9/jobs': (call) =>
+      json({
+        jobs: new URL(call.url).searchParams.get('page') === '1' ? page(0, 100) : page(100, 30),
+      }),
+  });
+  const jobs = await new GitHubClient(auth, fetch).jobs('octo/app', 9);
+  assert.equal(jobs.length, 130);
+  assert.equal(calls.length, 2);
 });
 
 test('jobs are read into the shape the manager uses', async () => {

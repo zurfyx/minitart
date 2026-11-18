@@ -39,7 +39,8 @@ const STATES = {
 };
 
 function status(key, word) {
-  const [tone, glyph, label] = STATES[key] ?? ['muted', '·', key];
+  // `key` can be a word from GitHub (a job's conclusion): only the table's own entries count.
+  const [tone, glyph, label] = Object.hasOwn(STATES, key) ? STATES[key] : ['muted', '·', key];
   return h(
     'span',
     { class: `status ${tone}` },

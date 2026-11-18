@@ -36,6 +36,9 @@ const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a 
 
 https://minitart.rovira.sh`;
 
+/** The output of this many VMs is kept on disk; older files are deleted. */
+const KEPT_VM_LOGS = 50;
+
 const machine = { cpus: availableParallelism(), memoryBytes: totalmem() };
 
 function loadSettings(home: Home): Settings {
@@ -84,7 +87,11 @@ async function start(flags: {
     tart,
     network: flags.network,
     settings: home ? loadSettings(home) : defaultSettings(machine),
-    saveSettings: (settings) => home?.writeJson('settings.json', settings),
+    saveSettings: (settings) => {
+      home?.writeJson('settings.json', settings);
+      // The health line follows a settings change without waiting a minute.
+      void check();
+    },
     history: home
       ? ((home.readJson('history.json') as DoneView[] | undefined) ?? [])
       : (demo?.history ?? []),
@@ -94,22 +101,28 @@ async function start(flags: {
       console.log(`${stamp(line.at)} ${line.level === 'warn' ? 'WARN ' : ''}${line.text}`),
   });
 
-  const check = async () => {
-    health = demo
-      ? []
-      : await runChecks({
-          network: flags.network,
-          settings: manager.settings,
-          images: await images(tart),
-          hasApp: app !== null,
-        });
-  };
+  let checking = false;
+  async function check(): Promise<void> {
+    // One at a time: each check runs a few commands.
+    if (demo || checking) return;
+    checking = true;
+    try {
+      health = await runChecks({
+        network: flags.network,
+        settings: manager.settings,
+        images: await images(tart),
+        hasApp: app !== null,
+      });
+    } finally {
+      checking = false;
+    }
+  }
   await check();
-  const checking = setInterval(() => void check(), 60_000);
-  manager.onChange(() => {
-    // The health line follows a settings change without waiting a minute.
-    if (health.some((c) => c.id.startsWith('image-'))) void check();
-  });
+  home?.pruneLogs(KEPT_VM_LOGS);
+  const everyMinute = setInterval(() => {
+    void check();
+    home?.pruneLogs(KEPT_VM_LOGS);
+  }, 60_000);
 
   const server = createDashboardServer({
     manager,
@@ -142,7 +155,7 @@ async function start(flags: {
     if (stopping) return;
     stopping = true;
     console.log('minitart: stopping, and deleting every VM');
-    clearInterval(checking);
+    clearInterval(everyMinute);
     demo?.stop();
     server.close();
     server.closeAllConnections();

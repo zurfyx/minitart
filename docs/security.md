@@ -8,22 +8,22 @@ stands between the two, what is checked, and what is not covered.
 
 A job runs as an administrator inside its VM. Assume it controls the VM completely.
 
-| A job…                                              |        |                                                                                     |
-| --------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM.   |
-| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                    |
-| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                                 |
-| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                       |
-| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                               |
-| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP.                                  |
-| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                      |
-| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it. See "The gateway" below.                                      |
-| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                        |
-| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                          |
-| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                      |
-| reads the config of its own runner                  | can    | It runs as the runner's user. The config is good for that one job and nothing more. |
-| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.             |
-| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. It can be noisy; it cannot starve the host of memory.          |
+| A job…                                              |        |                                                                                                     |
+| --------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| reads this Mac's files, keychain or processes       | cannot | The VM boundary: Apple's Virtualization framework. No folder is shared with a VM.                   |
+| reads the clipboard                                 | cannot | VMs start with `--no-clipboard`.                                                                    |
+| reaches your router, NAS, printers, other computers | cannot | Softnet forwards only to public internet addresses.                                                 |
+| reaches your tailnet                                | cannot | Same, and `100.64.0.0/10` is blocked by name.                                                       |
+| reaches other VMs                                   | cannot | Softnet isolates VMs from each other.                                                               |
+| uses IPv6                                           | cannot | Softnet drops every frame that is not IPv4 or ARP. Read in its source; `selftest` does not test it. |
+| reaches the internet                                | can    | It has to: checkouts, packages, GitHub itself.                                                      |
+| reaches this Mac at the VM's gateway address        | can    | DHCP and DNS need it. See "The gateway" below.                                                      |
+| leaves something for the next job                   | cannot | The VM is deleted. The next one is a new clone of the image.                                        |
+| reads the GitHub App's key                          | cannot | The key never enters a VM.                                                                          |
+| registers more runners, or reads other repos        | cannot | A VM holds the config of one runner for one job, already used.                                      |
+| reads the config of its own runner                  | can    | It runs as the runner's user. The config is good for that one job and nothing more.                 |
+| uses the secrets its own workflow was given         | can    | Those are the job's. A job that leaks them is a GitHub Actions problem.                             |
+| uses the Mac's CPU, memory and disk                 | can    | Up to the VM's size. What a VM prints is kept up to 4 MB, for the newest 50 VMs.                    |
 
 ## The network is an allowlist
 
@@ -71,8 +71,7 @@ the way a job VM boots and, from inside it, tries to connect to:
 
 - the internet (must succeed);
 - your router, on the ports routers answer on (must time out);
-- this Mac, at every address it has, on common service ports (must time out);
-- an IPv6-only site (must fail).
+- this Mac, at every address it has, on common service ports (must time out).
 
 A connection that is _refused_ counts as a failure of the test: a refusal means the packet
 arrived. Run it after setting up, and again after changing how the Mac is networked.

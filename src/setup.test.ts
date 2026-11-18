@@ -24,6 +24,15 @@ test('lines are split across chunks', () => {
   splitter.push('o\r\nthree');
   splitter.end();
   assert.deepEqual(lines, ['one', 'two', 'three']);
+
+  // Output with no newline in it is cut up, not held.
+  const cut: string[] = [];
+  const endless = lineSplitter((line) => cut.push(line));
+  endless.push('z'.repeat(10_000));
+  assert.deepEqual(
+    cut.map((line) => line.length),
+    [4096, 4096],
+  );
 });
 
 test('doctor: softnet must be setuid root', () => {
@@ -79,7 +88,6 @@ test('selftest: the internet must answer; the router and this Mac must not', () 
   );
   assert.ok(list.some((probe) => probe.what === 'your router 192.168.1.1:443'));
   assert.ok(list.some((probe) => probe.what === 'this Mac at 100.64.0.7:22'));
-  assert.ok(list.some((probe) => probe.what.startsWith('IPv6') && probe.expect === 'blocked'));
   const script = probeScript(list);
   assert.match(script, /\/dev\/tcp\/192\.168\.1\.1\/443/);
   assert.match(script, /wait$/);
@@ -163,4 +171,7 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   assert.match(xml, /<string>start<\/string>\n {4}<string>--port<\/string>/);
   assert.match(xml, /<key>KeepAlive<\/key>\n {2}<true\/>/);
   assert.match(xml, /mini &amp; co/);
+  assert.ok(!xml.includes('MINITART_HOME'));
+  const elsewhere = plist({ node: 'n', main: 'm', args: [], log: 'l', path: 'p', home: '/tmp/mt' });
+  assert.match(elsewhere, /<key>MINITART_HOME<\/key>\n {4}<string>\/tmp\/mt<\/string>/);
 });

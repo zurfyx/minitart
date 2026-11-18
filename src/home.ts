@@ -5,8 +5,11 @@ import {
   appendFileSync,
   chmodSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -46,7 +49,26 @@ export class Home {
     renameSync(temp, target);
   }
 
+  /** A log line that cannot be written (a full disk) is dropped, not thrown. */
   appendLog(name: string, line: string): void {
-    appendFileSync(this.path('logs', name), `${line}\n`, { mode: 0o600 });
+    try {
+      appendFileSync(this.path('logs', name), `${line}\n`, { mode: 0o600 });
+    } catch {
+      // The log is a convenience; the manager keeps running without it.
+    }
+  }
+
+  /** Deletes all but the newest `keep` VM logs. */
+  pruneLogs(keep: number): void {
+    try {
+      const dir = this.path('logs');
+      const logs = readdirSync(dir)
+        .filter((name) => /^minitart-(linux|macos)-[0-9a-f]{6}\.log$/.test(name))
+        .map((name) => ({ name, modified: statSync(join(dir, name)).mtimeMs }))
+        .sort((a, b) => b.modified - a.modified);
+      for (const log of logs.slice(keep)) rmSync(join(dir, log.name), { force: true });
+    } catch {
+      // Tried again in a minute.
+    }
   }
 }
