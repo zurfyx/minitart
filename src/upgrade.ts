@@ -35,6 +35,12 @@ export interface Step {
  */
 export type Service = 'own' | 'brew' | 'none';
 
+/**
+ * What Homebrew calls its service for minitart in launchd. It has used both prefixes; which
+ * one depends on the Homebrew that started the service.
+ */
+export const BREW_SERVICE_LABELS = ['sh.brew.minitart', 'homebrew.mxcl.minitart'];
+
 /** The flags a LaunchAgent written by `service install` starts minitart with. */
 export function serviceArgs(plist: string): string[] {
   const strings = [...plist.matchAll(/<string>([^<]*)<\/string>/g)].map((match) => match[1] ?? '');
