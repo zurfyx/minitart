@@ -26,7 +26,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   the App on your whole account by mistake serves nothing. Public repos are skipped.
 - **Nothing to configure by hand.** No file to write. VM counts start from what the Mac can
   hold and change in the dashboard, which saves them as plain JSON you can back up.
-- **A dashboard**: what is queued, running and done, with logs.
+- **A dashboard**: what is queued, running and done, with logs. On the Mac itself, or on
+  your Tailscale tailnet if you want it there.
 - **Small enough to read.** TypeScript that Node runs as it is; no build, no runtime
   dependencies.
 

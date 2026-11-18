@@ -1,6 +1,7 @@
-// The dashboard's HTTP server (D10). It serves one page and the state behind it, to this Mac
-// only: it listens on 127.0.0.1, and refuses anything that did not come from there. There
-// are no accounts, because there is nobody else to tell apart.
+// The dashboard's HTTP server (D10). It serves one page and the state behind it. It listens
+// on 127.0.0.1 and refuses anything that did not come from there; the one other way in is
+// Tailscale Serve, which the owner sets up and which forwards a tailnet name to this port
+// (D20). There are no accounts: who may open the page is who can reach it.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -13,6 +14,7 @@ import type { Fetch } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import type { Manager } from './manager.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
+import type { TailnetName } from './tailnet.ts';
 
 export interface ServerDeps {
   manager: Manager;
@@ -22,6 +24,11 @@ export interface ServerDeps {
   health: () => Check[];
   machine: Machine;
   port: number;
+  /**
+   * The tailnet names Tailscale forwards to this server (D20). A name that Funnel also
+   * publishes to the internet is never answered to.
+   */
+  tailnet?: () => readonly TailnetName[];
   dashboardDir: string;
   fetch?: Fetch;
   /** The Mac's name as the page shows it. */
@@ -69,12 +76,18 @@ export function createDashboardServer(deps: ServerDeps): Server {
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const host = (request.headers.host ?? '').toLowerCase();
     // A page on another site cannot read this one by pointing its own name at 127.0.0.1.
-    if (!hosts.has(host)) return send(response, 421, 'Unknown host');
-    // The server listens on 127.0.0.1 only; this holds even if that is ever changed.
+    // The page is opened at 127.0.0.1, or at a name Tailscale forwards here. Anything else is
+    // a page on another site pointing a name of its own at this port.
+    const origin = hosts.has(host)
+      ? `http://${host}`
+      : (deps.tailnet?.().find((name) => name.host === host && !name.funnel)?.origin ?? null);
+    if (origin === null) return send(response, 421, 'Unknown host');
+    // The server listens on 127.0.0.1 only, and Tailscale's proxy connects from there too;
+    // this holds even if the listening address is ever changed.
     if (!(deps.isLocal ?? isLoopback)(request.socket.remoteAddress)) {
       return send(response, 403, 'The dashboard is served to this Mac only');
     }
-    const url = new URL(request.url ?? '/', `http://${host}`);
+    const url = new URL(request.url ?? '/', origin);
     const path = url.pathname;
 
     if (request.method === 'GET') {
@@ -116,7 +129,6 @@ export function createDashboardServer(deps: ServerDeps): Server {
         if (site !== undefined && site !== 'same-origin')
           return send(response, 403, 'Wrong origin');
         setup = { state: randomBytes(24).toString('hex'), expiresAt: Date.now() + 15 * 60_000 };
-        const origin = `http://${host}`;
         const name = `minitart-${
           hostname()
             .split('.')[0]
@@ -157,7 +169,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
 
     if (request.method === 'POST' && path === '/api/settings') {
       // A form on another site can post here; it cannot set this header pair.
-      if (request.headers.origin !== `http://${host}`) return send(response, 403, 'Wrong origin');
+      if (request.headers.origin !== origin) return send(response, 403, 'Wrong origin');
       if (!(request.headers['content-type'] ?? '').startsWith('application/json')) {
         return send(response, 415, 'Send JSON');
       }

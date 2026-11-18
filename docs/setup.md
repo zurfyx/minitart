@@ -153,6 +153,42 @@ unless the Mac logs in by itself, and macOS allows that only with FileVault off.
 
 `doctor` shows which one you have, as a note.
 
+## 11. Optional: the dashboard on your tailnet
+
+To open the dashboard from your phone or laptop, let Tailscale forward a name on your
+tailnet to it. minitart keeps listening on `127.0.0.1` only; it notices what Tailscale
+forwards and answers to it, within a minute. **Everyone your tailnet lets reach that name
+can do everything you can do at the Mac.**
+
+For a name of its own, `https://minitart.<tailnet>.ts.net`, use a Tailscale Service. Part of
+it is in Tailscale's admin console (**Owner**):
+
+1. Console, Services: create `minitart` with port `tcp:443`.
+2. A Service is hosted by a tagged machine. If this Mac is not tagged yet, define a tag in
+   the policy file (`"tagOwners": { "tag:server": ["autogroup:admin"] }`) and give it to the
+   Mac (Machines, Edit ACL tags).
+3. Policy file: a Service is not covered by wildcard rules. Add
+   `{"src": ["*"], "dst": ["svc:minitart"], "ip": ["*"]}`, or name the users who may reach it
+   instead of `*`.
+
+Then on the Mac:
+
+```bash
+tailscale serve --service=svc:minitart --https=443 http://127.0.0.1:4141
+```
+
+and approve the Mac as the Service's host in the console.
+
+Without a Service, a port on the Mac's own tailnet name works too, with nothing to do in the
+console: `tailscale serve --bg --https=8443 http://127.0.0.1:4141`.
+
+Check: `node src/main.ts doctor` shows `ok  Tailnet: The dashboard is at https://…`, and that
+address opens from another device on your tailnet. The first request can take a few seconds
+while Tailscale gets the certificate.
+
+Do not use `tailscale funnel` for it: that publishes to the internet, and minitart refuses
+to answer to a name Funnel publishes.
+
 ## Later
 
 - **`doctor` says a runner is behind.** GitHub stops accepting old runner versions some
@@ -163,8 +199,7 @@ unless the Mac logs in by itself, and macOS allows that only with FileVault off.
   are served, VM counts and size, timings. It is plain JSON, written by the dashboard and
   checked every time it is read. `~/.minitart/app.json` holds the App's key: back it up like
   a password, or do not, and create a new App on a new Mac.
-- **Seeing the dashboard from another device.** Not yet: it is served to the Mac itself only
-  ([D20](decisions/D20-the-dashboard-on-a-tailnet.md)).
+- **Seeing the dashboard from another device.** Step 11.
 - **Running it as its own macOS user.** It works: do every step above logged in as that
   user, and make it the user that logs in automatically
   ([D09](decisions/D09-a-launchagent-in-your-account.md)).

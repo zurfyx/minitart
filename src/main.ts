@@ -17,6 +17,7 @@ import { defaultGateway, hostAddresses, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
 import { installService, LABEL, uninstallService } from './service.ts';
 import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
+import { readTailnet, type TailnetName } from './tailnet.ts';
 import { TartCli, type Network, type Tart } from './tart.ts';
 
 const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a fresh VM
@@ -161,13 +162,17 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   for (const text of early) say(text);
 
   let checking = false;
+  let tailnet: TailnetName[] = [];
   let newest: string | null = null;
   let newestAt = 0;
   async function check(): Promise<void> {
     // One at a time: each check runs a few commands.
-    if (demo || checking) return;
+    if (checking) return;
     checking = true;
     try {
+      tailnet = await readTailnet(flags.port);
+      // The demo has no Mac to check, only names to answer to.
+      if (demo) return;
       // GitHub's newest runner version is asked for once a day.
       if (Date.now() - newestAt > 24 * 60 * 60_000) {
         newest = await newestRunner();
@@ -179,6 +184,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
         images: await images(tart, manager.settings),
         hasApp: app !== null,
         runners: { have: home ? builtRunners(home) : {}, latest: newest },
+        tailnet,
       });
     } finally {
       checking = false;
@@ -205,6 +211,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
       check().catch((error: unknown) => console.error(error));
     },
     health: () => health,
+    tailnet: () => tailnet,
     machine,
     ...(demo ? { machineName: 'mac-mini.local' } : {}),
     port: flags.port,
@@ -212,6 +219,9 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   });
   server.listen(flags.port, '127.0.0.1', () => {
     console.log(`minitart: the dashboard is at http://127.0.0.1:${flags.port}`);
+    for (const name of tailnet) {
+      if (!name.funnel) console.log(`minitart: and at ${name.origin} for your tailnet`);
+    }
     if (flags.network === 'shared') {
       console.log('minitart: WARNING: --unsafe-shared-network lets jobs reach your LAN.');
     }
@@ -274,6 +284,7 @@ async function main(): Promise<number> {
         images: await images(new TartCli(), settings),
         hasApp: loadApp(home) !== null,
         runners: { have: builtRunners(home), latest: await newestRunner() },
+        tailnet: await readTailnet(port),
       }),
     );
     return ok ? 0 : 1;

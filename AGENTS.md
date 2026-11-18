@@ -60,8 +60,9 @@ node src/main.ts doctor | selftest | image build <kind> | service install
   - Everything from outside is untrusted: request bodies, `settings.json`, and every name
     that comes from GitHub (jobs, workflows, repos). Validate, never coerce; write to the
     page as text, never HTML; pass to `tart` as arguments, never through a shell.
-  - The dashboard is served to the Mac itself only: it listens on 127.0.0.1 and refuses any
-    other connection (D10).
+  - The dashboard listens on 127.0.0.1 and refuses any other connection (D10). It answers
+    to `127.0.0.1`, `localhost`, and the tailnet names Tailscale Serve forwards to it,
+    never to one Funnel publishes (D20). No flag or setting adds a name.
   - A repo is served only when the App is installed on it and it is in `settings.repos`
     (D03). A fresh install serves nothing.
 - **Tests use the fakes**, not mocks of modules: `src/testing/fakes.ts` is a GitHub and a

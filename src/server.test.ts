@@ -6,6 +6,7 @@ import type { AppCredentials } from './github/app.ts';
 import { Manager } from './manager.ts';
 import { createDashboardServer, isLoopback } from './server.ts';
 import { defaultSettings } from './settings.ts';
+import type { TailnetName } from './tailnet.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -19,7 +20,9 @@ function freePort(): Promise<number> {
   });
 }
 
-async function setup(options: { local?: boolean; app?: AppCredentials | null } = {}) {
+async function setup(
+  options: { local?: boolean; app?: AppCredentials | null; tailnet?: TailnetName[] } = {},
+) {
   const github = new FakeGitHub();
   github.repoList = [{ fullName: 'octo/app', private: true }];
   const tart = new FakeTart();
@@ -47,6 +50,7 @@ async function setup(options: { local?: boolean; app?: AppCredentials | null } =
     port,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
     isLocal: () => options.local ?? true,
+    tailnet: () => options.tailnet ?? [],
     fetch: async (url) => {
       conversions.push(url);
       return Response.json({
@@ -200,4 +204,66 @@ test('logs: a VM by its exact name, a job only if minitart ran it', async () => 
   assert.equal(await (await fetch(`${origin}/api/jobs/${job.id}/log`)).text(), 'the job log');
   assert.equal((await fetch(`${origin}/api/jobs/999/log`)).status, 404);
   await manager.stop();
+});
+
+/** A request as Tailscale Serve forwards it: from this Mac, under the tailnet name. */
+function viaTailscale(port: number, host: string, request: string): Promise<string> {
+  return new Promise((resolve) => {
+    import('node:net').then(({ connect }) => {
+      const socket = connect(port, '127.0.0.1', () => {
+        socket.write(request.replace('{host}', host));
+      });
+      let data = '';
+      socket.on('data', (chunk) => (data += chunk));
+      socket.on('close', () => resolve(data));
+    });
+  });
+}
+
+test('the tailnet gets the same dashboard, at the name Tailscale forwards', async () => {
+  const name = {
+    host: 'minitart.example.ts.net',
+    origin: 'https://minitart.example.ts.net',
+    service: 'svc:minitart',
+    funnel: false,
+  };
+  const { port, manager } = await setup({ tailnet: [name] });
+  const get = (path: string, host = name.host) =>
+    viaTailscale(port, host, `GET ${path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n`);
+  assert.match(await get('/'), /^HTTP\/1\.1 200/);
+  assert.match(await get('/api/state'), /^HTTP\/1\.1 200/);
+  assert.match(await get('/', 'someone-else.example.ts.net'), /^HTTP\/1\.1 421/);
+
+  // The same access as at the Mac: settings change from there, under its own https origin.
+  const body = JSON.stringify({ idleSeconds: 240 });
+  const post = (origin: string) =>
+    viaTailscale(
+      port,
+      name.host,
+      `POST /api/settings HTTP/1.1\r\nHost: {host}\r\nOrigin: ${origin}\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`,
+    );
+  assert.match(await post('http://minitart.example.ts.net'), /^HTTP\/1\.1 403/);
+  assert.match(await post('https://evil.example'), /^HTTP\/1\.1 403/);
+  assert.match(await post(name.origin), /^HTTP\/1\.1 200/);
+  assert.equal(manager.settings.idleSeconds, 240);
+
+  // Creating the GitHub App from there sends GitHub back to the tailnet name.
+  const manifest = await get('/setup/manifest');
+  assert.ok(manifest.includes('https://minitart.example.ts.net/setup/callback'));
+});
+
+test('a name that Funnel publishes to the internet is never answered to', async () => {
+  const name = {
+    host: 'mini.example.ts.net:8443',
+    origin: 'https://mini.example.ts.net:8443',
+    service: null,
+    funnel: true,
+  };
+  const { port } = await setup({ tailnet: [name] });
+  const response = await viaTailscale(
+    port,
+    name.host,
+    'GET /api/state HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n',
+  );
+  assert.match(response, /^HTTP\/1\.1 421/);
 });

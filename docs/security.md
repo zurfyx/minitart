@@ -110,12 +110,16 @@ permission.
 
 ## The dashboard
 
-- **It is served to the Mac itself and to nothing else.** It listens on `127.0.0.1`, there
-  is no option to listen elsewhere, and a connection that did not come from the Mac is
-  refused. So there are no accounts: there is nobody else to tell apart.
-- Requests under an unknown `Host` are refused, so a web page cannot read the dashboard by
-  pointing a name of its own at `127.0.0.1`, and a proxy in front of it gets nothing until
-  minitart is taught its name. Changes also need a same-origin `Origin`.
+- **It listens on `127.0.0.1` and nowhere else.** There is no option to change that, and a
+  connection that did not come from the Mac is refused.
+- **On your tailnet, if you set it up.** Tailscale Serve can forward a tailnet name to the
+  dashboard. minitart asks Tailscale which names it forwards and answers to those. Everyone
+  your tailnet lets reach that name can do everything someone at the Mac can: see every job
+  and log, change which repos are served, create the GitHub App. There are no accounts in
+  minitart; who gets in is your tailnet's access rules.
+- **Never the internet.** A name that Tailscale Funnel publishes is not answered to.
+- Requests under any other `Host` are refused, so a web page cannot read the dashboard by
+  pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
 - Job, workflow and repo names come from GitHub and are written to the page as text, never
   as HTML. The page loads nothing from anywhere else.
 
