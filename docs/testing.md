@@ -6,6 +6,13 @@ Three layers. The first two run everywhere, on every push. The third needs this 
 
 `node --test` over `src/**/*.test.ts` and `scripts/**/*.test.mjs`. No VM, no network.
 
+The files named `src/prior-art.*.test.ts` hold scenarios taken from the test suites of the
+projects that did this before: Runscaler, ephemerd, Sand, Graftery, KnobanLabs'
+macos-ephemeral-runners, Cirrus CLI and Cilicon. Each is rewritten against minitart's own
+fakes, with a comment naming the test it comes from. They are what other people's bugs look
+like here: a runner that exits before it connects, a repo paused while its job runs, one
+unreachable installation among several.
+
 The manager is tested whole, against a GitHub and a Tart that live in memory
 (`src/testing/fakes.ts`): a job is queued, a VM appears, the runner takes the job, the VM is
 deleted. The fakes are driven by hand, with a clock the test owns, so every case is

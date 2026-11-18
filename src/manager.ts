@@ -299,9 +299,15 @@ export class Manager {
     }
     // A job whose whole run has finished is no longer in the list at all: a VM still
     // running one that GitHub has not shown for a while is stuck the same way.
+    // Only where the repo is still read: a paused repo's running job is left to finish.
     const serving = new Set(jobs.map((job) => job.runnerName));
     for (const vm of this.#vms.values()) {
-      if (vm.status !== 'running' || serving.has(vm.name) || this.#repoErrors.has(vm.repo)) {
+      if (
+        vm.status !== 'running' ||
+        serving.has(vm.name) ||
+        !names.has(vm.repo) ||
+        this.#repoErrors.has(vm.repo)
+      ) {
         vm.missingSince = null;
       } else if (vm.missingSince === null) {
         vm.missingSince = now;
@@ -422,8 +428,13 @@ export class Manager {
     return [...this.#vms.values()].map((vm) => ({
       repo: vm.repo,
       pool: vm.pool,
-      // A VM on its way out covers no job, but still holds its slot.
-      busy: vm.status === 'running' || vm.status === 'stopping' || vm.stopReason !== null,
+      // A VM on its way out covers no job, but still holds its slot. A VM whose runner says
+      // it took a job that GitHub has not yet named still covers one: GitHub lists that job
+      // as queued for a moment longer, and it must not get a second VM.
+      busy:
+        vm.status === 'stopping' ||
+        vm.stopReason !== null ||
+        (vm.status === 'running' && vm.job?.id != null),
     }));
   }
 
@@ -537,6 +548,14 @@ export class Manager {
       if (vm.stopReason === null && vm.result === null) {
         print(`minitart: the runner exited with code ${code} before finishing a job`);
       }
+      // A runner that exits without ever taking a job (no runner in the image, a version
+      // GitHub refuses) would otherwise get a new VM on every round.
+      if (vm.stopReason === null && vm.job === null && vm.result === null) {
+        this.#say('warn', `${vm.name}: its runner exited with code ${code} without taking a job`);
+        this.#startFailed(vm.pool);
+      } else if (vm.job !== null || vm.result !== null) {
+        this.#startFailures[vm.pool] = 0;
+      }
     } catch (error) {
       if (vm.stopReason === null) {
         print(`minitart: ${message(error)}`);
@@ -594,13 +613,11 @@ export class Manager {
     const started = RUNNER_STARTED.exec(line);
     if (started?.[1] !== undefined) {
       vm.job ??= { id: null, name: started[1], workflow: '', url: '' };
+      // Booted, registered, connected and given a job: this kind of VM starts.
+      this.#startFailures[vm.pool] = 0;
       if (vm.status === 'waiting') this.#setStatus(vm, 'running');
     }
-    if (RUNNER_LISTENING.test(line)) {
-      vm.listening = true;
-      // Booted, registered and connected: this kind of VM starts.
-      this.#startFailures[vm.pool] = 0;
-    }
+    if (RUNNER_LISTENING.test(line)) vm.listening = true;
     const ended = RUNNER_ENDED.exec(line);
     if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
     this.#changed();

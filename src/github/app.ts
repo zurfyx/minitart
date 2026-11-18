@@ -40,6 +40,7 @@ export class AppAuth implements Auth {
   readonly #fetch: Fetch;
   readonly #now: () => number;
   readonly #tokens = new Map<number, { token: string; expiresAt: number }>();
+  readonly #renewals = new Map<number, Promise<string>>();
   /** Which installation each repo belongs to. */
   #installations = new Map<string, number>();
 
@@ -60,18 +61,27 @@ export class AppAuth implements Auth {
     }[];
     const repos: Repo[] = [];
     const owners = new Map<string, number>();
+    // One installation that cannot be read (a suspended one, say) does not hide the others.
+    let failure: unknown = null;
+    let read = 0;
     for (const installation of installations) {
-      const token = await this.#installationToken(installation.id);
-      const found = (await this.#pages(
-        `/installation/repositories`,
-        token,
-        (page) => (page as { repositories: unknown[] }).repositories,
-      )) as { full_name: string; private: boolean }[];
-      for (const repo of found) {
-        owners.set(repo.full_name, installation.id);
-        repos.push({ fullName: repo.full_name, private: repo.private });
+      try {
+        const token = await this.#installationToken(installation.id);
+        const found = (await this.#pages(
+          `/installation/repositories`,
+          token,
+          (page) => (page as { repositories: unknown[] }).repositories,
+        )) as { full_name: string; private: boolean }[];
+        for (const repo of found) {
+          owners.set(repo.full_name, installation.id);
+          repos.push({ fullName: repo.full_name, private: repo.private });
+        }
+        read++;
+      } catch (error) {
+        failure ??= error;
       }
     }
+    if (failure !== null && read === 0) throw failure;
     this.#installations = owners;
     return repos.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
@@ -86,6 +96,16 @@ export class AppAuth implements Auth {
   async #installationToken(installation: number): Promise<string> {
     const cached = this.#tokens.get(installation);
     if (cached && cached.expiresAt - this.#now() > 5 * 60_000) return cached.token;
+    // Every request of a round finds the token near its end together: they share one renewal.
+    let renewal = this.#renewals.get(installation);
+    if (!renewal) {
+      renewal = this.#renew(installation).finally(() => this.#renewals.delete(installation));
+      this.#renewals.set(installation, renewal);
+    }
+    return renewal;
+  }
+
+  async #renew(installation: number): Promise<string> {
     const response = await this.#fetch(`${API}/app/installations/${installation}/access_tokens`, {
       method: 'POST',
       headers: githubHeaders(appJwt(this.#app, this.#now())),

@@ -147,6 +147,15 @@ export class FakeTart implements Tart {
   bootFailure: string | null = null;
   /** While set, the guest agent of a booted VM does not answer. */
   agentDown = false;
+  /** Errors the next calls of a command throw, one per call. */
+  readonly #failures = new Map<string, Error[]>();
+
+  /** Makes the next `times` calls of `command` throw `error`, then behave again. */
+  failNext(command: 'clone' | 'configure' | 'stop' | 'remove', error: Error, times = 1): void {
+    const queue = this.#failures.get(command) ?? [];
+    for (let i = 0; i < times; i++) queue.push(error);
+    this.#failures.set(command, queue);
+  }
 
   addImage(name: string): void {
     this.vms.set(name, { running: false, source: 'local', halt: null, run: null });
@@ -198,11 +207,14 @@ export class FakeTart implements Tart {
   }
 
   async clone(source: string, name: string): Promise<void> {
+    this.#failIfAsked('clone');
     if (!this.vms.has(source)) throw new Error(`tart clone: no such image ${source}`);
     this.vms.set(name, { running: false, source: 'local', halt: null, run: null });
   }
 
-  async configure(): Promise<void> {}
+  async configure(): Promise<void> {
+    this.#failIfAsked('configure');
+  }
 
   boot(name: string, network: Network, onLine: (line: string) => void): Promise<void> {
     const vm = this.#vm(name);
@@ -230,6 +242,7 @@ export class FakeTart implements Tart {
   }
 
   async stop(name: string): Promise<void> {
+    this.#failIfAsked('stop');
     const vm = this.vms.get(name);
     if (!vm) throw new Error(`tart stop: no such VM ${name}`);
     vm.running = false;
@@ -239,7 +252,13 @@ export class FakeTart implements Tart {
   }
 
   async remove(name: string): Promise<void> {
+    this.#failIfAsked('remove');
     if (!this.vms.delete(name)) throw new Error(`tart delete: no such VM ${name}`);
+  }
+
+  #failIfAsked(command: string): void {
+    const error = this.#failures.get(command)?.shift();
+    if (error) throw error;
   }
 
   #vm(name: string): FakeVm {

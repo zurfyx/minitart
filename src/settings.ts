@@ -57,36 +57,56 @@ export class SettingsError extends Error {}
  * request body): an unknown field or a value out of range throws.
  */
 export function mergeSettings(base: Settings, patch: unknown, machine: Machine): Settings {
-  const input = record(patch, 'settings');
-  const known = new Set(Object.keys(base));
-  for (const key of Object.keys(input)) {
-    if (!known.has(key)) throw new SettingsError(`Unknown setting: ${key}`);
-  }
+  const input = section(patch, 'settings', Object.keys(base));
   const pool = (name: Pool, limit: number) => {
     if (input[name] === undefined) return base[name];
-    const value = record(input[name], name);
+    const value = section(input[name], name, ['max', 'image']);
     return {
-      max: integer(value['max'] ?? base[name].max, `${name}.max`, 0, limit),
-      image: imageName(value['image'] ?? base[name].image, `${name}.image`),
+      max: integer(given(value['max'], base[name].max), `${name}.max`, 0, limit),
+      image: imageName(given(value['image'], base[name].image), `${name}.image`),
     };
   };
-  const vm = input['vm'] === undefined ? {} : record(input['vm'], 'vm');
+  const vm = input['vm'] === undefined ? {} : section(input['vm'], 'vm', ['cpu', 'memoryMb']);
   const maxMemoryMb = Math.floor(machine.memoryBytes / 1024 ** 2);
-  return {
+  const next: Settings = {
     linux: pool('linux', LINUX_VM_LIMIT),
     macos: pool('macos', MACOS_VM_LIMIT),
     vm: {
-      cpu: integer(vm['cpu'] ?? base.vm.cpu, 'vm.cpu', 1, machine.cpus),
-      memoryMb: integer(vm['memoryMb'] ?? base.vm.memoryMb, 'vm.memoryMb', 2048, maxMemoryMb),
+      cpu: integer(given(vm['cpu'], base.vm.cpu), 'vm.cpu', 1, machine.cpus),
+      memoryMb: integer(given(vm['memoryMb'], base.vm.memoryMb), 'vm.memoryMb', 2048, maxMemoryMb),
     },
-    pollSeconds: integer(input['pollSeconds'] ?? base.pollSeconds, 'pollSeconds', 2, 300),
-    idleSeconds: integer(input['idleSeconds'] ?? base.idleSeconds, 'idleSeconds', 30, 3600),
+    pollSeconds: integer(given(input['pollSeconds'], base.pollSeconds), 'pollSeconds', 2, 300),
+    idleSeconds: integer(given(input['idleSeconds'], base.idleSeconds), 'idleSeconds', 30, 3600),
     allowPublicRepos: boolean(
-      input['allowPublicRepos'] ?? base.allowPublicRepos,
+      given(input['allowPublicRepos'], base.allowPublicRepos),
       'allowPublicRepos',
     ),
-    pausedRepos: repoNames(input['pausedRepos'] ?? base.pausedRepos, 'pausedRepos'),
+    pausedRepos: repoNames(given(input['pausedRepos'], base.pausedRepos), 'pausedRepos'),
   };
+  // Each value can be in range while the whole is not: the VMs run at the same time.
+  const vms = next.linux.max + next.macos.max;
+  if (vms * next.vm.memoryMb > maxMemoryMb) {
+    throw new SettingsError(
+      `${vms} VMs of ${Math.round(next.vm.memoryMb / 1024)} GB need more memory than this Mac has`,
+    );
+  }
+  return next;
+}
+
+/** A field that is absent keeps its value. One that is present, even as null, is checked. */
+function given(value: unknown, fallback: unknown): unknown {
+  return value === undefined ? fallback : value;
+}
+
+/** An object with no field outside `known`: a misspelt setting is an error, not a no-op. */
+function section(value: unknown, name: string, known: readonly string[]): Record<string, unknown> {
+  const fields = record(value, name);
+  for (const key of Object.keys(fields)) {
+    if (!known.includes(key)) {
+      throw new SettingsError(`Unknown setting: ${name === 'settings' ? key : `${name}.${key}`}`);
+    }
+  }
+  return fields;
 }
 
 function clamp(value: number, min: number, max: number): number {

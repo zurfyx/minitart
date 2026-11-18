@@ -114,15 +114,15 @@ test('a request under another host name is refused', async () => {
 
 test('settings change from the Mac, same origin, as JSON, and are validated', async () => {
   const { post, manager } = await setup();
-  assert.equal((await post({ linux: { max: 4 } })).status, 200);
-  assert.equal(manager.settings.linux.max, 4);
+  assert.equal((await post({ linux: { max: 3 } })).status, 200);
+  assert.equal(manager.settings.linux.max, 3);
 
   assert.equal((await post({ linux: { max: 1 } }, { origin: 'http://evil.example' })).status, 403);
   assert.equal((await post({ linux: { max: 1 } }, { 'content-type': 'text/plain' })).status, 415);
   const refused = await post({ macos: { max: 3 } });
   assert.equal(refused.status, 400);
   assert.match(await refused.text(), /macos\.max/);
-  assert.equal(manager.settings.linux.max, 4);
+  assert.equal(manager.settings.linux.max, 3);
 });
 
 test('a browser that is not on the Mac can read and cannot change anything', async () => {

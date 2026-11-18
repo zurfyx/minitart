@@ -19,8 +19,8 @@ test('defaults fit the machine', () => {
 
 test('a patch changes only what it names', () => {
   const base = defaultSettings(mini);
-  const next = mergeSettings(base, { linux: { max: 4 }, pausedRepos: ['octo/app'] }, mini);
-  assert.equal(next.linux.max, 4);
+  const next = mergeSettings(base, { linux: { max: 3 }, pausedRepos: ['octo/app'] }, mini);
+  assert.equal(next.linux.max, 3);
   assert.equal(next.linux.image, base.linux.image);
   assert.deepEqual(next.pausedRepos, ['octo/app']);
   assert.deepEqual(next.macos, base.macos);
