@@ -201,7 +201,7 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   const xml = plist({
     node: '/opt/homebrew/bin/node',
     main: '/Users/me/minitart/src/main.ts',
-    args: ['--port', '4141', '--allow-host', 'mini & co'],
+    args: ['--port', '4141', '--label', 'mini & co'],
     log: '/Users/me/.minitart/logs/manager.log',
     path: '/opt/homebrew/bin:/usr/bin',
   });

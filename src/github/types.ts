@@ -28,7 +28,7 @@ export interface Job {
 }
 
 export interface GitHub {
-  /** The repos the App is installed on: the allowlist (D03). */
+  /** The repos the App is installed on. Which of them are served is the owner's list (D03). */
   repos(): Promise<Repo[]>;
   /** Ids of the workflow runs that have not completed. */
   activeRuns(repo: string): Promise<number[]>;

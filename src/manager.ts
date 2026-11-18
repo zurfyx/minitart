@@ -299,7 +299,7 @@ export class Manager {
     }
     // A job whose whole run has finished is no longer in the list at all: a VM still
     // running one that GitHub has not shown for a while is stuck the same way.
-    // Only where the repo is still read: a paused repo's running job is left to finish.
+    // Only where the repo is still read: a repo that was turned off keeps its running job.
     const serving = new Set(jobs.map((job) => job.runnerName));
     for (const vm of this.#vms.values()) {
       if (
@@ -388,6 +388,12 @@ export class Manager {
     return this.#history.find((done) => done.job.id === jobId)?.repo ?? null;
   }
 
+  /** Says something in the activity list that the manager itself did not find out. */
+  warn(text: string): void {
+    this.#say('warn', text);
+    this.#changed();
+  }
+
   updateSettings(next: Settings): void {
     this.#settings = next;
     this.#deps.saveSettings(next);
@@ -402,7 +408,11 @@ export class Manager {
 
   #repoState(repo: Repo): RepoView['state'] {
     if (!repo.private && !this.#settings.allowPublicRepos) return 'public';
-    return this.#settings.repos.includes(repo.fullName) ? 'watching' : 'off';
+    // GitHub's names ignore case, and a repo can be renamed in case only.
+    const name = repo.fullName.toLowerCase();
+    return this.#settings.repos.some((listed) => listed.toLowerCase() === name)
+      ? 'watching'
+      : 'off';
   }
 
   #limits(): Record<Pool, number> {

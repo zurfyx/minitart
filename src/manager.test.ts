@@ -148,6 +148,15 @@ test('a repo the App is installed on is not served until the owner turns it on',
   assert.equal(manager.snapshot().repos[0]?.state, 'watching');
 });
 
+test('the served list matches names the way GitHub does, whatever their case', async () => {
+  const { github, tart, manager, settle } = setup({ settings: { repos: ['Octo/App'] } });
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  assert.equal(manager.snapshot().repos[0]?.state, 'watching');
+  assert.equal(jobVms(tart).length, 1);
+});
+
 test('a fresh install serves nothing', () => {
   assert.deepEqual(defaultSettings(machine).repos, []);
 });

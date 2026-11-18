@@ -49,6 +49,12 @@ export class Home {
     renameSync(temp, target);
   }
 
+  /** Moves a file aside under a new name, replacing what was there. Resolves with the new path. */
+  setAside(name: string, as: string): string {
+    renameSync(this.path(name), this.path(as));
+    return this.path(as);
+  }
+
   /** A log line that cannot be written (a full disk) is dropped, not thrown. */
   appendLog(name: string, line: string): void {
     try {

@@ -1,5 +1,5 @@
 // Settings (D06). There is no config file to write by hand: the defaults come from the
-// machine, the repo allowlist is the GitHub App's installation (D03), and what the owner
+// machine, a repo is served once the App is on it and the owner turned it on (D03), and what the owner
 // changes in the dashboard is saved here.
 
 export type Pool = 'linux' | 'macos';
@@ -149,7 +149,7 @@ function repoNames(value: unknown, name: string): string[] {
     throw new SettingsError(`${name} must be a list of repos`);
   }
   return value.map((repo) => {
-    if (typeof repo !== 'string' || !/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
+    if (typeof repo !== 'string' || !/^[A-Za-z0-9_-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
       throw new SettingsError(`${name} holds something that is not owner/name`);
     }
     return repo;

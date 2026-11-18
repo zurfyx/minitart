@@ -260,7 +260,7 @@ test('the manifest code is traded for the App credentials', async () => {
 });
 
 test('an installation GitHub fails on for a moment keeps its repos; one GitHub refuses loses them', async () => {
-  let second: 'ok' | 'failing' | 'suspended' = 'ok';
+  let second: 'ok' | 'failing' | 'limited' | 'suspended' = 'ok';
   const warnings: string[] = [];
   const { fetch } = fakeFetch({
     'GET /app/installations': () => json([{ id: 7 }, { id: 8 }]),
@@ -269,7 +269,13 @@ test('an installation GitHub fails on for a moment keeps its repos; one GitHub r
     'POST /app/installations/8/access_tokens': () =>
       second === 'ok'
         ? json({ token: 'ghs_8', expires_at: '2026-11-18T10:04:00Z' })
-        : Response.json({ message: 'nope' }, { status: second === 'failing' ? 502 : 403 }),
+        : Response.json(
+            { message: 'nope' },
+            {
+              status: second === 'failing' ? 502 : 403,
+              headers: second === 'limited' ? { 'retry-after': '60' } : {},
+            },
+          ),
     'GET /installation/repositories': (call) =>
       json({
         repositories: [
@@ -291,6 +297,10 @@ test('an installation GitHub fails on for a moment keeps its repos; one GitHub r
   second = 'failing';
   assert.deepEqual(await names(), ['acme/api', 'octo/app'], 'a passing error forgets nothing');
   assert.match(warnings[0] ?? '', /installation 8.*502/);
+
+  // A rate limit is a 403 as well, and it passes.
+  second = 'limited';
+  assert.deepEqual(await names(), ['acme/api', 'octo/app']);
 
   second = 'suspended';
   assert.deepEqual(await names(), ['octo/app']);

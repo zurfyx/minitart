@@ -17,8 +17,8 @@ There is no file the owner writes. Each thing that could be configuration has on
 What the dashboard changes is saved in `~/.minitart/settings.json`: plain, indented JSON,
 one file, so it can be backed up, compared and read by other tools. It is validated on every
 read. A file that does not pass (edited by hand, or written before a rule changed) is not
-used: minitart starts on the defaults, which serve no repo, and says which file it set
-aside.
+used and not lost: it is renamed `settings.invalid.json`, minitart starts on the defaults,
+which serve no repo, and the dashboard's activity list says so.
 
 ## Why
 

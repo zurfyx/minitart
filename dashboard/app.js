@@ -332,9 +332,10 @@ async function saveSettings(patch) {
 }
 
 function toggleServed(repo) {
-  const served = new Set(state.settings.repos);
-  if (repo.state === 'watching') served.delete(repo.fullName);
-  else served.add(repo.fullName);
+  // Names ignore case on GitHub, so the list is matched that way too.
+  const name = repo.fullName.toLowerCase();
+  const served = new Set(state.settings.repos.filter((listed) => listed.toLowerCase() !== name));
+  if (repo.state !== 'watching') served.add(repo.fullName);
   saveSettings({ repos: [...served].sort() }).catch((error) => alert(error.message));
 }
 

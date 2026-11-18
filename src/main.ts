@@ -39,17 +39,26 @@ const KEPT_VM_LOGS = 50;
 
 const machine = { cpus: availableParallelism(), memoryBytes: totalmem() };
 
-function loadSettings(home: Home): Settings {
+/**
+ * The saved settings. A file that no longer holds (a rule that came with an update, a file
+ * edited by hand) must not keep minitart from starting, and must not be lost to the next
+ * save either: it is moved aside, and minitart starts on the defaults, which serve no repo.
+ */
+function loadSettings(home: Home, warn: (text: string) => void = console.warn): Settings {
   const defaults = defaultSettings(machine);
-  // Saved settings that no longer hold (a rule that came with an update, a file edited by
-  // hand) must not keep minitart from starting: the dashboard is where they are put right.
   try {
     const saved = home.readJson('settings.json');
     return saved === undefined ? defaults : mergeSettings(defaults, saved, machine);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `minitart: ${home.path('settings.json')} is not valid (${reason}). Using the defaults until settings are saved again.`,
+    let kept = home.path('settings.json');
+    try {
+      kept = home.setAside('settings.json', 'settings.invalid.json');
+    } catch {
+      // It stays where it is, and the next save replaces it.
+    }
+    warn(
+      `The saved settings are not valid (${reason}). Using the defaults; the old file is ${kept}`,
     );
     return defaults;
   }
@@ -111,10 +120,19 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   const home = demo ? null : new Home();
   const tart: Tart = demo?.tart ?? new TartCli();
   let app = home ? loadApp(home) : null;
+  // What goes wrong before the manager exists is said once it does, so the dashboard shows it.
+  const early: string[] = [];
+  let say: ((text: string) => void) | null = null;
+  let lastWarning = '';
+  const warn = (text: string) => {
+    // The same trouble every poll is said once.
+    if (text === lastWarning) return;
+    lastWarning = text;
+    if (say) say(text);
+    else early.push(text);
+  };
   const connect = (credentials: AppCredentials) =>
-    new GitHubClient(
-      new AppAuth(credentials, fetch, Date.now, (text) => console.warn(`minitart: ${text}`)),
-    );
+    new GitHubClient(new AppAuth(credentials, fetch, Date.now, warn));
   let github: GitHub | null = demo?.github ?? (app ? connect(app) : null);
   let health: Check[] = [];
 
@@ -124,7 +142,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     tart,
     network: flags.network,
     settings: home
-      ? loadSettings(home)
+      ? loadSettings(home, (text) => early.push(text))
       : { ...defaultSettings(machine), repos: ['octo/app', 'octo/api', 'octo/site'] },
     saveSettings: (settings) => {
       home?.writeJson('settings.json', settings);
@@ -139,6 +157,8 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     log: (line: LogLine) =>
       console.log(`${stamp(line.at)} ${line.level === 'warn' ? 'WARN ' : ''}${line.text}`),
   });
+  say = (text) => manager.warn(text);
+  for (const text of early) say(text);
 
   let checking = false;
   let newest: string | null = null;

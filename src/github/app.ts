@@ -89,7 +89,12 @@ export class AppAuth implements Auth {
         read++;
       } catch (error) {
         failure ??= error;
-        const refused = error instanceof GitHubError && [403, 404].includes(error.status);
+        // A rate limit is a 403 too, and it passes: only a refusal with no "come back at" means
+        // the installation is gone or suspended.
+        const refused =
+          error instanceof GitHubError &&
+          [403, 404].includes(error.status) &&
+          error.retryAt === null;
         if (refused) this.#lastRead.delete(installation.id);
         found = this.#lastRead.get(installation.id) ?? [];
         const reason = error instanceof Error ? error.message : String(error);
