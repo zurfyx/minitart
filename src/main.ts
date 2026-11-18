@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
-import { applyFixes, runChecks, type Check } from './doctor.ts';
+import { applyFixes, blockedBy, runChecks, type Check } from './doctor.ts';
 import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
 import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
@@ -183,6 +183,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
 
   const stamp = (at: number) => new Date(at).toISOString();
   const manager = new Manager({
+    blocked: () => blockedBy(health, flags.network),
     github: () => github,
     tart,
     network: flags.network,

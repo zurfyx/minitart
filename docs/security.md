@@ -40,7 +40,7 @@ they appear. minitart adds one explicit block, `100.64.0.0/10`, the range Tailsc
 so that does not rest on a definition.
 
 **minitart does not start a VM on any other network.** If Softnet is missing or cannot run,
-VMs fail to start and the dashboard says why. The one exception is the flag
+no VM is started and the dashboard says why. The one exception is the flag
 `--unsafe-shared-network`, for trying minitart out before Softnet is set up: it prints a
 warning on start and the dashboard shows it on every page load.
 
@@ -59,6 +59,9 @@ So the setup closes it, with macOS's own firewall (`firewall/install.sh`, run on
 `sudo`): on a VM's network, the Mac accepts DHCP and DNS and drops everything else addressed
 to it. That is an allowlist too. A service you turn on next year is not reachable from a job
 without being listed anywhere.
+
+Until the rules are installed minitart starts no VM, as it starts none without Softnet:
+jobs wait on GitHub, and the dashboard says which step is missing.
 
 `minitart doctor` says whether the rules are installed, and `minitart selftest` is the
 proof: from inside a VM it tries the gateway on the ports a Mac commonly serves and on every

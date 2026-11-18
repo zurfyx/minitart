@@ -340,6 +340,17 @@ function onPath(name: string): boolean {
 }
 
 /**
+ * Why no VM may be started, from the checks: `null` when the Mac is set up to isolate one.
+ * A VM that would not be isolated is not started at all (D04, D21); the owner who asked for
+ * the unsafe network has said they know.
+ */
+export function blockedBy(checks: readonly Check[], network: Network): string | null {
+  if (network === 'shared') return null;
+  const broken = checks.find((c) => (c.id === 'network' || c.id === 'firewall') && !c.ok);
+  return broken ? `${broken.title}: ${broken.detail}. Run: minitart doctor --fix` : null;
+}
+
+/**
  * `doctor --fix`: installs what is missing, then runs the fixes that need root, checking
  * again after each so that a fix one check's commands already made is not made twice.
  * `run` runs a command with the terminal attached and resolves with its exit code, or

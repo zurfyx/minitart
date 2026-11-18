@@ -11,7 +11,9 @@ else addressed to it, unicast, broadcast and multicast.
 - The rules live in their own anchor, `com.apple/251.minitart`, loaded from
   `/etc/pf.anchors/minitart` by a LaunchDaemon at every boot. `/etc/pf.conf` is not touched:
   macOS's own file already evaluates every anchor under `com.apple/`.
-- `minitart doctor` requires it, and `minitart selftest` proves it from inside a VM.
+- **minitart starts no VM until the rule is installed**, the same as without Softnet: the
+  jobs wait on GitHub and the dashboard says which step is missing. `minitart doctor`
+  requires it, and `minitart selftest` proves it from inside a VM.
 - `firewall/uninstall.sh` removes it.
 
 ## Why

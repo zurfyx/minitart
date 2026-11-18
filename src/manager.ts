@@ -104,6 +104,8 @@ export interface Snapshot {
   githubError: string | null;
   /** Whether minitart is letting its jobs finish and starting no more. */
   draining: boolean;
+  /** Why no VM is being started, when the Mac is not set up to isolate one. */
+  blocked: string | null;
 }
 
 interface Vm extends VmView {
@@ -138,6 +140,11 @@ export interface ManagerDeps {
   log?: (line: LogLine) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Why no VM may be started, or `null` when one may: the network is not closed (D04, D21).
+   * The jobs wait on GitHub until it is.
+   */
+  blocked?: () => string | null;
 }
 
 const HISTORY_LIMIT = 200;
@@ -320,7 +327,7 @@ export class Manager {
       }
     }
 
-    if (!this.#stopping && !this.#draining) {
+    if (!this.#stopping && !this.#draining && this.#blocked() === null) {
       const limits = this.#limits();
       for (const launch of plan(this.#waiting(jobs), this.#slots(), limits)) {
         this.#launch(github, launch.repo, launch.pool);
@@ -342,6 +349,8 @@ export class Manager {
       let note: string | null = null;
       if (pool === 'unsatisfiable') {
         note = `No minitart runner has all of: ${job.labels.join(', ')}`;
+      } else if (this.#blocked() !== null) {
+        note = `No VM is started until this is put right. ${this.#blocked()}`;
       } else if (this.#draining) {
         note = 'minitart is draining: it starts no job until it is resumed or restarted';
       } else if (!this.#images[pool]) {
@@ -381,6 +390,7 @@ export class Manager {
       log: [...this.#log],
       githubError: this.#githubError,
       draining: this.#draining,
+      blocked: this.#blocked(),
     };
   }
 
@@ -427,6 +437,10 @@ export class Manager {
 
   get settings(): Settings {
     return this.#settings;
+  }
+
+  #blocked(): string | null {
+    return this.#deps.blocked?.() ?? null;
   }
 
   #repoState(repo: Repo): RepoView['state'] {
