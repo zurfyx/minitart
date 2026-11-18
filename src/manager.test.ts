@@ -563,6 +563,18 @@ test('a VM is started only when the Mac has the memory for it; otherwise the job
   assert.equal(jobVms(tart).length, 2);
   assert.notEqual(manager.snapshot().shortOfMemory, null);
 
+  // Five seconds on, the two have taken almost nothing yet and the reading is the same: their
+  // share is set aside all the same, and the third still waits.
+  await round();
+  assert.equal(jobVms(tart).length, 2);
+  const notes = manager.snapshot().queued.map((job) => [job.name, job.note !== null]);
+  // Only the job that is waiting for memory says so; the two whose VMs are up do not.
+  assert.deepEqual(notes, [
+    ['one', false],
+    ['two', false],
+    ['three', true],
+  ]);
+
   // macOS saying it is short holds everything back, whatever the numbers say.
   memory = { availableMb: 60 * 1024, pressure: true };
   await round();

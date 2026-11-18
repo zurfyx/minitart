@@ -6,22 +6,24 @@
 import { execFile } from 'node:child_process';
 
 export interface Memory {
-  /** What macOS could hand out without taking it from a program that is using it. */
+  /** What macOS could hand out without compressing or swapping what programs are using. */
   availableMb: number;
   /** Whether macOS itself says it is short: its memory pressure is above normal. */
   pressure: boolean;
 }
 
 /**
- * Available memory, from `vm_stat`: pages that are free, or that macOS can take back at
- * once (inactive, speculative, purgeable). `null` when the output is not understood.
+ * Memory to spare, from `vm_stat`: pages that are free, pages that hold files macOS can read
+ * again from disk, and pages their owners marked as disposable. Not counted: memory that
+ * programs are using, also the part macOS calls inactive, which it could only free by
+ * compressing or swapping it. `null` when the output is not understood.
  */
 export function availableMb(vmStat: string): number | null {
   const pageSize = Number(/page size of (\d+) bytes/.exec(vmStat)?.[1]);
   if (!Number.isInteger(pageSize) || pageSize <= 0) return null;
   let pages = 0;
-  for (const name of ['free', 'inactive', 'speculative', 'purgeable']) {
-    const count = Number(new RegExp(`^Pages ${name}:\\s+(\\d+)\\.`, 'm').exec(vmStat)?.[1]);
+  for (const name of ['Pages free', 'File-backed pages', 'Pages purgeable']) {
+    const count = Number(new RegExp(`^${name}:\\s+(\\d+)\\.`, 'm').exec(vmStat)?.[1]);
     if (!Number.isInteger(count)) return null;
     pages += count;
   }

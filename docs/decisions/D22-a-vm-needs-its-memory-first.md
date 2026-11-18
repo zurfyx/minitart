@@ -4,10 +4,13 @@ Status: `PROPOSED`
 
 ## Decision
 
-Before starting a VM, minitart asks macOS how much memory it has to spare (`vm_stat`: pages
-that are free or that it can take back at once) and whether it is under memory pressure. A VM
-is started only if there is room for its whole size and macOS is not under pressure. Several
-started in one round each count against the same room. Otherwise the job waits on GitHub,
+Before starting a VM, minitart asks macOS how much memory it has to spare and whether it is
+under memory pressure. To spare means: free, holding files it can read again from disk, or
+marked disposable by its owner (`vm_stat`). Memory that programs are using does not count,
+including the part macOS calls inactive, which it could only free by compressing or swapping
+it. A VM is started only if there is room for its whole size and macOS is not under
+pressure. Every VM that has no job yet has its whole size set aside, since it has taken
+almost none of it so far. Otherwise the job waits on GitHub,
 and the queue and the top of the dashboard say why. It is asked again every few seconds.
 
 This is on top of the settings' own limit: the VMs that may run at once must fit, together,
@@ -34,6 +37,7 @@ free memory. Waiting a few seconds for room costs less than that.
 - A job can wait while a slot is free, when the Mac is busy with something else.
 - It is a judgement at the moment a VM starts. VMs that were started in leaner times can
   still grow to their size later, together; the settings' limit is what bounds that.
-- "To spare" is counted carefully: memory macOS could reclaim from files it has cached for
-  running programs is not counted, so a VM may wait when there was, in truth, room.
+- A VM that is running its job is counted by what it has taken so far, not by its size, so
+  jobs that grow late can still add up to more than there is. The settings' limit bounds
+  that, and macOS's own pressure signal stops new VMs when it happens.
 - When macOS cannot be asked, nothing is held back.

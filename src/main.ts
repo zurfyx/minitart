@@ -248,8 +248,16 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   await readNames();
   const everyHalfMinute = setInterval(() => void readNames(), 30_000);
   // What macOS has to spare is read as often as the queue is, and never in the demo.
+  let readingFree = false;
   const readFree = async () => {
-    memory = demo ? null : await readMemory();
+    // One at a time: a slow answer must not arrive after a newer one and replace it.
+    if (demo || readingFree) return;
+    readingFree = true;
+    try {
+      memory = await readMemory();
+    } finally {
+      readingFree = false;
+    }
   };
   await readFree();
   const everyFewSeconds = setInterval(() => void readFree(), 5000);

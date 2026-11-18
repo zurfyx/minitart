@@ -614,24 +614,25 @@ test('a Mac whose network is not closed starts no VM, and says which step is mis
   assert.match(blockedBy(old, 'softnet') ?? '', /Run: brew upgrade softnet$/);
 });
 
-test('memory to spare is what macOS can hand out at once, read from vm_stat', () => {
+test('memory to spare is what macOS can hand out without squeezing programs, read from vm_stat', () => {
   const stat = [
     'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
-    'Pages free:                                  1207517.',
+    'Pages free:                                  1022596.',
     'Pages active:                                1307417.',
     'Pages inactive:                              1292195.',
-    'Pages speculative:                             11692.',
+    'Pages speculative:                             13406.',
     'Pages throttled:                                   0.',
     'Pages wired down:                             196519.',
-    'Pages purgeable:                               59039.',
+    'Pages purgeable:                               55670.',
+    'File-backed pages:                            849897.',
+    'Anonymous pages:                             1841180.',
   ].join('\n');
-  // Free, inactive, speculative and purgeable; not what programs are using.
-  assert.equal(
-    availableMb(stat),
-    Math.floor(((1207517 + 1292195 + 11692 + 59039) * 16384) / 1024 ** 2),
-  );
+  // Free, files it can read again, and what was marked disposable. Not "inactive": much of
+  // that is programs' own memory, which could only be freed by compressing or swapping it.
+  assert.equal(availableMb(stat), Math.floor(((1022596 + 849897 + 55670) * 16384) / 1024 ** 2));
+  assert.ok((availableMb(stat) ?? 0) < Math.floor(((1022596 + 1292195) * 16384) / 1024 ** 2));
   // Anything else is "not known", never a number made up.
   assert.equal(availableMb(''), null);
-  assert.equal(availableMb(stat.replace('Pages inactive', 'Pages napping')), null);
+  assert.equal(availableMb(stat.replace('File-backed pages', 'Pages napping')), null);
   assert.equal(availableMb(stat.replace('16384 bytes', 'many bytes')), null);
 });
