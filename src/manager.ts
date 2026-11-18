@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { GitHubError, type GitHub, type Job, type Repo } from './github/types.ts';
 import { LABELS, plan, route, type Waiting } from './schedule.ts';
+import type { Memory } from './memory.ts';
 import { POOLS, type Pool, type Settings } from './settings.ts';
 import type { Network, Tart } from './tart.ts';
 
@@ -106,6 +107,8 @@ export interface Snapshot {
   draining: boolean;
   /** Why no VM is being started, when the Mac is not set up to isolate one. */
   blocked: string | null;
+  /** Why queued jobs are waiting, when it is for memory. */
+  shortOfMemory: string | null;
 }
 
 interface Vm extends VmView {
@@ -140,6 +143,8 @@ export interface ManagerDeps {
   log?: (line: LogLine) => void;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** What macOS says about its memory, or `null` when it is not known. */
+  memory?: () => Memory | null;
   /**
    * Why no VM may be started, or `null` when one may: the network is not closed (D04, D21).
    * The jobs wait on GitHub until it is.
@@ -202,6 +207,8 @@ export class Manager {
   readonly #startAfter: Record<Pool, number> = { linux: 0, macos: 0 };
   #timer: NodeJS.Timeout | null = null;
   #stopping = false;
+  /** Why the last round started fewer VMs than the queue wanted, when memory was why. */
+  #short: string | null = null;
   /** While set, no VM is started: the ones running finish, and then there are none (D16). */
   #draining = false;
 
@@ -265,7 +272,11 @@ export class Manager {
     const github = this.#deps.github();
     if (!github || this.#stopping) return;
     const now = this.#now();
-    if (now < this.#backoffUntil) return;
+    if (now < this.#backoffUntil) {
+      // Nothing is being decided, so nothing is being held back for memory either.
+      this.#short = null;
+      return;
+    }
 
     this.#tickFailed = false;
     if (now >= this.#sweepAt) {
@@ -282,6 +293,7 @@ export class Manager {
       }
     } catch (error) {
       this.#githubFailed(error);
+      this.#short = null;
       this.#changed();
       return;
     }
@@ -329,9 +341,30 @@ export class Manager {
 
     if (!this.#stopping && !this.#draining && this.#blocked() === null) {
       const limits = this.#limits();
+      // A VM is started only when the Mac has the memory for it now (D22): each one started
+      // this round counts against what is available, since none has taken its share yet.
+      const memory = this.#deps.memory?.() ?? null;
+      const needMb = this.#settings.vm.memoryMb;
+      // A VM takes its memory only as its job uses it: one that has no job yet has taken
+      // almost none, and its share is set aside as if it had.
+      const promised = [...this.#vms.values()].filter(
+        (vm) => vm.status === 'cloning' || vm.status === 'booting' || vm.status === 'waiting',
+      ).length;
+      let leftMb =
+        memory === null ? Number.POSITIVE_INFINITY : memory.availableMb - promised * needMb;
+      this.#short = null;
       for (const launch of plan(this.#waiting(jobs), this.#slots(), limits)) {
+        if (memory !== null && (memory.pressure || leftMb < needMb)) {
+          this.#short = memory.pressure
+            ? 'macOS says this Mac is short of memory'
+            : `This Mac has ${gb(Math.max(0, leftMb))} GB of memory to spare and a VM needs ${gb(needMb)} GB`;
+          break;
+        }
+        leftMb -= needMb;
         this.#launch(github, launch.repo, launch.pool);
       }
+    } else {
+      this.#short = null;
     }
     this.#reap(github, jobs, now);
     if (!this.#tickFailed) this.#githubError = null;
@@ -373,6 +406,28 @@ export class Manager {
       });
     }
     queued.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
+    if (this.#short !== null) {
+      // Only the jobs that are waiting for memory say so: not one whose VM is on its way,
+      // and not one whose kind has no slot left anyway.
+      const slots = this.#slots();
+      const spare = new Map<string, number>();
+      const count: Record<Pool, number> = { linux: 0, macos: 0 };
+      for (const slot of slots) {
+        count[slot.pool]++;
+        const key = `${slot.pool} ${slot.repo}`;
+        if (!slot.busy) spare.set(key, (spare.get(key) ?? 0) + 1);
+      }
+      for (const job of queued) {
+        if (job.note !== null || job.pool === null) continue;
+        const key = `${job.pool} ${job.repo}`;
+        const covered = spare.get(key) ?? 0;
+        if (covered > 0) spare.set(key, covered - 1);
+        else if (count[job.pool] < limits[job.pool]) {
+          count[job.pool]++;
+          job.note = `${this.#short}: the job waits until there is room`;
+        }
+      }
+    }
     return {
       now: this.#now(),
       network: this.#deps.network,
@@ -391,6 +446,7 @@ export class Manager {
       githubError: this.#githubError,
       draining: this.#draining,
       blocked: this.#blocked(),
+      shortOfMemory: this.#short,
     };
   }
 
@@ -821,6 +877,12 @@ function view(vm: Vm): VmView {
     since: vm.since,
     job: vm.job,
   };
+}
+
+/** Megabytes as gigabytes, to one decimal where it matters. */
+function gb(mb: number): string {
+  const value = mb / 1024;
+  return value >= 10 || Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(1);
 }
 
 function message(error: unknown): string {

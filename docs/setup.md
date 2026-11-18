@@ -240,6 +240,9 @@ forward on the Mac.
   password once to give the new Softnet its permission back, restarts minitart, and runs
   `doctor`. `doctor` and the dashboard say when a newer minitart is out. With `--now` it
   does not wait: running jobs fail on GitHub and can be re-run.
+- **The Mac is busy with something else.** minitart starts a VM only when the Mac has the
+  memory for it at that moment; otherwise the job waits and the dashboard says so. To give
+  jobs less of the Mac for good, lower the VM counts or the memory per VM in the dashboard.
 - **Pausing for something else.** `minitart drain` starts no new jobs and lets the running
   ones finish; `minitart resume`, or a restart, undoes it.
 - **Backing up.** `~/.minitart/settings.json` is the whole configuration: the repos that

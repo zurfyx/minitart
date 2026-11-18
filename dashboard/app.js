@@ -107,6 +107,7 @@ function render() {
   }
   if (state.githubError) alerts.push(`GitHub: ${state.githubError}`);
   if (state.blocked) alerts.push(`No VM is started until this is put right. ${state.blocked}`);
+  if (state.shortOfMemory) alerts.push(`${state.shortOfMemory}: jobs wait until there is room.`);
   const notices = alerts.map((text) => h('p', { class: 'alert' }, status('fix', text)));
   if (state.draining) {
     notices.push(
