@@ -62,6 +62,15 @@ export class FakeGitHub implements GitHub {
     return null;
   }
 
+  /** Files a job under its `runId`, next to that run's other jobs. */
+  adopt(job: Job): void {
+    for (const jobs of this.#runs.get(job.repo)?.values() ?? []) {
+      const index = jobs.indexOf(job);
+      if (index !== -1) jobs.splice(index, 1);
+    }
+    this.#runs.get(job.repo)?.get(job.runId)?.push(job);
+  }
+
   complete(job: Job, conclusion = 'success'): void {
     job.status = 'completed';
     job.conclusion = conclusion;
@@ -129,6 +138,13 @@ export class FakeTart implements Tart {
   readonly commands: string[][] = [];
   /** Called when the runner command starts in a VM. */
   onRun: ((name: string) => void) | null = null;
+  readonly resized: [name: string, diskGb: number][] = [];
+  /** How many times `list` was called. */
+  lists = 0;
+  /** Whether a started runner reaches GitHub and says so. */
+  runnerConnects = true;
+  /** What `tart run` prints before a VM that fails to start exits. */
+  bootFailure: string | null = null;
   /** While set, the guest agent of a booted VM does not answer. */
   agentDown = false;
 
@@ -158,7 +174,17 @@ export class FakeTart implements Tart {
   }
 
   async list(): Promise<TartVm[]> {
+    this.lists++;
     return [...this.vms].map(([name, vm]) => ({ name, running: vm.running, source: vm.source }));
+  }
+
+  async has(name: string): Promise<boolean> {
+    return this.vms.has(name);
+  }
+
+  async resize(name: string, diskGb: number): Promise<void> {
+    this.#vm(name);
+    this.resized.push([name, diskGb]);
   }
 
   async pull(source: string): Promise<void> {
@@ -178,9 +204,13 @@ export class FakeTart implements Tart {
 
   async configure(): Promise<void> {}
 
-  boot(name: string, network: Network): Promise<void> {
+  boot(name: string, network: Network, onLine: (line: string) => void): Promise<void> {
     const vm = this.#vm(name);
     this.networks.push(network);
+    if (this.bootFailure !== null) {
+      onLine(this.bootFailure);
+      return Promise.resolve();
+    }
     vm.running = true;
     return new Promise((resolve) => {
       vm.halt = resolve;
@@ -194,6 +224,7 @@ export class FakeTart implements Tart {
     if (options.stdin === undefined) return Promise.resolve(0);
     return new Promise((resolve) => {
       vm.run = { print: options.onLine ?? (() => {}), exit: resolve, stdin: options.stdin ?? '' };
+      if (this.runnerConnects) vm.run.print('2026-11-18 10:00:00Z: Listening for Jobs');
       this.onRun?.(name);
     });
   }

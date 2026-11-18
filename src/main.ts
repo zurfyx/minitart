@@ -11,7 +11,7 @@ import { AppAuth, parseAppCredentials, type AppCredentials } from './github/app.
 import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
-import { buildImage, latestRunner, UPSTREAM } from './image.ts';
+import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
 import { Manager, type DoneView, type LogLine } from './manager.ts';
 import { defaultGateway, hostAddresses, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
@@ -51,9 +51,33 @@ function loadApp(home: Home): AppCredentials | null {
   return parseAppCredentials(home.readJson('app.json'));
 }
 
-async function images(tart: Tart): Promise<Set<string> | null> {
+/** Which of the kinds' images exist. Asked without `tart list` (tart.ts). */
+async function images(tart: Tart, settings: Settings): Promise<Set<string> | null> {
   try {
-    return new Set((await tart.list()).map((vm) => vm.name));
+    const present = new Set<string>();
+    for (const pool of ['linux', 'macos'] as const) {
+      if (await tart.has(settings[pool].image)) present.add(settings[pool].image);
+    }
+    return present;
+  } catch {
+    return null;
+  }
+}
+
+/** The runner version each image was built with (`minitart image build` writes it). */
+function builtRunners(home: Home): Partial<Record<Pool, string>> {
+  const built = (home.readJson('images.json') ?? {}) as Partial<Record<Pool, BuiltImage>>;
+  const have: Partial<Record<Pool, string>> = {};
+  for (const pool of ['linux', 'macos'] as const) {
+    const runner = built[pool]?.runner;
+    if (typeof runner === 'string') have[pool] = runner;
+  }
+  return have;
+}
+
+async function newestRunner(): Promise<string | null> {
+  try {
+    return (await latestRunner('linux')).version;
   } catch {
     return null;
   }
@@ -61,10 +85,11 @@ async function images(tart: Tart): Promise<Set<string> | null> {
 
 function printChecks(checks: readonly Check[]): boolean {
   for (const check of checks) {
-    console.log(`${check.ok ? '  ok ' : ' FIX '} ${check.title}: ${check.detail}`);
+    const mark = check.ok ? '  ok ' : check.optional ? ' note' : ' FIX ';
+    console.log(`${mark} ${check.title}: ${check.detail}`);
     if (check.fix) console.log(`        ${check.fix}`);
   }
-  return checks.every((check) => check.ok);
+  return checks.every((check) => check.ok || check.optional);
 }
 
 async function start(flags: {
@@ -102,16 +127,24 @@ async function start(flags: {
   });
 
   let checking = false;
+  let newest: string | null = null;
+  let newestAt = 0;
   async function check(): Promise<void> {
     // One at a time: each check runs a few commands.
     if (demo || checking) return;
     checking = true;
     try {
+      // GitHub's newest runner version is asked for once a day.
+      if (Date.now() - newestAt > 24 * 60 * 60_000) {
+        newest = await newestRunner();
+        newestAt = Date.now();
+      }
       health = await runChecks({
         network: flags.network,
         settings: manager.settings,
-        images: await images(tart),
+        images: await images(tart, manager.settings),
         hasApp: app !== null,
+        runners: { have: home ? builtRunners(home) : {}, latest: newest },
       });
     } finally {
       checking = false;
@@ -202,12 +235,14 @@ async function main(): Promise<number> {
 
   if (command === 'doctor') {
     const home = new Home();
+    const settings = loadSettings(home);
     const ok = printChecks(
       await runChecks({
         network,
-        settings: loadSettings(home),
-        images: await images(new TartCli()),
+        settings,
+        images: await images(new TartCli(), settings),
         hasApp: loadApp(home) !== null,
+        runners: { have: builtRunners(home), latest: await newestRunner() },
       }),
     );
     return ok ? 0 : 1;
@@ -217,7 +252,8 @@ async function main(): Promise<number> {
     const pool = rest[1];
     if (pool !== 'linux' && pool !== 'macos')
       throw new Error('Say which: minitart image build linux, or macos');
-    const settings = loadSettings(new Home());
+    const home = new Home();
+    const settings = loadSettings(home);
     await buildImage({
       tart: new TartCli(),
       pool: pool satisfies Pool,
@@ -226,6 +262,10 @@ async function main(): Promise<number> {
       network,
       runner: await latestRunner(pool),
       print: (line) => console.log(line),
+      record: (built) => {
+        const all = (home.readJson('images.json') ?? {}) as Record<string, BuiltImage>;
+        home.writeJson('images.json', { ...all, [pool]: built });
+      },
     });
     return 0;
   }

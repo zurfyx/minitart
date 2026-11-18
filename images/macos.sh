@@ -11,6 +11,12 @@ networksetup -listallnetworkservices | tail -n +2 | while IFS= read -r service; 
   sudo networksetup -setv6off "$service" 2>/dev/null || true
 done
 
+# On Softnet a macOS guest may not get an answer from the DNS server DHCP hands it (the
+# Mac itself), so it is given public ones.
+networksetup -listallnetworkservices | tail -n +2 | while IFS= read -r service; do
+  sudo networksetup -setdnsservers "$service" 1.1.1.1 8.8.8.8 2>/dev/null || true
+done
+
 mkdir -p "$HOME/actions-runner"
 cd "$HOME/actions-runner"
 curl -fsSL -o runner.tar.gz "$RUNNER_URL"

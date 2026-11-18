@@ -51,7 +51,6 @@ export function demoWorld(): {
   tart.onRun = (name) => {
     tart.print(name, '√ Connected to GitHub');
     tart.print(name, 'Current runner version: 2.338.2');
-    tart.print(name, 'Listening for Jobs');
     later(1500, () => {
       const job = github.take(name);
       if (!job) return;

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
-import { buildImage, parseRunnerRelease } from './image.ts';
+import { atLeast, neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
+import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist } from './service.ts';
 import { probes, probeScript, reached } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
@@ -80,6 +80,40 @@ test('doctor: each thing that is missing comes with the command that fixes it', 
   assert.equal(unsafe.find((check) => check.id === 'tart')?.fix, 'brew install openai/tools/tart');
 });
 
+test('doctor: versions, a stale runner, a full disk, and a Mac that will not log in by itself', async () => {
+  assert.ok(atLeast('2.42.0', '2.42.0'));
+  assert.ok(atLeast('softnet 0.26.0-816f07a', '0.24.1'));
+  assert.ok(atLeast('3.0.0', '2.42.0'));
+  assert.ok(!atLeast('2.41.9', '2.42.0'));
+  assert.ok(!atLeast('0.24.0', '0.24.1'));
+
+  const checks = await runChecks({
+    network: 'softnet',
+    settings,
+    images: new Set(['minitart-base-linux', 'minitart-base-macos']),
+    hasApp: true,
+    run: async (command) =>
+      ({
+        tart: '2.33.0\n',
+        softnet: 'softnet 0.24.0\n',
+        pmset: ' sleep 0\n',
+        fdesetup: 'FileVault is On.\n',
+      })[command] ?? null,
+    softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    runners: { have: { linux: '2.330.0', macos: '2.338.2' }, latest: '2.338.2' },
+    freeDiskGb: 12,
+  });
+  const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
+  assert.equal(byId['tart']?.fix, 'brew upgrade tart');
+  assert.equal(byId['network']?.fix, 'brew upgrade softnet');
+  assert.match(byId['runner-linux']?.detail ?? '', /2\.330\.0.*2\.338\.2/);
+  assert.equal(byId['runner-linux']?.optional, true);
+  assert.equal(byId['runner-macos'], undefined);
+  assert.equal(byId['disk']?.ok, false);
+  assert.deepEqual([byId['login']?.ok, byId['login']?.optional], [false, true]);
+  assert.match(byId['login']?.fix ?? '', /FileVault/);
+});
+
 test('selftest: the internet must answer; the router and this Mac must not', () => {
   const list = probes({ addresses: ['192.168.1.20', '100.64.0.7'], gateway: '192.168.1.1' });
   assert.deepEqual(
@@ -130,14 +164,18 @@ test('image: built in a staging VM, and the old image goes only once the new one
     network: 'softnet' as const,
     runner: parseRunnerRelease(release, 'linux'),
     print: () => {},
+    record: (image: BuiltImage) => built.push(image),
     sleep: async () => {},
   };
+  const built: BuiltImage[] = [];
   await buildImage(options);
   assert.deepEqual([...tart.vms.keys()].sort(), [
     'ghcr.io/cirruslabs/ubuntu:latest',
     'minitart-base-linux',
   ]);
   assert.deepEqual(tart.networks, ['softnet']);
+  assert.deepEqual(tart.resized, [['minitart-build-linux', 50]]);
+  assert.equal(built[0]?.runner, '2.338.2');
   const install = tart.commands.find((command) => command[1] === '/bin/bash');
   assert.match(install?.[3] ?? '', /RUNNER_SHA256='b{64}'/);
   assert.match(install?.[3] ?? '', /sha256sum -c/);
@@ -171,6 +209,8 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   assert.match(xml, /<string>start<\/string>\n {4}<string>--port<\/string>/);
   assert.match(xml, /<key>KeepAlive<\/key>\n {2}<true\/>/);
   assert.match(xml, /mini &amp; co/);
+  // launchd waits a minute for minitart to delete its VMs before it kills it.
+  assert.match(xml, /<key>ExitTimeOut<\/key>\n {2}<integer>60<\/integer>/);
   assert.ok(!xml.includes('MINITART_HOME'));
   const elsewhere = plist({ node: 'n', main: 'm', args: [], log: 'l', path: 'p', home: '/tmp/mt' });
   assert.match(elsewhere, /<key>MINITART_HOME<\/key>\n {4}<string>\/tmp\/mt<\/string>/);

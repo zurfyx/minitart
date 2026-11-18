@@ -51,6 +51,8 @@ ${args}
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ExitTimeOut</key>
+  <integer>60</integer>
   <key>ProcessType</key>
   <string>Interactive</string>
   <key>StandardOutPath</key>

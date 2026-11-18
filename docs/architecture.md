@@ -40,9 +40,14 @@ Mac needs no open port, no public address and no tunnel ([D02](decisions/D02-the
    done list with GitHub's link to it.
 
 A VM that no job comes for (the run was cancelled, another runner took it) is deleted after
-three minutes and its runner registration removed. A VM that does not boot is deleted and
-the job gets another. On start, the manager deletes any job VM left by an earlier run: job
-VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched.
+three minutes: its runner registration is removed first, and the VM is stopped only once
+GitHub has let go of it. A VM that does not boot, or whose runner has not reached GitHub
+within three minutes, is deleted and the job gets another; a kind whose VMs keep failing
+waits longer before each new try, up to five minutes. A VM still up five minutes after
+GitHub called its job done is stopped. On start, the manager deletes any job VM left by an earlier run: job
+VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched. That is one of the two
+times it runs `tart list` (the other is after a VM could not be deleted): on macOS 27 each
+listing leaks kernel memory, so the loop asks Tart about nothing it can read from disk.
 
 When the manager stops, it deletes every VM. A job that was running fails on GitHub as
 "runner lost" and can be re-run.
@@ -97,12 +102,13 @@ The App subscribes to no events and its webhook is inactive.
 
 `~/.minitart/`, readable by the owner only:
 
-| File            | What                                          |
-| --------------- | --------------------------------------------- |
-| `app.json`      | The App's id and private key. The one secret. |
-| `settings.json` | What the owner changed in the dashboard       |
-| `history.json`  | The last 200 finished jobs                    |
-| `logs/`         | The manager's log and each VM's output        |
+| File            | What                                                   |
+| --------------- | ------------------------------------------------------ |
+| `app.json`      | The App's id and private key. The one secret.          |
+| `settings.json` | What the owner changed in the dashboard                |
+| `images.json`   | The runner version each image was built with, and when |
+| `history.json`  | The last 200 finished jobs                             |
+| `logs/`         | The manager's log and each VM's output                 |
 
 Everything else is rebuilt from GitHub and Tart on start.
 

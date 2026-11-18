@@ -36,6 +36,7 @@ const STATES = {
   public: ['warn', '!', 'Public, skipped'],
   ok: ['ok', '✓', 'OK'],
   fix: ['warn', '!', 'To fix'],
+  note: ['muted', '○', 'Note'],
 };
 
 function status(key, word) {
@@ -239,7 +240,7 @@ function render() {
   $('health').replaceChildren(
     ...health.map((check) =>
       row(
-        status(check.ok ? 'ok' : 'fix', check.title),
+        status(check.ok ? 'ok' : check.optional ? 'note' : 'fix', check.title),
         h(
           'span',
           { class: 'main' },

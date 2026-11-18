@@ -74,7 +74,30 @@ To keep it running across restarts:
 node src/main.ts service install     # a LaunchAgent: starts at login, restarts if it stops
 ```
 
-The Mac has to stay logged in: turn on automatic login.
+The Mac has to stay logged in. After a restart nothing runs until someone logs in, unless
+automatic login is on, and that needs FileVault off. Which you prefer is yours to choose;
+`doctor` tells you where you stand.
+
+### What a job starts with
+
+The Linux image is Ubuntu with Docker and a 50 GB disk. The macOS image is Cirrus Labs'
+base image, which has no Xcode. For iOS and macOS builds, start from one that does:
+
+```bash
+node src/main.ts image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
+```
+
+Rebuild an image when `doctor` says its runner has fallen behind: GitHub stops accepting old
+runner versions a few weeks after a new one is out.
+
+### When jobs do not start
+
+- **The dashboard says a VM failed to start.** Open the VM's log from the Activity list; the
+  last line is what Tart said. A third macOS VM is refused by macOS itself, and that
+  includes a macOS VM of your own, or an image being built.
+- **"Its runner never reached GitHub."** The VM booted and could not get out. A VPN on the
+  Mac with a small MTU (an exit node, a corporate VPN) stalls TLS inside VMs.
+- **Nothing happens at all.** `node src/main.ts doctor`.
 
 ## What it does not do
 

@@ -336,3 +336,69 @@ test('the network the manager was started with is the one every VM gets', async 
   assert.deepEqual(tart.networks, ['shared']);
   assert.equal(manager.snapshot().network, 'shared');
 });
+
+test('a VM whose runner never reaches GitHub is stopped, and the kind backs off', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  github.queue('octo/app', ['minitart-linux']);
+  tart.runnerConnects = false;
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
+  // The job is still queued, so the idle rule alone would keep this VM for hours.
+  advance(181_000);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.ok(manager.snapshot().log.some((line) => /never reached GitHub/.test(line.text)));
+  assert.match(manager.snapshot().queued[0]?.note ?? '', /failed to start/);
+});
+
+test('a VM that stops instead of booting says what tart said', async () => {
+  const { github, tart, manager, settle } = setup();
+  github.queue('octo/app', ['minitart-macos']);
+  tart.bootFailure = 'Error: The number of VMs exceeds the system limit';
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.ok(
+    manager
+      .snapshot()
+      .log.some((line) =>
+        /stopped while booting: Error: The number of VMs exceeds/.test(line.text),
+      ),
+  );
+});
+
+test('a VM still up long after GitHub called its job done is stopped', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test');
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+  const other = github.queue('octo/app', ['ubuntu-latest'], 'keeps the run open');
+  // The job ends on GitHub; the runner hangs instead of exiting.
+  job.status = 'completed';
+  job.conclusion = 'success';
+  job.completedAt = new Date(Date.parse(job.createdAt) + 60_000).toISOString();
+  job.runId = other.runId;
+  github.adopt(job);
+  advance(7 * 60_000);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.equal(manager.snapshot().done[0]?.conclusion, 'success');
+});
+
+test('polling never lists VMs', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  github.queue('octo/app', ['minitart-linux']);
+  for (let i = 0; i < 30; i++) {
+    await manager.tick();
+    await settle();
+    advance(61_000);
+  }
+  assert.equal(tart.lists, 0);
+});

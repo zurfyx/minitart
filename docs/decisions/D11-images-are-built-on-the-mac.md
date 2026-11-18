@@ -25,6 +25,8 @@ so a failed build leaves a working image.
 ## Consequences
 
 - The first macOS build downloads tens of gigabytes.
-- Images go stale: the runner must stay recent enough for GitHub to accept it, and the OS
-  needs patches. Rebuilding is one command, and is not automated.
+- Images go stale: GitHub retires a runner version some weeks after a newer one is out, and
+  the OS needs patches. minitart records the runner version an image was built with, checks
+  GitHub's newest once a day, and says when to rebuild. Rebuilding is one command, and is
+  not automated.
 - A job starts with what the image has, which is far less than GitHub's hosted images.

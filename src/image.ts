@@ -59,8 +59,19 @@ export interface BuildOptions {
   network: Network;
   runner: RunnerRelease;
   print: (line: string) => void;
+  /** Called with what the finished image holds, so its age can be checked later. */
+  record?: (built: BuiltImage) => void;
   sleep?: (ms: number) => Promise<void>;
 }
+
+export interface BuiltImage {
+  runner: string;
+  from: string;
+  builtAt: string;
+}
+
+/** Upstream Linux images have a 20 GB disk, which one Docker build fills. */
+const LINUX_DISK_GB = 50;
 
 export async function buildImage(options: BuildOptions): Promise<void> {
   const { tart, pool, from, name, network, runner, print } = options;
@@ -79,6 +90,7 @@ export async function buildImage(options: BuildOptions): Promise<void> {
   }
   await tart.clone(from, staging);
   try {
+    if (pool === 'linux') await tart.resize(staging, LINUX_DISK_GB);
     print(`Booting ${staging}`);
     let exited = false;
     void tart.boot(staging, network, print).then(() => {
@@ -108,5 +120,6 @@ export async function buildImage(options: BuildOptions): Promise<void> {
   // The old image goes only once the new one is whole.
   if (existing.has(name)) await tart.remove(name);
   await tart.rename(staging, name);
+  options.record?.({ runner: runner.version, from, builtAt: new Date().toISOString() });
   print(`${name} is ready`);
 }

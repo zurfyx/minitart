@@ -37,3 +37,7 @@ network is what `docs/security.md` says.
   dashboard until its VM is gone from `tart list`.
 
 Layer 3 is run by hand and recorded in the pull request that changes what it covers.
+
+A macOS guest differs from a Linux one in ways the fakes do not model: how long it takes to
+boot, DNS on Softnet, the two-VM limit, and what a job needs from the login session
+(codesign, simulators). A change to how VMs start is run with both kinds.

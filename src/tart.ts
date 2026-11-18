@@ -3,6 +3,9 @@
 // no clipboard, and a network that reaches the internet and nothing private (D04).
 
 import { execFile, spawn } from 'node:child_process';
+import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 /** `softnet`: internet only. `shared`: Tart's default NAT, which reaches the LAN. Unsafe. */
 export type Network = 'softnet' | 'shared';
@@ -23,7 +26,15 @@ export interface ExecOptions {
 }
 
 export interface Tart {
+  /**
+   * Every VM and image. Used sparingly: on macOS 27 each `tart list` leaks kernel memory,
+   * and one that lands just after `tart run` can make that boot fail.
+   */
   list(): Promise<TartVm[]>;
+  /** Whether a VM or image of this name exists, without listing. */
+  has(name: string): Promise<boolean>;
+  /** Grows the VM's disk. The guest grows its filesystem on boot. */
+  resize(name: string, diskGb: number): Promise<void>;
   /** Downloads an image from a registry. Slow: a macOS image is tens of gigabytes. */
   pull(source: string, onLine: (line: string) => void): Promise<void>;
   clone(source: string, name: string): Promise<void>;
@@ -87,6 +98,22 @@ export class TartCli implements Tart {
       Source: string;
     }[];
     return rows.map((row) => ({ name: row.Name, running: row.Running, source: row.Source }));
+  }
+
+  async has(name: string): Promise<boolean> {
+    // A registry image is stored under a name only Tart knows how to map.
+    if (/[/:@]/.test(name)) return (await this.list()).some((vm) => vm.name === name);
+    const home = process.env['TART_HOME'] ?? join(homedir(), '.tart');
+    try {
+      await stat(join(home, 'vms', name, 'config.json'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async resize(name: string, diskGb: number): Promise<void> {
+    await this.#run(['set', name, '--disk-size', String(diskGb)]);
   }
 
   pull(source: string, onLine: (line: string) => void): Promise<void> {

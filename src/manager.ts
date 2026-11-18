@@ -114,6 +114,8 @@ interface Vm extends VmView {
   logBytes: number;
   logFull: boolean;
   retiring: boolean;
+  /** Whether the runner has connected to GitHub and is waiting for its job. */
+  listening: boolean;
 }
 
 export interface ManagerDeps {
@@ -143,6 +145,11 @@ const VM_LOG_BYTES = 4 * 1024 * 1024;
 /** The two lines the runner prints about its job, each a whole line after its timestamp. */
 const STAMP = String.raw`(?:\d{4}-\d\d-\d\d \d\d:\d\d:\d\dZ: )?`;
 const RUNNER_STARTED = new RegExp(`^${STAMP}Running job: (.+)$`);
+const RUNNER_LISTENING = new RegExp(`^${STAMP}Listening for Jobs$`);
+/** A runner that has not reached GitHub by now will not. */
+const CONNECT_TIMEOUT_MS = 3 * 60_000;
+/** A VM still up this long after GitHub called its job done is stuck. */
+const LINGER_MS = 5 * 60_000;
 const RUNNER_ENDED = new RegExp(
   `^${STAMP}Job .+ completed with result: (Succeeded|Failed|Canceled)$`,
 );
@@ -176,7 +183,7 @@ export class Manager {
   #backoffUntil = 0;
   #tickFailed = false;
   /** Set when a VM could not be deleted, so the next round looks for it again. */
-  #sweepAt = 0;
+  #sweepAt = Number.POSITIVE_INFINITY;
   /** Starts that failed in a row, per kind, and when the kind may try again. */
   readonly #startFailures: Record<Pool, number> = { linux: 0, macos: 0 };
   readonly #startAfter: Record<Pool, number> = { linux: 0, macos: 0 };
@@ -243,8 +250,8 @@ export class Manager {
 
     this.#tickFailed = false;
     if (now >= this.#sweepAt) {
-      // Every few minutes, and right after a VM could not be deleted.
-      this.#sweepAt = now + 5 * 60_000;
+      // Only after a VM could not be deleted: listing VMs is not free (tart.ts).
+      this.#sweepAt = Number.POSITIVE_INFINITY;
       await this.removeOrphans();
     }
     await this.#refreshImages(now);
@@ -273,6 +280,13 @@ export class Manager {
       if (!vm || vm.repo !== job.repo) continue;
       vm.job = { id: job.id, name: job.name, workflow: job.workflow, url: job.url };
       if (job.status === 'in_progress' && vm.status === 'waiting') this.#setStatus(vm, 'running');
+      if (
+        job.status === 'completed' &&
+        job.completedAt !== null &&
+        now - Date.parse(job.completedAt) > LINGER_MS
+      ) {
+        this.#stopVm(vm, 'its job ended and its runner did not exit');
+      }
     }
 
     if (!this.#stopping) {
@@ -395,11 +409,12 @@ export class Manager {
   async #refreshImages(now: number): Promise<void> {
     if (now - this.#imagesAt < 60_000 && this.#imagesAt !== 0) return;
     try {
-      const names = new Set((await this.#deps.tart.list()).map((vm) => vm.name));
-      for (const pool of POOLS) this.#images[pool] = names.has(this.#settings[pool].image);
+      for (const pool of POOLS) {
+        this.#images[pool] = await this.#deps.tart.has(this.#settings[pool].image);
+      }
       this.#imagesAt = now;
     } catch (error) {
-      this.#say('warn', `Could not list images: ${message(error)}`);
+      this.#say('warn', `Could not look for the images: ${message(error)}`);
     }
   }
 
@@ -447,6 +462,7 @@ export class Manager {
       logBytes: 0,
       logFull: false,
       retiring: false,
+      listening: false,
     };
     this.#vms.set(vm.name, vm);
     this.#say('info', `${vm.name}: starting for ${repo}`);
@@ -475,10 +491,17 @@ export class Manager {
 
       this.#setStatus(vm, 'booting');
       let exited = false;
-      void tart.boot(vm.name, this.#deps.network, print).then(() => {
+      // What `tart run` said last is the reason, when a VM stops instead of booting: no
+      // Softnet, or a third macOS VM, which Apple's hypervisor refuses.
+      let said = '';
+      const bootPrint = (line: string) => {
+        if (line.trim() !== '') said = line.trim();
+        print(line);
+      };
+      void tart.boot(vm.name, this.#deps.network, bootPrint).then(() => {
         exited = true;
       });
-      await this.#untilReady(vm, () => exited);
+      await this.#untilReady(vm, () => (exited ? said || 'no reason given' : null));
       if (vm.stopReason !== null) return;
 
       const runner = await github.registerRunner(vm.repo, vm.name, [...LABELS[vm.pool]]);
@@ -518,11 +541,12 @@ export class Manager {
     this.#startAfter[pool] = this.#now() + wait;
   }
 
-  async #untilReady(vm: Vm, exited: () => boolean): Promise<void> {
+  async #untilReady(vm: Vm, exited: () => string | null): Promise<void> {
     const deadline = this.#now() + BOOT_TIMEOUT_MS[vm.pool];
     while (vm.stopReason === null) {
       if ((await this.#deps.tart.exec(vm.name, ['true'], { timeoutMs: 10_000 })) === 0) return;
-      if (exited()) throw new Error('the VM stopped while booting');
+      const reason = exited();
+      if (reason !== null) throw new Error(`the VM stopped while booting: ${reason}`);
       if (this.#now() > deadline) throw new Error('the VM did not come up in time');
       await this.#sleep(1000);
     }
@@ -550,6 +574,7 @@ export class Manager {
       vm.job ??= { id: null, name: started[1], workflow: '', url: '' };
       if (vm.status === 'waiting') this.#setStatus(vm, 'running');
     }
+    if (RUNNER_LISTENING.test(line)) vm.listening = true;
     const ended = RUNNER_ENDED.exec(line);
     if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
     this.#changed();
@@ -619,6 +644,11 @@ export class Manager {
         this.#stopVm(vm, 'it outlived the longest job GitHub allows');
       } else if (vm.status !== 'running' && !watching.has(vm.repo)) {
         this.#stopVm(vm, `${vm.repo} is no longer watched`);
+      } else if (vm.status === 'waiting' && !vm.listening && now - vm.since > CONNECT_TIMEOUT_MS) {
+        // Usually the network: no DNS in the guest, or a VPN on the Mac with a small MTU.
+        this.#say('warn', `${vm.name}: its runner never reached GitHub`);
+        this.#startFailed(vm.pool);
+        this.#stopVm(vm, 'its runner never reached GitHub');
       } else if (
         vm.status === 'waiting' &&
         now - vm.since > this.#settings.idleSeconds * 1000 &&
