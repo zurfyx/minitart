@@ -6,8 +6,9 @@ Status: `DECIDED`
 
 The manager finds work by asking: every few seconds, for each served repo, it lists the
 workflow runs that have not completed and their jobs. It starts a VM for a queued job that
-asks for a minitart label. Whether a job is ready is the job's own status: runs are listed
-whatever GitHub calls them short of completed (queued, in progress, waiting, pending). There is no webhook, no open port and no tunnel.
+asks for a minitart label. A run is listed while GitHub calls it queued, in progress, waiting
+or pending; whether one of its jobs is ready is the job's own status, never the run's. There
+is no webhook, no open port and no tunnel.
 
 Reads are conditional (ETag). An answer that has not changed returns 304 and does not count
 against the rate limit.
