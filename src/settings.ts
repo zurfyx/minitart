@@ -7,7 +7,26 @@ export const POOLS: readonly Pool[] = ['linux', 'macos'];
 
 /** Apple's licence and its hypervisor both stop at two macOS VMs per Mac. */
 export const MACOS_VM_LIMIT = 2;
-export const LINUX_VM_LIMIT = 8;
+
+/**
+ * How many VM network interfaces the firewall rule covers (firewall/install.sh names
+ * bridge100 to bridge131; a test holds the two to the same number). macOS gives each running
+ * VM the lowest free one, so a VM is behind the rule as long as there are never more VMs at
+ * once than this (D21).
+ */
+export const FIREWALL_INTERFACES = 32;
+
+/**
+ * Interfaces left for VMs the manager does not count: the one `selftest` or `image build`
+ * boots, and one of the owner's own.
+ */
+export const SPARE_INTERFACES = 2;
+
+/**
+ * Linux VMs have no limit of their own. This is the most there can be with every VM still
+ * behind the firewall rule; memory decides the rest.
+ */
+export const LINUX_VM_LIMIT = FIREWALL_INTERFACES - MACOS_VM_LIMIT - SPARE_INTERFACES;
 
 export interface Machine {
   cpus: number;
@@ -39,16 +58,20 @@ const GB = 1024 ** 3;
 /**
  * Defaults that fit the machine. Each VM gets a fifth of the memory, between 4 and 8 GB:
  * a VM ends up using what it is given (its guest fills spare memory with cached files), so
- * what it is given is what a job costs, and 8 GB is what a standard hosted runner has. The
- * VMs that may run at once fit in three quarters of the memory, at most two of each kind,
- * and together want about as many CPUs as the Mac has.
+ * what it is given is what a job costs, and 8 GB is what a standard hosted runner has.
+ *
+ * As many VMs may run at once as fit in three quarters of the memory, with two CPUs' worth
+ * of the Mac each at least: two macOS ones, which is Apple's limit, and the rest Linux.
+ * Together they want about as many CPUs as the Mac has.
  */
 export function defaultSettings(machine: Machine): Settings {
   const totalGb = machine.memoryBytes / GB;
   const memoryGb = clamp(Math.floor(totalGb / 5), 4, 8);
-  const fit = Math.max(1, Math.floor((totalGb * 0.75) / memoryGb));
+  const byMemory = Math.floor((totalGb * 0.75) / memoryGb);
+  const byCpu = Math.floor(machine.cpus / 2);
+  const fit = Math.max(1, Math.min(byMemory, byCpu));
   const macos = Math.min(MACOS_VM_LIMIT, fit);
-  const linux = clamp(fit - macos, 1, 2);
+  const linux = clamp(fit - macos, 1, LINUX_VM_LIMIT);
   return {
     linux: { max: linux, image: 'minitart-base-linux' },
     macos: { max: macos, image: 'minitart-base-macos' },

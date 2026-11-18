@@ -9,9 +9,10 @@ There is no file the owner writes. Each thing that could be configuration has on
 - **Which repos**: the App's installation on GitHub, and a switch per repo in the dashboard
   ([D03](D03-a-github-app-is-the-allowlist.md)).
 - **How many VMs, and how big**: computed from the Mac's memory and cores on first start,
-  changed in the dashboard. Each VM gets a fifth of the memory, between 4 and 8 GB; the VMs
-  that may run at once fit in three quarters of the memory, at most two of each kind; and
-  all of them busy want about as many CPUs as the Mac has.
+  changed in the dashboard. Each VM gets a fifth of the memory, between 4 and 8 GB. As many
+  may run at once as fit in three quarters of the memory, with two CPUs' worth of the Mac
+  each at least: two macOS ones, which is Apple's limit, and the rest Linux. All of them
+  busy want about as many CPUs as the Mac has.
 - **How often GitHub is asked, how long an idle VM waits, whether public repos are served**:
   sensible defaults, changed in the dashboard.
 - **The dashboard's port**: a flag to `minitart start`, kept by the service.
