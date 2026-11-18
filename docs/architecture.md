@@ -96,15 +96,15 @@ installed on it and the owner has turned it on in the dashboard
 
 The App subscribes to no events and its webhook is inactive.
 
-| Request                                                    | When                                |
-| ---------------------------------------------------------- | ----------------------------------- |
-| `GET /app/installations`, `GET /installation/repositories` | Once a minute: what the App can see |
-| `POST /app/installations/{id}/access_tokens`               | When a token nears its hour         |
-| `GET /repos/{repo}/actions/runs?per_page=50`               | Every poll, per watched repo        |
-| `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run          |
-| `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                         |
-| `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job            |
-| `GET /repos/{repo}/actions/jobs/{id}/logs`                 | When a log is opened                |
+| Request                                                    | When                                                                               |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /app/installations`, `GET /installation/repositories` | Once a minute: what the App can see                                                |
+| `POST /app/installations/{id}/access_tokens`               | When a token nears its hour                                                        |
+| `GET /repos/{repo}/actions/runs?status={status}`           | Every poll, per watched repo, once for each status of a run that has not completed |
+| `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run                                                         |
+| `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                                                                        |
+| `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job                                                           |
+| `GET /repos/{repo}/actions/jobs/{id}/logs`                 | When a log is opened                                                               |
 
 ## On disk
 

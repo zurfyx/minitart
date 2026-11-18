@@ -121,9 +121,13 @@ test('reads are conditional: an unchanged answer comes from the cache', async ()
       if (call.headers['if-none-match'] === '"v1"') return new Response(null, { status: 304 });
       served++;
       const status = new URL(call.url).searchParams.get('status');
-      const runs = { queued: [{ id: 1 }], in_progress: [{ id: 3 }, { id: 1 }], waiting: [] }[
-        status ?? ''
-      ];
+      const runs = {
+        requested: [],
+        queued: [{ id: 1 }],
+        in_progress: [{ id: 3 }, { id: 1 }],
+        waiting: [],
+        pending: [],
+      }[status ?? ''];
       return json({ workflow_runs: runs }, { etag: '"v1"' });
     },
   });
@@ -131,9 +135,33 @@ test('reads are conditional: an unchanged answer comes from the cache', async ()
   // Asked by status, so finished runs never crowd a waiting one out.
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
-  assert.equal(served, 3, 'one request per status, then nothing new to serve');
-  assert.equal(calls[3]?.headers['if-none-match'], '"v1"');
+  assert.equal(served, 5, 'one request per status, then nothing new to serve');
+  assert.equal(calls[5]?.headers['if-none-match'], '"v1"');
   assert.equal(calls[0]?.headers['authorization'], 'Bearer ghs_x');
+});
+
+test('a pending run is listed: its job can be queued with no runner to take it', async () => {
+  // Seen on GitHub: a run that takes over its concurrency group from a cancelled run stays
+  // `pending`, never `queued`, while its job is queued and labelled for a runner.
+  const { fetch } = fakeFetch({
+    'GET /repos/octo/app/actions/runs': (call) => {
+      const status = new URL(call.url).searchParams.get('status');
+      return json({ workflow_runs: status === 'pending' ? [{ id: 7 }] : [] });
+    },
+  });
+  assert.deepEqual(await new GitHubClient(auth, fetch).activeRuns('octo/app'), [7]);
+});
+
+test('every status of a run that has not completed is asked for, and no other', async () => {
+  // GitHub's statuses for a workflow run, from its REST reference. The rest are conclusions
+  // of a completed run. A status missing here is a queued job nobody sees.
+  const notCompleted = ['in_progress', 'pending', 'queued', 'requested', 'waiting'];
+  const { fetch, calls } = fakeFetch({
+    'GET /repos/octo/app/actions/runs': () => json({ workflow_runs: [] }),
+  });
+  await new GitHubClient(auth, fetch).activeRuns('octo/app');
+  const asked = calls.map((call) => new URL(call.url).searchParams.get('status')).sort();
+  assert.deepEqual(asked, notCompleted);
 });
 
 test('a list longer than a page is read to its end', async () => {
