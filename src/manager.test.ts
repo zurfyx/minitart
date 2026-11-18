@@ -533,7 +533,7 @@ test('a VM is started only when the Mac has the memory for it; otherwise the job
     github: () => github,
     tart,
     network: 'softnet',
-    settings: { ...defaultSettings(machine), repos: SERVED },
+    settings: { ...defaultSettings(machine), repos: SERVED, vm: { cpu: 4, memoryMb: 12 * 1024 } },
     saveSettings: () => {},
     history: [],
     saveHistory: () => {},

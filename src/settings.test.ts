@@ -8,13 +8,28 @@ const mini = { cpus: 15, memoryBytes: 64 * GB };
 test('defaults fit the machine', () => {
   const big = defaultSettings(mini);
   assert.deepEqual([big.macos.max, big.linux.max], [2, 2]);
-  assert.deepEqual(big.vm, { cpu: 5, memoryMb: 12 * 1024 });
+  // 8 GB each, however much the Mac has: a VM ends up using what it is given.
+  assert.deepEqual(big.vm, { cpu: 4, memoryMb: 8 * 1024 });
+  assert.equal(defaultSettings({ cpus: 24, memoryBytes: 512 * GB }).vm.memoryMb, 8 * 1024);
   assert.equal(big.allowPublicRepos, false);
 
   const small = defaultSettings({ cpus: 8, memoryBytes: 16 * GB });
-  assert.deepEqual(small.vm, { cpu: 2, memoryMb: 4 * 1024 });
+  assert.deepEqual(small.vm, { cpu: 3, memoryMb: 4 * 1024 });
   // Three 4 GB VMs fit in three quarters of 16 GB.
   assert.equal(small.macos.max + small.linux.max, 3);
+
+  // Whatever the machine: the VMs fit its memory together, and all of them busy want about
+  // as many CPUs as it has, never twice as many.
+  for (const cpus of [4, 8, 10, 12, 15, 16, 24, 32]) {
+    for (const gb of [8, 16, 18, 24, 32, 36, 48, 64, 96, 128]) {
+      const machine = { cpus, memoryBytes: gb * GB };
+      const { vm, linux, macos } = defaultSettings(machine);
+      const vms = linux.max + macos.max;
+      assert.ok(vms * vm.memoryMb <= gb * 1024, `memory on ${cpus} cores, ${gb} GB`);
+      assert.ok(vms * vm.cpu <= cpus * 2, `CPUs on ${cpus} cores, ${gb} GB`);
+      assert.doesNotThrow(() => mergeSettings(defaultSettings(machine), {}, machine));
+    }
+  }
 });
 
 test('a patch changes only what it names', () => {

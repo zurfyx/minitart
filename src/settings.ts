@@ -36,17 +36,27 @@ export interface Settings {
 
 const GB = 1024 ** 3;
 
-/** Defaults that fit the machine: three quarters of its memory, at most two VMs of each kind. */
+/**
+ * Defaults that fit the machine. Each VM gets a fifth of the memory, between 4 and 8 GB:
+ * a VM ends up using what it is given (its guest fills spare memory with cached files), so
+ * what it is given is what a job costs, and 8 GB is what a standard hosted runner has. The
+ * VMs that may run at once fit in three quarters of the memory, at most two of each kind,
+ * and together want about as many CPUs as the Mac has.
+ */
 export function defaultSettings(machine: Machine): Settings {
   const totalGb = machine.memoryBytes / GB;
-  const memoryGb = clamp(Math.floor(totalGb / 5), 4, 16);
+  const memoryGb = clamp(Math.floor(totalGb / 5), 4, 8);
   const fit = Math.max(1, Math.floor((totalGb * 0.75) / memoryGb));
   const macos = Math.min(MACOS_VM_LIMIT, fit);
   const linux = clamp(fit - macos, 1, 2);
   return {
     linux: { max: linux, image: 'minitart-base-linux' },
     macos: { max: macos, image: 'minitart-base-macos' },
-    vm: { cpu: clamp(Math.floor(machine.cpus / 3), 2, 8), memoryMb: memoryGb * 1024 },
+    vm: {
+      // CPU is shared, not set aside: wanting a little more than there is only slows things.
+      cpu: clamp(Math.round(machine.cpus / (linux + macos)), 2, 8),
+      memoryMb: memoryGb * 1024,
+    },
     pollSeconds: 5,
     idleSeconds: 180,
     allowPublicRepos: false,
