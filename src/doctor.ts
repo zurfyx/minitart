@@ -2,9 +2,10 @@
 // the way the security model assumes (docs/security.md)?
 
 import { execFile } from 'node:child_process';
-import { realpathSync, statfsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statfsSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Pool, Settings } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
 import type { Network } from './tart.ts';
@@ -25,6 +26,9 @@ export const MIN_TART = '2.42.0';
 /** Older versions drop packets. */
 export const MIN_SOFTNET = '0.24.1';
 const MIN_FREE_DISK_GB = 30;
+/** The first line firewall/install.sh writes. A change to the rules changes the version. */
+export const FIREWALL_VERSION = 'minitart firewall v1';
+const FIREWALL_SCRIPT = fileURLToPath(new URL('../firewall/install.sh', import.meta.url));
 
 /** Whether dotted version `have` is at least `want`. */
 export function atLeast(have: string, want: string): boolean {
@@ -46,6 +50,8 @@ export interface DoctorInput {
   run?: (command: string, args: string[]) => Promise<string | null>;
   /** The Softnet binary's real path, owner and mode, or `null` when it is not installed. */
   softnet?: () => { path: string; uid: number; mode: number } | null;
+  /** Whether the rules that close this Mac to its VMs are installed, and at which version. */
+  firewall?: () => { rules: string | null; daemon: boolean };
   /** The runner version in each kind's image, and GitHub's newest, where known. */
   runners?: { have: Partial<Record<Pool, string>>; latest: string | null };
   /** Free space on the disk that holds the VMs, in GB. */
@@ -118,6 +124,22 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,
     });
   }
+
+  // A VM can always reach the Mac at its own gateway, for DHCP and DNS. The firewall rules
+  // are what keep it to those two (D21).
+  const firewall = (input.firewall ?? readFirewall)();
+  const closed = firewall.daemon && (firewall.rules?.includes(FIREWALL_VERSION) ?? false);
+  checks.push({
+    id: 'firewall',
+    ok: closed,
+    title: 'Firewall',
+    detail: closed
+      ? 'A VM reaches this Mac for DHCP and DNS only'
+      : firewall.rules === null
+        ? 'A job can reach what this Mac serves to every network (AirPlay, Handoff, sharing)'
+        : 'The firewall rules are from an older minitart, or are not loaded at boot',
+    fix: closed ? null : `sudo sh ${FIREWALL_SCRIPT}`,
+  });
 
   for (const pool of ['linux', 'macos'] as const satisfies readonly Pool[]) {
     const name = input.settings[pool].image;
@@ -232,6 +254,16 @@ function freeDiskGb(): number | null {
   } catch {
     return null;
   }
+}
+
+function readFirewall(): { rules: string | null; daemon: boolean } {
+  let rules: string | null = null;
+  try {
+    rules = readFileSync('/etc/pf.anchors/minitart', 'utf8');
+  } catch {
+    // Not installed.
+  }
+  return { rules, daemon: existsSync('/Library/LaunchDaemons/sh.rovira.minitart.firewall.plist') };
 }
 
 function runCommand(command: string, args: string[]): Promise<string | null> {

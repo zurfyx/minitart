@@ -65,8 +65,9 @@ node src/main.ts selftest            # boots a VM and checks what it can reach
 node src/main.ts start               # the manager, and the dashboard at 127.0.0.1:4141
 ```
 
-`doctor` will ask for two things that need `sudo`, once: letting Softnet (the network
-filter) run as root, and stopping the Mac from sleeping.
+`doctor` will ask for three things that need `sudo`, once: letting Softnet (the network
+filter) run as root, a firewall rule that keeps VMs off the Mac's own services, and
+stopping the Mac from sleeping.
 
 Then open <http://127.0.0.1:4141> on the Mac, click **Create the GitHub App**, and on
 GitHub choose "Only select repositories" and pick yours. Back in the dashboard, click

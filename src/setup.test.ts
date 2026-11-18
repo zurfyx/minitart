@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { atLeast, neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
+import {
+  atLeast,
+  FIREWALL_VERSION,
+  neverSleeps,
+  runChecks,
+  softnetIsSetuidRoot,
+} from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist } from './service.ts';
 import { passed, probes, probeScript, reached, wildcardListeners } from './selftest.ts';
@@ -100,6 +106,7 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
         fdesetup: 'FileVault is On.\n',
       })[command] ?? null,
     softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    firewall: () => ({ rules: '# minitart firewall v1. Written by…', daemon: true }),
     runners: { have: { linux: '2.330.0', macos: '2.338.2' }, latest: '2.338.2' },
     freeDiskGb: 12,
     tailnet: [
@@ -283,4 +290,51 @@ test("selftest: what this Mac serves to every network is looked for at the VM's 
     ['open', 'unreachable', 'not run'].map((saw) => passed('reachable', saw)),
     [true, false, false],
   );
+});
+
+test('doctor: the firewall that closes this Mac to its VMs is part of the setup', async () => {
+  const check = async (firewall: { rules: string | null; daemon: boolean }) =>
+    (
+      await runChecks({
+        network: 'softnet',
+        settings,
+        images: new Set(),
+        hasApp: true,
+        run: async () => null,
+        softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+        firewall: () => firewall,
+      })
+    ).find((c) => c.id === 'firewall');
+  const missing = await check({ rules: null, daemon: false });
+  assert.equal(missing?.ok, false);
+  assert.match(missing?.fix ?? '', /^sudo sh \/.*\/firewall\/install\.sh$/);
+  assert.equal(
+    (await check({ rules: `# ${FIREWALL_VERSION}.\npass in …`, daemon: true }))?.ok,
+    true,
+  );
+  // Rules that will not come back after a restart, or that an update has replaced, do not count.
+  assert.equal((await check({ rules: `# ${FIREWALL_VERSION}.`, daemon: false }))?.ok, false);
+  assert.equal((await check({ rules: '# minitart firewall v0.', daemon: true }))?.ok, false);
+});
+
+test('the firewall script writes the version doctor looks for, and passes only DHCP and DNS', () => {
+  const script = read('../firewall/install.sh');
+  assert.ok(script.includes(`echo "# ${FIREWALL_VERSION}.`));
+  const rules = script.split('\n').filter((line) => /^\s*echo "(pass|block) /.test(line));
+  assert.equal(rules.length, 3);
+  assert.match(
+    rules[0] ?? '',
+    /pass {2}in quick on bridge\$n proto udp from any to any port \{ 53, 67 \}/,
+  );
+  assert.match(
+    rules[1] ?? '',
+    /pass {2}in quick on bridge\$n proto tcp from any to \(bridge\$n\) port 53/,
+  );
+  assert.match(
+    rules[2] ?? '',
+    /^\s*echo "block in quick on bridge\$n from any to \{ \(bridge\$n\)/,
+  );
+  // Checked before anything is written, and nothing but its own two files is touched.
+  assert.ok(script.indexOf('pfctl -n') < script.indexOf('install -m 644'));
+  assert.ok(!script.includes('/etc/pf.conf"') && !/>\s*\/etc\/pf\.conf/.test(script));
 });

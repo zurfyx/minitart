@@ -6,7 +6,7 @@ worked.
 
 Three steps need the owner in person, and no agent can do them. They are marked **Owner**:
 
-- two commands that need the Mac's password (`sudo`);
+- three commands that need the Mac's password (`sudo`);
 - creating the GitHub App, which GitHub only does from a logged-in browser;
 - choosing how the Mac behaves after a restart.
 
@@ -31,20 +31,35 @@ Homebrew may ask to trust the `openai/tools` tap first: `brew trust openai/tools
 Check: `node src/main.ts doctor` prints a list. Lines marked `FIX` are the steps below; each
 comes with its command.
 
-## 2. Let the network filter run (**Owner**, `sudo`)
+## 2. Close the network (**Owner**, `sudo`)
 
-Softnet is what keeps a job off your home network, and it needs root to create its network
-interface. `doctor` prints the exact line, with the path on your Mac:
+Two things keep a job to the internet. Both need the Mac's password, once.
+
+**Softnet** is what keeps a job off your home network, and it needs root to create its
+network interface. `doctor` prints the exact line, with the path on your Mac:
 
 ```bash
 sudo chown root /opt/homebrew/Cellar/softnet/<version>/bin/softnet
 sudo chmod u+s /opt/homebrew/Cellar/softnet/<version>/bin/softnet
 ```
 
-Check: `doctor` shows `ok  Network: Softnet: jobs reach the internet and nothing private`.
+A Homebrew upgrade of Softnet installs a new binary, and this is needed again. `doctor` and
+the dashboard say so.
 
-A Homebrew upgrade of Softnet installs a new binary, and this step is needed again. `doctor`
-and the dashboard say so.
+**The firewall rule** is what keeps a job off the Mac itself. A VM can always reach the Mac
+at one address, for DHCP and DNS, and macOS serves other things there too (AirPlay,
+Handoff, sharing). The rule lets DHCP and DNS through and drops the rest:
+
+```bash
+sudo sh firewall/install.sh
+```
+
+It writes two files (`/etc/pf.anchors/minitart` and a LaunchDaemon that loads it at boot)
+and touches nothing else. Read it first if you like: it is short. `sudo sh
+firewall/uninstall.sh` removes it.
+
+Check: `doctor` shows `ok  Network: Softnet: jobs reach the internet and nothing private` and
+`ok  Firewall: A VM reaches this Mac for DHCP and DNS only`. Step 5 tests both for real.
 
 ## 3. Keep the Mac awake (**Owner**, `sudo`)
 
@@ -82,10 +97,9 @@ gateway, which is also this Mac, on the ports this Mac serves to every network (
 open).
 
 Check: it ends with `A job reaches the internet and nothing of yours.` **Do not go on until
-it does.** A `FAIL` line names what a job could reach. At the VM's gateway it is a service of
-this Mac that listens on every network, with the program's name beside the port: AirPlay
-Receiver (`ControlCe`, ports 5000 and 7000) and Handoff (`rapportd`) are the usual ones.
-Turn them off in System Settings, General, AirDrop & Handoff, and run it again.
+it does.** A `FAIL` line names what a job could reach. A port open at the VM's gateway is a
+service of this Mac that a job can talk to, with the program's name beside it; it means the
+firewall rule of step 2 is not installed or not loaded.
 
 ## 6. Start it
 
@@ -210,5 +224,5 @@ forward on the Mac.
   user, and make it the user that logs in automatically
   ([D09](decisions/D09-a-launchagent-in-your-account.md)).
 - **Removing it.** `node src/main.ts service uninstall`, delete the App on GitHub (Settings,
-  Developer settings, GitHub Apps), and delete `~/.minitart` and the two images
+  Developer settings, GitHub Apps), run `sudo sh firewall/uninstall.sh`, and delete `~/.minitart` and the two images
   (`tart delete minitart-base-linux minitart-base-macos`).
