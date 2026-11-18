@@ -15,6 +15,7 @@ import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
 import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
 import { Manager, type DoneView, type LogLine } from './manager.ts';
+import { readMemory, type Memory } from './memory.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
 import { installService, LABEL, plistPath, uninstallService } from './service.ts';
@@ -185,6 +186,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   const manager = new Manager({
     // The demo has no Mac to isolate anything from.
     blocked: () => (demo ? null : blockedBy(health, flags.network)),
+    memory: () => memory,
     github: () => github,
     tart,
     network: flags.network,
@@ -209,6 +211,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
 
   let checking = false;
   let tailnet: TailnetName[] = [];
+  let memory: Memory | null = null;
   let newest: string | null = null;
   let latestVersion: string | null = null;
   let newestAt = 0;
@@ -244,6 +247,12 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   };
   await readNames();
   const everyHalfMinute = setInterval(() => void readNames(), 30_000);
+  // What macOS has to spare is read as often as the queue is, and never in the demo.
+  const readFree = async () => {
+    memory = demo ? null : await readMemory();
+  };
+  await readFree();
+  const everyFewSeconds = setInterval(() => void readFree(), 5000);
   await check();
   const prune = () =>
     home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
@@ -289,6 +298,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     console.log('minitart: stopping, and deleting every VM');
     clearInterval(everyMinute);
     clearInterval(everyHalfMinute);
+    clearInterval(everyFewSeconds);
     demo?.stop();
     server.close();
     server.closeAllConnections();

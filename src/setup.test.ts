@@ -14,6 +14,7 @@ import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist, stableNode } from './service.ts';
 import { passed, probes, probeScript, reached, wildcardListeners } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
+import { availableMb } from './memory.ts';
 import { networkArgs, lineSplitter } from './tart.ts';
 import { FakeTart } from './testing/fakes.ts';
 
@@ -611,4 +612,26 @@ test('a Mac whose network is not closed starts no VM, and says which step is mis
     firewall: () => ({ rules: `# ${FIREWALL_VERSION}.`, daemon: true }),
   });
   assert.match(blockedBy(old, 'softnet') ?? '', /Run: brew upgrade softnet$/);
+});
+
+test('memory to spare is what macOS can hand out at once, read from vm_stat', () => {
+  const stat = [
+    'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+    'Pages free:                                  1207517.',
+    'Pages active:                                1307417.',
+    'Pages inactive:                              1292195.',
+    'Pages speculative:                             11692.',
+    'Pages throttled:                                   0.',
+    'Pages wired down:                             196519.',
+    'Pages purgeable:                               59039.',
+  ].join('\n');
+  // Free, inactive, speculative and purgeable; not what programs are using.
+  assert.equal(
+    availableMb(stat),
+    Math.floor(((1207517 + 1292195 + 11692 + 59039) * 16384) / 1024 ** 2),
+  );
+  // Anything else is "not known", never a number made up.
+  assert.equal(availableMb(''), null);
+  assert.equal(availableMb(stat.replace('Pages inactive', 'Pages napping')), null);
+  assert.equal(availableMb(stat.replace('16384 bytes', 'many bytes')), null);
 });

@@ -29,7 +29,8 @@ Mac needs no open port, no public address and no tunnel ([D02](decisions/D02-the
    `minitart-macos` ([D08](decisions/D08-two-labels.md)). Other jobs are ignored.
 3. **Plan** (`src/schedule.ts`, pure). Oldest job first: a job is covered by a VM already
    starting or waiting for its repo; otherwise it gets a new VM if its kind has a free slot.
-4. **Start.** `tart clone` the kind's image (copy-on-write, under a second), set CPU and
+4. **Start.** If the Mac has the memory for one more VM right now
+   ([D22](decisions/D22-a-vm-needs-its-memory-first.md)); otherwise the job waits. `tart clone` the kind's image (copy-on-write, under a second), set CPU and
    memory, `tart run` it headless on the isolated network, and wait for the guest agent.
 5. **Register.** The manager asks GitHub for a just-in-time runner config for that repo: a
    runner that exists for one job, named after the VM.
@@ -65,6 +66,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/tailnet.ts`                  | The tailnet names Tailscale forwards to the dashboard                                         |
 | `src/settings.ts`                 | Defaults from the machine; validation of what the dashboard saves                             |
 | `src/doctor.ts`                   | Is this Mac set up the way the security model assumes                                         |
+| `src/memory.ts`                   | What macOS has to spare for a new VM                                                          |
 | `src/selftest.ts`                 | Boots a VM and checks what it can reach                                                       |
 | `src/image.ts`                    | Builds the image job VMs are cloned from, with `images/*.sh`                                  |
 | `src/service.ts`                  | Installs the LaunchAgent                                                                      |

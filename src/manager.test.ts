@@ -516,3 +516,70 @@ test('no VM is started on a Mac that is not set up to isolate one; the jobs wait
   assert.deepEqual(tart.runners(), [first], 'the idle VM is gone, the busy one is left to finish');
   await manager.stop();
 });
+
+test('a VM is started only when the Mac has the memory for it; otherwise the job waits', async () => {
+  // Each VM is 12 GB. What macOS has to spare changes as the owner uses the Mac.
+  let memory: { availableMb: number; pressure: boolean } | null = {
+    availableMb: 10 * 1024,
+    pressure: false,
+  };
+  const now = Date.parse('2026-11-18T10:00:00Z');
+  const github = new FakeGitHub(() => now);
+  github.repoList = [{ fullName: 'octo/app', private: true }];
+  const tart = new FakeTart();
+  tart.addImage('minitart-base-linux');
+  tart.addImage('minitart-base-macos');
+  const manager = new Manager({
+    github: () => github,
+    tart,
+    network: 'softnet',
+    settings: { ...defaultSettings(machine), repos: SERVED },
+    saveSettings: () => {},
+    history: [],
+    saveHistory: () => {},
+    now: () => now,
+    sleep: () => new Promise((resolve) => setImmediate(resolve)),
+    memory: () => memory,
+  });
+  const round = async () => {
+    await manager.tick();
+    for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  github.queue('octo/app', ['minitart-linux'], 'one');
+  github.queue('octo/app', ['minitart-linux'], 'two');
+  github.queue('octo/app', ['minitart-macos'], 'three');
+
+  await round();
+  assert.deepEqual(jobVms(tart), [], '10 GB to spare is not room for a 12 GB VM');
+  assert.match(
+    manager.snapshot().shortOfMemory ?? '',
+    /10 GB of memory to spare and a VM needs 12 GB/,
+  );
+  assert.match(manager.snapshot().queued[0]?.note ?? '', /the job waits until there is room/);
+
+  // Room for two, not three: the ones started this round count before they have taken any.
+  memory = { availableMb: 30 * 1024, pressure: false };
+  await round();
+  assert.equal(jobVms(tart).length, 2);
+  assert.notEqual(manager.snapshot().shortOfMemory, null);
+
+  // macOS saying it is short holds everything back, whatever the numbers say.
+  memory = { availableMb: 60 * 1024, pressure: true };
+  await round();
+  assert.equal(jobVms(tart).length, 2);
+  assert.match(manager.snapshot().shortOfMemory ?? '', /macOS says this Mac is short of memory/);
+
+  memory = { availableMb: 60 * 1024, pressure: false };
+  await round();
+  assert.equal(jobVms(tart).length, 3);
+  assert.equal(manager.snapshot().shortOfMemory, null);
+
+  // What cannot be asked holds nothing back.
+  memory = null;
+  github.queue('octo/app', ['minitart-linux'], 'four');
+  tart.exit(tart.runners()[0] ?? '', 1);
+  await round();
+  await round();
+  assert.equal(manager.snapshot().shortOfMemory, null);
+  await manager.stop();
+});
