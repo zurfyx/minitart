@@ -3,11 +3,21 @@
 // logged-in session.
 
 import { execFile } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 
 export const LABEL = 'sh.rovira.minitart';
+
+/** Homebrew's bin, where tart and softnet live, is not on a LaunchAgent's PATH. */
+const SYSTEM_PATH = [
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  '/usr/bin',
+  '/bin',
+  '/usr/sbin',
+  '/sbin',
+];
 
 export function plistPath(home = homedir()): string {
   return join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`);
@@ -64,6 +74,33 @@ ${args}
 `;
 }
 
+/**
+ * The path to run Node by. `process.execPath` is the real file, which under Homebrew is
+ * inside a folder named after the version and is gone after the next upgrade; a `node` on
+ * the PATH that points at the same file outlives it.
+ */
+export function stableNode(
+  execPath: string,
+  pathDirs: readonly string[],
+  realpath: (path: string) => string = realpathSync,
+): string {
+  let real: string;
+  try {
+    real = realpath(execPath);
+  } catch {
+    return execPath;
+  }
+  for (const dir of pathDirs) {
+    const candidate = join(dir, 'node');
+    try {
+      if (candidate !== real && realpath(candidate) === real) return candidate;
+    } catch {
+      // No node in this directory.
+    }
+  }
+  return execPath;
+}
+
 function launchctl(args: string[]): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolve) => {
     execFile('launchctl', args, (error, stdout, stderr) => {
@@ -79,16 +116,19 @@ export async function installService(options: {
 }): Promise<string> {
   const path = plistPath();
   const domain = `gui/${userInfo().uid}`;
+  const node = stableNode(process.execPath, [
+    ...(process.env['PATH'] ?? '').split(delimiter),
+    ...SYSTEM_PATH,
+  ]);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(
     path,
     plist({
-      node: process.execPath,
+      node,
       main: options.main,
       args: options.args,
       log: options.log,
-      // Homebrew's bin, where tart and softnet live, is not on a LaunchAgent's PATH.
-      path: `${dirname(process.execPath)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+      path: [...new Set([dirname(node), ...SYSTEM_PATH])].join(':'),
       ...(process.env['MINITART_HOME'] ? { home: process.env['MINITART_HOME'] } : {}),
     }),
   );

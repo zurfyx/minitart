@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { atLeast, neverSleeps, runChecks, softnetIsSetuidRoot } from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
-import { plist } from './service.ts';
+import { plist, stableNode } from './service.ts';
 import { probes, probeScript, reached } from './selftest.ts';
 import { defaultSettings } from './settings.ts';
 import { networkArgs, lineSplitter } from './tart.ts';
@@ -239,4 +239,28 @@ test('the service is a LaunchAgent that restarts, with Homebrew on its PATH', ()
   assert.ok(!xml.includes('MINITART_HOME'));
   const elsewhere = plist({ node: 'n', main: 'm', args: [], log: 'l', path: 'p', home: '/tmp/mt' });
   assert.match(elsewhere, /<key>MINITART_HOME<\/key>\n {4}<string>\/tmp\/mt<\/string>/);
+});
+
+test('the service runs Node by a path that outlives a Homebrew upgrade', () => {
+  const links: Record<string, string> = {
+    '/opt/homebrew/Cellar/node/26.13.1/bin/node': '/opt/homebrew/Cellar/node/26.13.1/bin/node',
+    '/opt/homebrew/bin/node': '/opt/homebrew/Cellar/node/26.13.1/bin/node',
+    '/usr/local/bin/node': '/usr/local/lib/another/node',
+  };
+  const realpath = (path: string) => {
+    const real = links[path];
+    if (real === undefined) throw new Error('ENOENT');
+    return real;
+  };
+  const exec = '/opt/homebrew/Cellar/node/26.13.1/bin/node';
+  const dirs = [
+    '/opt/homebrew/Cellar/node/26.13.1/bin',
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/usr/bin',
+  ];
+  assert.equal(stableNode(exec, dirs, realpath), '/opt/homebrew/bin/node');
+  // No link to it anywhere: the real path is all there is.
+  assert.equal(stableNode(exec, ['/usr/local/bin', '/usr/bin'], realpath), exec);
+  assert.equal(stableNode('/gone/node', dirs, realpath), '/gone/node');
 });
