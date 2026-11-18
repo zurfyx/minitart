@@ -598,5 +598,17 @@ test('a Mac whose network is not closed starts no VM, and says which step is mis
   assert.equal(blockedBy(await checks(true, true), 'softnet'), null);
   // The owner who asked for the unsafe network has said they know.
   assert.equal(blockedBy(await checks(false, false), 'shared'), null);
-  assert.equal(blockedBy([], 'softnet'), null);
+  // Not knowing is not the same as being closed.
+  assert.match(blockedBy([], 'softnet') ?? '', /has not been checked yet/);
+  // What `doctor --fix` cannot do is named by its own command.
+  const old = await runChecks({
+    network: 'softnet',
+    settings,
+    images: null,
+    hasApp: false,
+    run: async (command) => (command === 'softnet' ? 'softnet 0.24.0\n' : null),
+    softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    firewall: () => ({ rules: `# ${FIREWALL_VERSION}.`, daemon: true }),
+  });
+  assert.match(blockedBy(old, 'softnet') ?? '', /Run: brew upgrade softnet$/);
 });

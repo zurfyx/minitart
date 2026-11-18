@@ -346,8 +346,25 @@ function onPath(name: string): boolean {
  */
 export function blockedBy(checks: readonly Check[], network: Network): string | null {
   if (network === 'shared') return null;
-  const broken = checks.find((c) => (c.id === 'network' || c.id === 'firewall') && !c.ok);
-  return broken ? `${broken.title}: ${broken.detail}. Run: minitart doctor --fix` : null;
+  for (const id of ['network', 'firewall']) {
+    const found = checks.find((c) => c.id === id);
+    // Not knowing is not the same as being closed.
+    if (found === undefined) return 'This Mac has not been checked yet';
+    if (found.ok) continue;
+    // `doctor --fix` when it can do it; the command itself when it cannot.
+    const how =
+      found.sudo !== undefined || found.commands !== undefined || found.fix === null
+        ? 'minitart doctor --fix'
+        : found.fix;
+    return `${found.title}: ${found.detail}. Run: ${how}`;
+  }
+  return null;
+}
+
+/** Whether the firewall rule's files are in place, for commands that boot a VM by themselves. */
+export function firewallInstalled(): boolean {
+  const firewall = readFirewall();
+  return firewall.daemon && (firewall.rules?.includes(FIREWALL_VERSION) ?? false);
 }
 
 /**

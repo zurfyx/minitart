@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
-import { applyFixes, blockedBy, runChecks, type Check } from './doctor.ts';
+import { applyFixes, blockedBy, firewallInstalled, runChecks, type Check } from './doctor.ts';
 import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
 import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
@@ -183,7 +183,8 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
 
   const stamp = (at: number) => new Date(at).toISOString();
   const manager = new Manager({
-    blocked: () => blockedBy(health, flags.network),
+    // The demo has no Mac to isolate anything from.
+    blocked: () => (demo ? null : blockedBy(health, flags.network)),
     github: () => github,
     tart,
     network: flags.network,
@@ -425,6 +426,12 @@ async function main(): Promise<number> {
       throw new Error('Say which: minitart image build linux, or macos');
     const home = new Home();
     const settings = loadSettings(home);
+    if (network === 'softnet' && !firewallInstalled()) {
+      // The build boots a VM that runs the upstream image and the install script.
+      console.warn(
+        'minitart: the firewall rule is not installed, so the VM that builds the image can reach what this Mac serves to every network. `minitart doctor --fix` installs it.',
+      );
+    }
     await buildImage({
       tart: new TartCli(),
       pool: pool satisfies Pool,

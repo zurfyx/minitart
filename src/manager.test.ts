@@ -500,5 +500,19 @@ test('no VM is started on a Mac that is not set up to isolate one; the jobs wait
   await manager.tick();
   for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.equal(jobVms(tart).length, 1);
+
+  // It stops being closed while VMs are up: one with its job finishes, one without goes.
+  const [first] = tart.runners();
+  assert.ok(first);
+  github.take(first);
+  tart.print(first, '2026-11-18 10:00:05Z: Running job: build');
+  github.queue('octo/app', ['minitart-linux'], 'second');
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(tart.runners().length, 2);
+  blocked = 'Network: Softnet cannot run as root yet';
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(tart.runners(), [first], 'the idle VM is gone, the busy one is left to finish');
   await manager.stop();
 });

@@ -443,6 +443,15 @@ export class Manager {
     return this.#deps.blocked?.() ?? null;
   }
 
+  /**
+   * Why a VM that has no job yet is not kept: minitart is draining, or the Mac is no longer
+   * set up to isolate one. A VM that is running its job is left to finish either way.
+   */
+  #holding(): string | null {
+    if (this.#draining) return 'minitart is draining';
+    return this.#blocked() === null ? null : 'the network of this Mac is not closed';
+  }
+
   #repoState(repo: Repo): RepoView['state'] {
     if (!repo.private && !this.#settings.allowPublicRepos) return 'public';
     // GitHub's names ignore case, and a repo can be renamed in case only.
@@ -726,6 +735,7 @@ export class Manager {
   }
 
   #reap(github: GitHub, jobs: readonly Job[], now: number): void {
+    const holding = this.#holding();
     const wanted = new Set(this.#waiting(jobs).map((job) => `${job.pool} ${job.repo}`));
     const watching = new Set(
       this.#repos.filter((r) => this.#repoState(r) === 'watching').map((r) => r.fullName),
@@ -744,13 +754,13 @@ export class Manager {
       } else if (
         vm.status === 'waiting' &&
         // While draining, a VM that has no job yet is not kept waiting for one.
-        (this.#draining ||
+        (holding !== null ||
           (now - vm.since > this.#settings.idleSeconds * 1000 &&
             !wanted.has(`${vm.pool} ${vm.repo}`)))
       ) {
         void this.#retire(github, vm);
-      } else if (this.#draining && (vm.status === 'cloning' || vm.status === 'booting')) {
-        this.#stopVm(vm, 'minitart is draining');
+      } else if (holding !== null && (vm.status === 'cloning' || vm.status === 'booting')) {
+        this.#stopVm(vm, holding);
       }
     }
   }
@@ -767,7 +777,7 @@ export class Manager {
       if (vm.runnerId !== null) await github.removeRunner(vm.repo, vm.runnerId);
       vm.runnerId = null;
       if (vm.status === 'waiting') {
-        this.#stopVm(vm, this.#draining ? 'minitart is draining' : 'no job came for it');
+        this.#stopVm(vm, this.#holding() ?? 'no job came for it');
       }
     } catch {
       // Still wanted, or GitHub is unreachable: the next round decides again.
