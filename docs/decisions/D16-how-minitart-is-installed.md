@@ -9,8 +9,9 @@ formula copies the source tree and adds a `minitart` command that runs it with N
 still no build ([D07](D07-typescript-run-as-it-is.md)). `brew services` keeps it running. A
 checkout run with `node src/main.ts` stays a supported way to run it.
 
-Tart and Softnet are not dependencies of the formula. They are installed beside it, from
-their own tap, and `doctor` checks them.
+Tart and Softnet are not dependencies of the formula. `minitart doctor --fix` installs them
+from their own tap when they are missing, so the install is two lines and nothing in them
+can be forgotten: `brew install zurfyx/tap/minitart`, then `minitart doctor --fix`.
 
 **Released by itself.** The source says version `0.0.0` and nobody edits it. Every push to
 `main` that changes what ships becomes the next patch release: checked again, packed into an
@@ -33,9 +34,11 @@ from, and it needs no build of minitart to work.
 Not npm: Node does not strip types from files under `node_modules`, so publishing there
 would mean the build step D07 avoids.
 
-Tart and Softnet stay out of the formula's dependencies because Softnet needs a newer macOS
-than the tap's CI runs on, and because a dependency Homebrew upgrades on its own is exactly
-what loses Softnet its permission.
+Tart and Softnet stay out of the formula's dependencies for three reasons. Homebrew stops an
+install that needs a formula from a tap it has not been told to trust, so one command would
+not have been enough anyway, and it would have ended in an error instead of a next step.
+Softnet needs a newer macOS than the tap's CI runs on. And a dependency Homebrew upgrades on
+its own is exactly what loses Softnet its permission.
 
 The password is asked for by `minitart upgrade`, at the moment of the upgrade, rather than
 never. Never would take one of two things: a sudoers rule for a binary in a folder the

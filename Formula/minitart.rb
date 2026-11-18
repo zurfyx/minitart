@@ -22,12 +22,11 @@ class Minitart < Formula
 
   def caveats
     <<~EOS
-      minitart drives Tart and Softnet, which come from their own tap:
-        brew install openai/tools/tart openai/tools/softnet
-        brew pin softnet
+      One command sets the rest up:
+        minitart doctor --fix
 
-      Then `minitart doctor` says what is left to set up, and
-      `minitart doctor --fix` does the parts that need your password.
+      It installs Tart and Softnet from their tap if they are missing, and does
+      the parts that need your password. `minitart doctor` alone only looks.
       The whole setup, step by step: #{opt_pkgshare}/docs/setup.md
 
       To upgrade, run `minitart upgrade` rather than `brew upgrade`: it waits

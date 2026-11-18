@@ -21,24 +21,33 @@ Everything else is commands.
 ## 1. Install
 
 ```bash
-brew install zurfyx/tap/minitart openai/tools/tart openai/tools/softnet
-brew pin softnet
+brew install zurfyx/tap/minitart
+minitart doctor --fix
 ```
 
-Homebrew may ask to trust a tap first: `brew trust openai/tools`.
+The first line installs minitart. The second installs what it drives, Tart and Softnet, from
+their own tap if they are missing, and then does steps 2 and 3 below, asking for the Mac's
+password once. `minitart doctor`, without `--fix`, only looks: it prints what is missing and
+the command for each, if you would rather run them yourself.
 
-Softnet is pinned so that a routine `brew upgrade` does not replace its binary, which would
-cost it the permission of step 2. `minitart upgrade` is what upgrades it (see "Later").
+Tart and Softnet are not installed with minitart by Homebrew itself, because Homebrew stops
+an install that needs a formula from a tap it has not been told to trust. `doctor --fix`
+shows the two formulae it trusts before it does.
 
-Check: `minitart doctor` prints a list. Lines marked `FIX` are the steps below; each comes
-with its command.
+It also pins Softnet, so that a routine `brew upgrade` does not replace its binary, which
+would cost it the permission of step 2. `minitart upgrade` is what upgrades it (see
+"Later").
+
+Check: `minitart doctor` prints a list with no `FIX` for Tart, Network, Firewall or Sleep.
+What is left are the steps from 4 on.
 
 To run it from the source instead, clone the repo and write `node src/main.ts` wherever
 this page says `minitart`.
 
 ## 2. Close the network (**Owner**, `sudo`)
 
-Two things keep a job to the internet. Both need the Mac's password, once.
+`doctor --fix` did this in step 1 if you let it. This is what it did, and how to do it by
+hand. Two things keep a job to the internet. Both need the Mac's password, once.
 
 **Softnet** is what keeps a job off your home network, and it needs root to create its
 network interface. `doctor` prints the exact line, with the path on your Mac:

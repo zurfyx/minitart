@@ -25,6 +25,28 @@ export interface Check {
    * Only fixes that are a command and nothing else have one.
    */
   sudo?: string[][];
+  /**
+   * A fix that is commands to run as the owner, in order, for `doctor --fix`: installing a
+   * tool that is missing. One that `mayFail` (a Homebrew too old to know the command) does
+   * not stop the rest.
+   */
+  commands?: { argv: string[]; mayFail?: boolean }[];
+}
+
+/**
+ * Installing Tart or Softnet from their tap. Homebrew refuses a formula from a tap it has
+ * not been told to trust, so that is said first, for these two formulae and no others. And
+ * Softnet is pinned, so that only `minitart upgrade` replaces its binary.
+ */
+function brewInstall(formula: 'tart' | 'softnet'): { argv: string[]; mayFail?: boolean }[] {
+  return [
+    {
+      argv: ['brew', 'trust', '--formula', 'openai/tools/tart', 'openai/tools/softnet'],
+      mayFail: true,
+    },
+    { argv: ['brew', 'install', `openai/tools/${formula}`] },
+    { argv: ['brew', 'pin', 'softnet'], mayFail: true },
+  ];
 }
 
 /** Older versions have bugs minitart would hit: leaked sockets and a spinning `exec -i`. */
@@ -95,6 +117,8 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
           ? `Tart ${version}`
           : `Tart ${version} is older than ${MIN_TART}, which fixed bugs minitart would hit`,
     fix: version === null ? 'brew install openai/tools/tart' : tartOk ? null : 'brew upgrade tart',
+    // Tart brings Softnet with it: it is one of Tart's own dependencies.
+    ...(version === null ? { commands: brewInstall('tart') } : {}),
   });
 
   if (input.network === 'shared') {
@@ -130,6 +154,7 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,
+      ...(softnet === null ? { commands: brewInstall('softnet') } : {}),
       ...(softnet !== null && current && !setuid
         ? {
             sudo: [

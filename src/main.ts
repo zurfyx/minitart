@@ -347,7 +347,17 @@ async function main(): Promise<number> {
       });
     let checks = await check();
     if (values.fix) {
-      // Only the fixes that are a command to run as root; sudo asks for the password itself.
+      // What is missing is installed first: the checks that follow are about what it brought.
+      const missing = checks.filter((c) => !c.ok && c.commands !== undefined);
+      for (const broken of missing) {
+        console.log(`Fixing ${broken.title}: ${broken.detail}`);
+        for (const { argv, mayFail } of broken.commands ?? []) {
+          console.log(`  ${argv.join(' ')}`);
+          if (runAttached(argv) !== 0 && !mayFail) break;
+        }
+      }
+      if (missing.length > 0) checks = await check();
+      // Then the fixes that are a command to run as root; sudo asks for the password itself.
       const fixable = checks.filter((c) => !c.ok && c.sudo !== undefined);
       for (const broken of fixable) {
         console.log(`Fixing ${broken.title}: ${broken.fix}`);

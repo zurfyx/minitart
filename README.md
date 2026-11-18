@@ -55,20 +55,19 @@ short version is below; [docs/setup.md](docs/setup.md) is the full one, step by 
 how to tell each step worked and which three need you in person.
 
 ```bash
-brew install zurfyx/tap/minitart openai/tools/tart openai/tools/softnet
-brew pin softnet
+brew install zurfyx/tap/minitart
+minitart doctor --fix        # installs Tart and Softnet, and does what needs your password
 
-minitart doctor              # says what is missing, and the command that fixes it
-minitart doctor --fix        # runs the fixes that need your password, asking for it once
 minitart image build linux   # under a minute
 minitart image build macos   # downloads tens of gigabytes the first time
 minitart selftest            # boots a VM and checks what it can reach
 minitart start               # the manager, and the dashboard at 127.0.0.1:4141
 ```
 
-`doctor` will ask for three things that need `sudo`, once: letting Softnet (the network
-filter) run as root, a firewall rule that keeps VMs off the Mac's own services, and
-stopping the Mac from sleeping.
+`doctor --fix` installs what is missing and asks for your password once, for three things:
+letting Softnet (the network filter) run as root, a firewall rule that keeps VMs off the
+Mac's own services, and stopping the Mac from sleeping. `minitart doctor` alone only looks,
+and prints the command for each.
 
 Then open <http://127.0.0.1:4141> on the Mac, click **Create the GitHub App**, and on
 GitHub choose "Only select repositories" and pick yours. Back in the dashboard, click

@@ -419,3 +419,48 @@ test('doctor: a fix that is only a command can be run for the owner, and a newer
   assert.ok(!current.some((check) => check.id === 'version'));
   assert.ok(current.filter((check) => check.ok).every((check) => check.sudo === undefined));
 });
+
+test('doctor --fix can install the tools that are missing, so forgetting one costs nothing', async () => {
+  const checks = await runChecks({
+    network: 'softnet',
+    settings,
+    images: null,
+    hasApp: false,
+    // Only minitart was installed: no Tart, no Softnet.
+    run: async () => null,
+    softnet: () => null,
+    firewall: () => ({ rules: null, daemon: false }),
+  });
+  const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
+  assert.deepEqual(
+    byId['tart']?.commands?.map((command) => command.argv.join(' ')),
+    [
+      'brew trust --formula openai/tools/tart openai/tools/softnet',
+      'brew install openai/tools/tart',
+      'brew pin softnet',
+    ],
+  );
+  assert.equal(byId['network']?.commands?.[1]?.argv.join(' '), 'brew install openai/tools/softnet');
+  // Trusting and pinning may not exist on an older Homebrew; the install is what must work.
+  assert.deepEqual(
+    byId['tart']?.commands?.map((command) => command.mayFail ?? false),
+    [true, false, true],
+  );
+  // Nothing is installed as root, and a missing Softnet has no permission to set yet.
+  assert.equal(byId['network']?.sudo, undefined);
+  assert.equal(byId['tart']?.sudo, undefined);
+
+  const present = await runChecks({
+    network: 'softnet',
+    settings,
+    images: null,
+    hasApp: false,
+    run: async (command) => (command === 'tart' ? '2.42.0\n' : null),
+    softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 501, mode: 0o100755 }),
+    firewall: () => ({ rules: null, daemon: false }),
+  });
+  assert.ok(
+    present.every((check) => check.commands === undefined),
+    'nothing to install',
+  );
+});
