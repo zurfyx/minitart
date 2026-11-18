@@ -102,6 +102,8 @@ export interface Snapshot {
   log: LogLine[];
   /** GitHub's own reason for the last failed poll, if the last poll failed. */
   githubError: string | null;
+  /** Whether minitart is letting its jobs finish and starting no more. */
+  draining: boolean;
 }
 
 interface Vm extends VmView {
@@ -193,6 +195,8 @@ export class Manager {
   readonly #startAfter: Record<Pool, number> = { linux: 0, macos: 0 };
   #timer: NodeJS.Timeout | null = null;
   #stopping = false;
+  /** While set, no VM is started: the ones running finish, and then there are none (D16). */
+  #draining = false;
 
   constructor(deps: ManagerDeps) {
     this.#deps = deps;
@@ -316,7 +320,7 @@ export class Manager {
       }
     }
 
-    if (!this.#stopping) {
+    if (!this.#stopping && !this.#draining) {
       const limits = this.#limits();
       for (const launch of plan(this.#waiting(jobs), this.#slots(), limits)) {
         this.#launch(github, launch.repo, launch.pool);
@@ -338,6 +342,8 @@ export class Manager {
       let note: string | null = null;
       if (pool === 'unsatisfiable') {
         note = `No minitart runner has all of: ${job.labels.join(', ')}`;
+      } else if (this.#draining) {
+        note = 'minitart is draining: it starts no job until it is resumed or restarted';
       } else if (!this.#images[pool]) {
         note = `No ${pool} image yet: minitart image build ${pool}`;
       } else if (this.#now() < this.#startAfter[pool]) {
@@ -374,6 +380,7 @@ export class Manager {
       images: { ...this.#images },
       log: [...this.#log],
       githubError: this.#githubError,
+      draining: this.#draining,
     };
   }
 
@@ -392,6 +399,22 @@ export class Manager {
   warn(text: string): void {
     this.#say('warn', text);
     this.#changed();
+  }
+
+  /**
+   * Draining: start no more VMs, and let the jobs that are running finish. What an upgrade
+   * does before it restarts minitart, so that it costs no job. A restart ends it.
+   */
+  setDraining(draining: boolean): void {
+    if (draining === this.#draining) return;
+    this.#draining = draining;
+    this.#say('info', draining ? 'Draining: no new job is started' : 'Resumed');
+    this.#changed();
+  }
+
+  /** How many VMs there are: zero, while draining, means it is safe to restart. */
+  get vmCount(): number {
+    return this.#vms.size;
   }
 
   updateSettings(next: Settings): void {
@@ -706,10 +729,14 @@ export class Manager {
         this.#stopVm(vm, 'its runner never reached GitHub');
       } else if (
         vm.status === 'waiting' &&
-        now - vm.since > this.#settings.idleSeconds * 1000 &&
-        !wanted.has(`${vm.pool} ${vm.repo}`)
+        // While draining, a VM that has no job yet is not kept waiting for one.
+        (this.#draining ||
+          (now - vm.since > this.#settings.idleSeconds * 1000 &&
+            !wanted.has(`${vm.pool} ${vm.repo}`)))
       ) {
         void this.#retire(github, vm);
+      } else if (this.#draining && (vm.status === 'cloning' || vm.status === 'booting')) {
+        this.#stopVm(vm, 'minitart is draining');
       }
     }
   }
@@ -725,7 +752,9 @@ export class Manager {
     try {
       if (vm.runnerId !== null) await github.removeRunner(vm.repo, vm.runnerId);
       vm.runnerId = null;
-      if (vm.status === 'waiting') this.#stopVm(vm, 'no job came for it');
+      if (vm.status === 'waiting') {
+        this.#stopVm(vm, this.#draining ? 'minitart is draining' : 'no job came for it');
+      }
     } catch {
       // Still wanted, or GitHub is unreachable: the next round decides again.
     } finally {

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { Pool, Settings } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
 import type { Network } from './tart.ts';
+import { DEVELOPMENT } from './version.ts';
 
 export interface Check {
   id: string;
@@ -19,6 +20,11 @@ export interface Check {
   fix: string | null;
   /** Advice: worth doing, and `doctor` still passes without it. */
   optional?: boolean;
+  /**
+   * The same fix as commands to run as root, one argument list each, for `doctor --fix`.
+   * Only fixes that are a command and nothing else have one.
+   */
+  sudo?: string[][];
 }
 
 /** Older versions have bugs minitart would hit: leaked sockets and a spinning `exec -i`. */
@@ -54,6 +60,8 @@ export interface DoctorInput {
   firewall?: () => { rules: string | null; daemon: boolean };
   /** The runner version in each kind's image, and GitHub's newest, where known. */
   runners?: { have: Partial<Record<Pool, string>>; latest: string | null };
+  /** The version running, and the newest one released, where known. */
+  versions?: { running: string; latest: string | null };
   /** Free space on the disk that holds the VMs, in GB. */
   freeDiskGb?: number | null;
   /** The tailnet names Tailscale forwards to the dashboard. */
@@ -122,6 +130,14 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,
+      ...(softnet !== null && current && !setuid
+        ? {
+            sudo: [
+              ['chown', 'root', softnet.path],
+              ['chmod', 'u+s', softnet.path],
+            ],
+          }
+        : {}),
     });
   }
 
@@ -139,6 +155,7 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
         ? 'A job can reach what this Mac serves to every network (AirPlay, Handoff, sharing)'
         : 'The firewall rules are from an older minitart, or are not loaded at boot',
     fix: closed ? null : `sudo sh ${FIREWALL_SCRIPT}`,
+    ...(closed ? {} : { sudo: [['sh', FIREWALL_SCRIPT]] }),
   });
 
   for (const pool of ['linux', 'macos'] as const satisfies readonly Pool[]) {
@@ -185,6 +202,7 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
       title: 'Sleep',
       detail: awake ? 'This Mac stays awake' : 'This Mac sleeps, and a sleeping Mac runs no jobs',
       fix: awake ? null : 'sudo pmset -a sleep 0',
+      ...(awake ? {} : { sudo: [['pmset', '-a', 'sleep', '0']] }),
     });
   }
 
@@ -231,6 +249,19 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
           ? `The dashboard is at ${name.origin} for your tailnet`
           : why[name.refused],
       fix: name.fix,
+    });
+  }
+
+  // A newer minitart is advice, never a failure: this one works.
+  const { running, latest } = input.versions ?? { running: DEVELOPMENT, latest: null };
+  if (running !== DEVELOPMENT && latest !== null && !atLeast(running, latest)) {
+    checks.push({
+      id: 'version',
+      ok: false,
+      optional: true,
+      title: 'Version',
+      detail: `minitart ${latest} is out; this is ${running}`,
+      fix: 'minitart upgrade',
     });
   }
 

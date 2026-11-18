@@ -190,6 +190,18 @@ export function createDashboardServer(deps: ServerDeps): Server {
       }
       return json(response, 200, state());
     }
+    if (request.method === 'POST' && path === '/api/drain') {
+      if (request.headers.origin !== origin) return send(response, 403, 'Wrong origin');
+      let wanted: unknown;
+      try {
+        wanted = (JSON.parse(await body(request)) as { draining?: unknown }).draining;
+      } catch {
+        return send(response, 400, 'Not JSON');
+      }
+      if (typeof wanted !== 'boolean') return send(response, 400, 'draining must be true or false');
+      deps.manager.setDraining(wanted);
+      return json(response, 200, state());
+    }
     return send(response, 405, 'Method not allowed');
   }
 
