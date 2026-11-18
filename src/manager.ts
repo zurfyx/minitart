@@ -237,7 +237,7 @@ export class Manager {
 
   /** Deletes the job VMs a previous run left behind, then polls until `stop()`. */
   async start(): Promise<void> {
-    if (!(await this.removeOrphans())) this.#sweepAt = this.#now() + 60_000;
+    await this.removeOrphans();
     const loop = async () => {
       await this.tick();
       if (!this.#stopping) {
@@ -260,34 +260,48 @@ export class Manager {
     // Only these may be forgotten for not being listed: one added while the list is being
     // read may be newer than the list.
     const known = [...this.#leftBehind];
+    // A VM the manager has now is its own to delete, even if it lets go of it meanwhile.
+    const mine = new Set(this.#vms.keys());
+    // A sweep that leaves something behind is tried again in a minute, whoever asked for it.
+    const again = () => {
+      this.#sweepAt = Math.min(this.#sweepAt, this.#now() + 60_000);
+      this.#changed();
+      return false;
+    };
     let vms;
     try {
       vms = await this.#deps.tart.list();
     } catch (error) {
       this.#unlisted = true;
       this.#say('warn', `Could not list VMs: ${message(error)}`);
-      this.#changed();
-      return false;
+      return again();
     }
     this.#unlisted = false;
     const listed = new Set(vms.map((vm) => vm.name));
     for (const name of known) if (!listed.has(name)) this.#leftBehind.delete(name);
     let clean = true;
     for (const vm of vms) {
-      if (vm.source !== 'local' || !isJobVm(vm.name) || this.#vms.has(vm.name)) continue;
+      if (vm.source !== 'local' || !isJobVm(vm.name)) continue;
+      if (mine.has(vm.name) || this.#vms.has(vm.name)) continue;
       this.#say('info', `Removing ${vm.name}, left over from an earlier run`);
       if (vm.running) await this.#deps.tart.stop(vm.name).catch(() => {});
       try {
         await this.#deps.tart.remove(vm.name);
         this.#leftBehind.delete(vm.name);
       } catch (error) {
+        // Gone by another hand is gone all the same. Not knowing counts as still there.
+        if (!(await this.#deps.tart.has(vm.name).catch(() => true))) {
+          this.#leftBehind.delete(vm.name);
+          continue;
+        }
         clean = false;
         this.#leftBehind.add(vm.name);
         this.#say('warn', `Could not remove ${vm.name}: ${message(error)}`);
       }
     }
+    if (!clean) return again();
     this.#changed();
-    return clean;
+    return true;
   }
 
   /** One round: read the queue, start VMs for it, stop the VMs nothing needs. */
@@ -305,8 +319,7 @@ export class Manager {
     if (now >= this.#sweepAt) {
       // Only after a VM could not be deleted: listing VMs is not free (tart.ts).
       this.#sweepAt = Number.POSITIVE_INFINITY;
-      // A sweep that left something behind is tried again in a minute.
-      if (!(await this.removeOrphans())) this.#sweepAt = Math.min(this.#sweepAt, now + 60_000);
+      await this.removeOrphans();
     }
     await this.#refreshImages(now);
     try {

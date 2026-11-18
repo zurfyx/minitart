@@ -398,13 +398,62 @@ test('no VM is started while the VMs on this Mac cannot be listed', async () => 
   assert.deepEqual(jobVms(tart), ['minitart-linux-00000a'], 'how many there are is not known');
   assert.match(manager.snapshot().queued[0]?.note ?? '', /could not be listed/);
 
-  assert.equal(await manager.removeOrphans(), true);
+  // Not looked at again at once: listing VMs is not free.
   advance(5_000);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), ['minitart-linux-00000a']);
+
+  // A minute on it is, without being asked: the leftover goes and the job gets its VM.
+  advance(60_000);
   await manager.tick();
   await settle();
   assert.equal(jobVms(tart).length, 1);
   assert.notEqual(jobVms(tart)[0], 'minitart-linux-00000a');
   assert.equal(manager.snapshot().queued[0]?.note ?? null, null);
+});
+
+test('a leftover from an earlier run that cannot be deleted holds a slot too', async () => {
+  const base = defaultSettings(machine);
+  const { github, tart, manager, settle, advance } = setup({
+    settings: { linux: { ...base.linux, max: 1 } },
+  });
+  tart.addImage('minitart-linux-00000a');
+  tart.failNext('remove', new Error('tart delete: resource busy'));
+  assert.equal(await manager.removeOrphans(), false);
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), ['minitart-linux-00000a']);
+
+  // The owner deletes it by hand: the next sweep finds it gone and lets go of the slot.
+  tart.vms.delete('minitart-linux-00000a');
+  advance(60_000);
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
+  assert.notEqual(jobVms(tart)[0], 'minitart-linux-00000a');
+});
+
+test('a VM that is gone when the sweep comes to delete it holds no slot', async () => {
+  const base = defaultSettings(machine);
+  const { github, tart, manager, settle } = setup({
+    settings: { linux: { ...base.linux, max: 1 } },
+  });
+  tart.addImage('minitart-linux-00000a');
+  // Listed, then deleted by another hand before the sweep reaches it.
+  const remove = tart.remove.bind(tart);
+  tart.remove = async (name) => {
+    tart.vms.delete(name);
+    await remove(name);
+  };
+  assert.equal(await manager.removeOrphans(), true);
+  tart.remove = remove;
+  assert.ok(!logged(manager, /Could not remove/));
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
 });
 
 // After sand Tests/sandTests/ProcessRunnerTests.swift: testRedactReplacesSecrets

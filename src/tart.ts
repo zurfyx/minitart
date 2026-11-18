@@ -60,6 +60,9 @@ export function networkArgs(network: Network): string[] {
 /** No line of a VM's output is kept longer than this. */
 const MAX_LINE = 4096;
 
+/** `tart list` answers in well under a second; past this it is not going to. */
+const LIST_TIMEOUT_MS = 60_000;
+
 /** Calls `onLine` for each complete line of what a stream emits. */
 export function lineSplitter(onLine: (line: string) => void): {
   push(chunk: string): void;
@@ -106,7 +109,8 @@ export class TartCli implements Tart {
   }
 
   async list(): Promise<TartVm[]> {
-    const rows = JSON.parse(await this.#run(['list', '--format', 'json'])) as {
+    // One that hangs must fail instead: the manager waits for this before it polls again.
+    const rows = JSON.parse(await this.#run(['list', '--format', 'json'], LIST_TIMEOUT_MS)) as {
       Name: string;
       Running: boolean;
       Source: string;
@@ -219,11 +223,12 @@ export class TartCli implements Tart {
     await this.#run(['delete', name]);
   }
 
-  #run(args: string[]): Promise<string> {
+  #run(args: string[], timeoutMs = 0): Promise<string> {
     return new Promise((resolve, reject) => {
-      execFile(this.#bin, args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const options = { maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs };
+      execFile(this.#bin, args, options, (error, stdout, stderr) => {
         if (error) {
-          const detail = stderr.trim() || error.message;
+          const detail = error.killed ? 'no answer in time' : stderr.trim() || error.message;
           reject(new Error(`tart ${args[0]}: ${detail}`));
         } else resolve(stdout);
       });
