@@ -54,7 +54,7 @@ export function defaultSettings(machine: Machine): Settings {
     macos: { max: macos, image: 'minitart-base-macos' },
     vm: {
       // CPU is shared, not set aside: wanting a little more than there is only slows things.
-      cpu: clamp(Math.round(machine.cpus / (linux + macos)), 2, 8),
+      cpu: Math.min(machine.cpus, clamp(Math.round(machine.cpus / (linux + macos)), 2, 8)),
       memoryMb: memoryGb * 1024,
     },
     pollSeconds: 5,

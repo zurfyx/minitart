@@ -19,14 +19,16 @@ test('defaults fit the machine', () => {
   assert.equal(small.macos.max + small.linux.max, 3);
 
   // Whatever the machine: the VMs fit its memory together, and all of them busy want about
-  // as many CPUs as it has, never twice as many.
-  for (const cpus of [4, 8, 10, 12, 15, 16, 24, 32]) {
-    for (const gb of [8, 16, 18, 24, 32, 36, 48, 64, 96, 128]) {
+  // as many CPUs as it has, at most twice as many (a 4-core Mac with a lot of memory).
+  for (const cpus of [1, 2, 4, 8, 10, 12, 15, 16, 24, 32]) {
+    for (const gb of [8, 16, 18, 24, 32, 36, 48, 64, 96, 128, 192, 512]) {
       const machine = { cpus, memoryBytes: gb * GB };
       const { vm, linux, macos } = defaultSettings(machine);
       const vms = linux.max + macos.max;
       assert.ok(vms * vm.memoryMb <= gb * 1024, `memory on ${cpus} cores, ${gb} GB`);
-      assert.ok(vms * vm.cpu <= cpus * 2, `CPUs on ${cpus} cores, ${gb} GB`);
+      // Below four cores a VM cannot have fewer than all of them, so only its own size counts.
+      assert.ok(vm.cpu <= cpus, `a VM's CPUs on ${cpus} cores`);
+      if (cpus >= 4) assert.ok(vms * vm.cpu <= cpus * 2, `CPUs on ${cpus} cores, ${gb} GB`);
       assert.doesNotThrow(() => mergeSettings(defaultSettings(machine), {}, machine));
     }
   }
