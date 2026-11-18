@@ -36,6 +36,7 @@ How expensive is this to get wrong?
 | [D03](D03-a-github-app-is-the-allowlist.md)    | A GitHub App is the credential, and its installation is the repo allowlist | HIGH   | `PROPOSED` |
 | [D04](D04-the-internet-and-nothing-private.md) | A VM reaches the internet and nothing private; no VM starts otherwise      | HIGH   | `PROPOSED` |
 | [D05](D05-private-repos-only.md)               | Public repos are skipped unless the owner allows them                      | MED    | `PROPOSED` |
+| [D17](D17-secrets-that-live-on-the-mac.md)     | A job gets its secrets from GitHub, never from the Mac                     | HIGH   | `DECIDED`  |
 
 ## Tier 2: how it is built
 
@@ -60,12 +61,11 @@ How expensive is this to get wrong?
 
 ## Tier 4: open, or deferred until something forces it
 
-| ID                                         | Decision                                             | Status     | Forced by                                             |
-| ------------------------------------------ | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
-| [D16](D16-how-minitart-is-installed.md)    | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
-| [D17](D17-secrets-that-live-on-the-mac.md) | Jobs that need a secret that lives on the Mac        | `OPEN`     | The first workflow that signs with a local key        |
-| [D18](D18-warm-vms.md)                     | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
-| [D19](D19-egress-by-domain.md)             | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |
+| ID                                      | Decision                                             | Status     | Forced by                                             |
+| --------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------- |
+| [D16](D16-how-minitart-is-installed.md) | How minitart is installed: npm, Homebrew, or a clone | `DEFERRED` | The first person who is not the owner installing it   |
+| [D18](D18-warm-vms.md)                  | Keeping VMs booted ahead of jobs                     | `DEFERRED` | Boot time becoming what people wait for               |
+| [D19](D19-egress-by-domain.md)          | Limiting a job's internet access to named hosts      | `DEFERRED` | A repo whose jobs should not reach the whole internet |
 
 Tiers 1 and 2 are `PROPOSED`: they were worked out with the owner in conversation and are
 ratified by the owner merging the pull request that implements them.

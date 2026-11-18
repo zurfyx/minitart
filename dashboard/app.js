@@ -349,14 +349,26 @@ settingsForm.addEventListener('input', () => {
 settingsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   const value = (name) => Number(settingsForm.elements[name].value);
-  saveSettings({
-    linux: { max: value('linux') },
-    macos: { max: value('macos') },
-    vm: { cpu: value('cpu'), memoryMb: value('memory') * 1024 },
-    pollSeconds: value('poll'),
-    idleSeconds: value('idle'),
-    allowPublicRepos: settingsForm.elements.public.checked,
-  }).then(
+  const now = state.settings;
+  // Only what this form changed is sent, so a save here never undoes a change made in
+  // another window since the form was filled in.
+  const patch = {};
+  if (value('linux') !== now.linux.max) patch.linux = { max: value('linux') };
+  if (value('macos') !== now.macos.max) patch.macos = { max: value('macos') };
+  const vm = {};
+  if (value('cpu') !== now.vm.cpu) vm.cpu = value('cpu');
+  if (value('memory') * 1024 !== now.vm.memoryMb) vm.memoryMb = value('memory') * 1024;
+  if (Object.keys(vm).length > 0) patch.vm = vm;
+  if (value('poll') !== now.pollSeconds) patch.pollSeconds = value('poll');
+  if (value('idle') !== now.idleSeconds) patch.idleSeconds = value('idle');
+  const allowPublic = settingsForm.elements.public.checked;
+  if (allowPublic !== now.allowPublicRepos) patch.allowPublicRepos = allowPublic;
+  if (Object.keys(patch).length === 0) {
+    delete settingsForm.dataset.dirty;
+    $('settings-note').textContent = 'Nothing to save.';
+    return;
+  }
+  saveSettings(patch).then(
     () => {
       delete settingsForm.dataset.dirty;
       $('settings-note').textContent = 'Saved. New VMs use it.';

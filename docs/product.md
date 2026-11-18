@@ -63,8 +63,7 @@ x86 binary) stays on `ubuntu-latest`; that is a choice each repo makes, job by j
 
 - **No fallback.** If the Mac is off or asleep, jobs wait in GitHub's queue.
 - **No x86.** See above.
-- **No secrets from the Mac.** A job gets its secrets from GitHub, like on a hosted runner.
-  Signing keys that live in the Mac's keychain are not visible to a job
-  ([D17](decisions/D17-secrets-that-live-on-the-mac.md)).
+- **No secrets from the Mac.** A job gets its secrets from GitHub, like on a hosted runner,
+  signing keys included ([D17](decisions/D17-secrets-that-live-on-the-mac.md)).
 - **No warm caches between jobs.** That is the price of promise 1; use `actions/cache`, or
   put what every job needs into the image.

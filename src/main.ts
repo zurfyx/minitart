@@ -43,8 +43,18 @@ const machine = { cpus: availableParallelism(), memoryBytes: totalmem() };
 
 function loadSettings(home: Home): Settings {
   const defaults = defaultSettings(machine);
-  const saved = home.readJson('settings.json');
-  return saved === undefined ? defaults : mergeSettings(defaults, saved, machine);
+  // Saved settings that no longer hold (a rule that came with an update, a file edited by
+  // hand) must not keep minitart from starting: the dashboard is where they are put right.
+  try {
+    const saved = home.readJson('settings.json');
+    return saved === undefined ? defaults : mergeSettings(defaults, saved, machine);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `minitart: ${home.path('settings.json')} is not valid (${reason}). Using the defaults until settings are saved again.`,
+    );
+    return defaults;
+  }
 }
 
 function loadApp(home: Home): AppCredentials | null {
@@ -109,7 +119,11 @@ async function start(flags: {
   const home = demo ? null : new Home();
   const tart: Tart = demo?.tart ?? new TartCli();
   let app = home ? loadApp(home) : null;
-  let github: GitHub | null = demo?.github ?? (app ? new GitHubClient(new AppAuth(app)) : null);
+  const connect = (credentials: AppCredentials) =>
+    new GitHubClient(
+      new AppAuth(credentials, fetch, Date.now, (text) => console.warn(`minitart: ${text}`)),
+    );
+  let github: GitHub | null = demo?.github ?? (app ? connect(app) : null);
   let health: Check[] = [];
 
   const stamp = (at: number) => new Date(at).toISOString();
@@ -173,7 +187,7 @@ async function start(flags: {
     saveApp: (created) => {
       home?.writeJson('app.json', created);
       app = created;
-      github = new GitHubClient(new AppAuth(created));
+      github = connect(created);
       check().catch((error: unknown) => console.error(error));
     },
     health: () => health,

@@ -4,7 +4,7 @@
 
 import { createSign } from 'node:crypto';
 import { expectOk, githubHeaders, type Auth, type Fetch } from './client.ts';
-import type { Repo } from './types.ts';
+import { GitHubError, type Repo } from './types.ts';
 
 const API = 'https://api.github.com';
 
@@ -43,11 +43,20 @@ export class AppAuth implements Auth {
   readonly #renewals = new Map<number, Promise<string>>();
   /** Which installation each repo belongs to. */
   #installations = new Map<string, number>();
+  /** The repos each installation had the last time it could be read. */
+  readonly #lastRead = new Map<number, Repo[]>();
+  readonly #warn: (message: string) => void;
 
-  constructor(app: AppCredentials, fetchImpl: Fetch = fetch, now: () => number = Date.now) {
+  constructor(
+    app: AppCredentials,
+    fetchImpl: Fetch = fetch,
+    now: () => number = Date.now,
+    warn: (message: string) => void = () => {},
+  ) {
     this.#app = app;
     this.#fetch = fetchImpl;
     this.#now = now;
+    this.#warn = warn;
   }
 
   async repos(): Promise<Repo[]> {
@@ -61,27 +70,40 @@ export class AppAuth implements Auth {
     }[];
     const repos: Repo[] = [];
     const owners = new Map<string, number>();
-    // One installation that cannot be read (a suspended one, say) does not hide the others.
+    // One installation that cannot be read does not hide the others. If GitHub says it is
+    // gone or suspended (403, 404) its repos go; if GitHub merely failed, it keeps the repos
+    // it had, so a passing error does not stop the VMs waiting for its jobs.
     let failure: unknown = null;
     let read = 0;
     for (const installation of installations) {
+      let found: Repo[];
       try {
         const token = await this.#installationToken(installation.id);
-        const found = (await this.#pages(
+        const listed = (await this.#pages(
           `/installation/repositories`,
           token,
           (page) => (page as { repositories: unknown[] }).repositories,
         )) as { full_name: string; private: boolean }[];
-        for (const repo of found) {
-          owners.set(repo.full_name, installation.id);
-          repos.push({ fullName: repo.full_name, private: repo.private });
-        }
+        found = listed.map((repo) => ({ fullName: repo.full_name, private: repo.private }));
+        this.#lastRead.set(installation.id, found);
         read++;
       } catch (error) {
         failure ??= error;
+        const refused = error instanceof GitHubError && [403, 404].includes(error.status);
+        if (refused) this.#lastRead.delete(installation.id);
+        found = this.#lastRead.get(installation.id) ?? [];
+        const reason = error instanceof Error ? error.message : String(error);
+        this.#warn(`Could not read installation ${installation.id}: ${reason}`);
+      }
+      for (const repo of found) {
+        owners.set(repo.fullName, installation.id);
+        repos.push(repo);
       }
     }
     if (failure !== null && read === 0) throw failure;
+    for (const id of [...this.#lastRead.keys()]) {
+      if (!installations.some((installation) => installation.id === id)) this.#lastRead.delete(id);
+    }
     this.#installations = owners;
     return repos.sort((a, b) => a.fullName.localeCompare(b.fullName));
   }

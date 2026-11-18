@@ -258,3 +258,41 @@ test('the manifest code is traded for the App credentials', async () => {
   assert.equal(calls.length, 1, 'a malformed code is never sent');
   assert.equal(parseAppCredentials({ appId: '42' }), null);
 });
+
+test('an installation GitHub fails on for a moment keeps its repos; one GitHub refuses loses them', async () => {
+  let second: 'ok' | 'failing' | 'suspended' = 'ok';
+  const warnings: string[] = [];
+  const { fetch } = fakeFetch({
+    'GET /app/installations': () => json([{ id: 7 }, { id: 8 }]),
+    'POST /app/installations/7/access_tokens': () =>
+      json({ token: 'ghs_7', expires_at: '2026-11-18T11:00:00Z' }),
+    'POST /app/installations/8/access_tokens': () =>
+      second === 'ok'
+        ? json({ token: 'ghs_8', expires_at: '2026-11-18T10:04:00Z' })
+        : Response.json({ message: 'nope' }, { status: second === 'failing' ? 502 : 403 }),
+    'GET /installation/repositories': (call) =>
+      json({
+        repositories: [
+          call.headers['authorization'] === 'Bearer ghs_7'
+            ? { full_name: 'octo/app', private: true }
+            : { full_name: 'acme/api', private: true },
+        ],
+      }),
+  });
+  const auth = new AppAuth(
+    app,
+    fetch,
+    () => Date.parse('2026-11-18T10:00:00Z'),
+    (text) => warnings.push(text),
+  );
+  const names = async () => (await auth.repos()).map((repo) => repo.fullName);
+  assert.deepEqual(await names(), ['acme/api', 'octo/app']);
+
+  second = 'failing';
+  assert.deepEqual(await names(), ['acme/api', 'octo/app'], 'a passing error forgets nothing');
+  assert.match(warnings[0] ?? '', /installation 8.*502/);
+
+  second = 'suspended';
+  assert.deepEqual(await names(), ['octo/app']);
+  await assert.rejects(auth.token('acme/api'), /not installed/);
+});

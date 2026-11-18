@@ -209,7 +209,7 @@ export class Manager {
 
   /** Deletes the job VMs a previous run left behind, then polls until `stop()`. */
   async start(): Promise<void> {
-    await this.removeOrphans();
+    if (!(await this.removeOrphans())) this.#sweepAt = this.#now() + 60_000;
     const loop = async () => {
       await this.tick();
       if (!this.#stopping) {
