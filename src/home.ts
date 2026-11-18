@@ -58,12 +58,12 @@ export class Home {
     }
   }
 
-  /** Deletes all but the newest `keep` VM logs. */
-  pruneLogs(keep: number): void {
+  /** Deletes all but the newest `keep` VM logs. The logs of live VMs (`skip`) always stay. */
+  pruneLogs(keep: number, skip: ReadonlySet<string> = new Set()): void {
     try {
       const dir = this.path('logs');
       const logs = readdirSync(dir)
-        .filter((name) => /^minitart-(linux|macos)-[0-9a-f]{6}\.log$/.test(name))
+        .filter((name) => /^minitart-(linux|macos)-[0-9a-f]{6}\.log$/.test(name) && !skip.has(name))
         .map((name) => ({ name, modified: statSync(join(dir, name)).mtimeMs }))
         .sort((a, b) => b.modified - a.modified);
       for (const log of logs.slice(keep)) rmSync(join(dir, log.name), { force: true });

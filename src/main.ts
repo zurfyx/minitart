@@ -66,8 +66,14 @@ async function images(tart: Tart, settings: Settings): Promise<Set<string> | nul
 
 /** The runner version each image was built with (`minitart image build` writes it). */
 function builtRunners(home: Home): Partial<Record<Pool, string>> {
-  const built = (home.readJson('images.json') ?? {}) as Partial<Record<Pool, BuiltImage>>;
   const have: Partial<Record<Pool, string>> = {};
+  let built: Partial<Record<Pool, BuiltImage>>;
+  try {
+    built = (home.readJson('images.json') ?? {}) as Partial<Record<Pool, BuiltImage>>;
+  } catch {
+    // An unreadable record means an advisory check is skipped, nothing more.
+    return have;
+  }
   for (const pool of ['linux', 'macos'] as const) {
     const runner = built[pool]?.runner;
     if (typeof runner === 'string') have[pool] = runner;
@@ -115,7 +121,7 @@ async function start(flags: {
     saveSettings: (settings) => {
       home?.writeJson('settings.json', settings);
       // The health line follows a settings change without waiting a minute.
-      void check();
+      check().catch((error: unknown) => console.error(error));
     },
     history: home
       ? ((home.readJson('history.json') as DoneView[] | undefined) ?? [])
@@ -151,10 +157,13 @@ async function start(flags: {
     }
   }
   await check();
-  home?.pruneLogs(KEPT_VM_LOGS);
+  const prune = () =>
+    home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
+  prune();
   const everyMinute = setInterval(() => {
-    void check();
-    home?.pruneLogs(KEPT_VM_LOGS);
+    // A check that throws is tried again in a minute; it must not stop the manager.
+    check().catch((error: unknown) => console.error(error));
+    prune();
   }, 60_000);
 
   const server = createDashboardServer({
@@ -165,7 +174,7 @@ async function start(flags: {
       home?.writeJson('app.json', created);
       app = created;
       github = new GitHubClient(new AppAuth(created));
-      void check();
+      check().catch((error: unknown) => console.error(error));
     },
     health: () => health,
     machine,

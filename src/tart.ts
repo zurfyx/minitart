@@ -84,6 +84,20 @@ export function lineSplitter(onLine: (line: string) => void): {
   };
 }
 
+/** A splitter each for stdout and stderr, so half a line of one never joins the other's. */
+function streams(onLine: (line: string) => void) {
+  const out = lineSplitter(onLine);
+  const err = lineSplitter(onLine);
+  return {
+    out,
+    err,
+    end() {
+      out.end();
+      err.end();
+    },
+  };
+}
+
 export class TartCli implements Tart {
   readonly #bin: string;
 
@@ -118,9 +132,9 @@ export class TartCli implements Tart {
 
   pull(source: string, onLine: (line: string) => void): Promise<void> {
     const child = spawn(this.#bin, ['pull', source], { stdio: ['ignore', 'pipe', 'pipe'] });
-    const lines = lineSplitter(onLine);
-    child.stdout.setEncoding('utf8').on('data', lines.push);
-    child.stderr.setEncoding('utf8').on('data', lines.push);
+    const lines = streams(onLine);
+    child.stdout.setEncoding('utf8').on('data', lines.out.push);
+    child.stderr.setEncoding('utf8').on('data', lines.err.push);
     return new Promise((resolve, reject) => {
       child.on('error', reject);
       child.on('close', (code) => {
@@ -149,9 +163,9 @@ export class TartCli implements Tart {
       ['run', name, '--no-graphics', '--no-audio', '--no-clipboard', ...networkArgs(network)],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
-    const lines = lineSplitter(onLine);
-    child.stdout.setEncoding('utf8').on('data', lines.push);
-    child.stderr.setEncoding('utf8').on('data', lines.push);
+    const lines = streams(onLine);
+    child.stdout.setEncoding('utf8').on('data', lines.out.push);
+    child.stderr.setEncoding('utf8').on('data', lines.err.push);
     return new Promise((resolve) => {
       child.on('error', (error) => {
         onLine(`tart run: ${error.message}`);
@@ -171,9 +185,9 @@ export class TartCli implements Tart {
       ['exec', ...(stdin === undefined ? [] : ['-i']), name, ...command],
       { stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] },
     );
-    const lines = lineSplitter(options.onLine ?? (() => {}));
-    child.stdout?.setEncoding('utf8').on('data', lines.push);
-    child.stderr?.setEncoding('utf8').on('data', lines.push);
+    const lines = streams(options.onLine ?? (() => {}));
+    child.stdout?.setEncoding('utf8').on('data', lines.out.push);
+    child.stderr?.setEncoding('utf8').on('data', lines.err.push);
     if (stdin !== undefined && child.stdin) {
       // The guest may be gone before it reads; the exit code already says so.
       child.stdin.on('error', () => {});

@@ -116,6 +116,10 @@ interface Vm extends VmView {
   retiring: boolean;
   /** Whether the runner has connected to GitHub and is waiting for its job. */
   listening: boolean;
+  /** `tart delete` failed, so a sweep has to find this VM again. */
+  removeFailed: boolean;
+  /** When a running VM's job was first missing from GitHub's unfinished runs. */
+  missingSince: number | null;
 }
 
 export interface ManagerDeps {
@@ -223,22 +227,26 @@ export class Manager {
     await Promise.allSettled([...this.#lifecycles]);
   }
 
-  async removeOrphans(): Promise<void> {
+  /** Deletes job VMs the manager does not know. Resolves with whether every one went. */
+  async removeOrphans(): Promise<boolean> {
     let vms;
     try {
       vms = await this.#deps.tart.list();
     } catch (error) {
       this.#say('warn', `Could not list VMs: ${message(error)}`);
-      return;
+      return false;
     }
+    let clean = true;
     for (const vm of vms) {
       if (vm.source !== 'local' || !isJobVm(vm.name) || this.#vms.has(vm.name)) continue;
       this.#say('info', `Removing ${vm.name}, left over from an earlier run`);
       if (vm.running) await this.#deps.tart.stop(vm.name).catch(() => {});
       await this.#deps.tart.remove(vm.name).catch((error: unknown) => {
+        clean = false;
         this.#say('warn', `Could not remove ${vm.name}: ${message(error)}`);
       });
     }
+    return clean;
   }
 
   /** One round: read the queue, start VMs for it, stop the VMs nothing needs. */
@@ -252,7 +260,8 @@ export class Manager {
     if (now >= this.#sweepAt) {
       // Only after a VM could not be deleted: listing VMs is not free (tart.ts).
       this.#sweepAt = Number.POSITIVE_INFINITY;
-      await this.removeOrphans();
+      // A sweep that left something behind is tried again in a minute.
+      if (!(await this.removeOrphans())) this.#sweepAt = Math.min(this.#sweepAt, now + 60_000);
     }
     await this.#refreshImages(now);
     try {
@@ -285,6 +294,18 @@ export class Manager {
         job.completedAt !== null &&
         now - Date.parse(job.completedAt) > LINGER_MS
       ) {
+        this.#stopVm(vm, 'its job ended and its runner did not exit');
+      }
+    }
+    // A job whose whole run has finished is no longer in the list at all: a VM still
+    // running one that GitHub has not shown for a while is stuck the same way.
+    const serving = new Set(jobs.map((job) => job.runnerName));
+    for (const vm of this.#vms.values()) {
+      if (vm.status !== 'running' || serving.has(vm.name) || this.#repoErrors.has(vm.repo)) {
+        vm.missingSince = null;
+      } else if (vm.missingSince === null) {
+        vm.missingSince = now;
+      } else if (now - vm.missingSince > LINGER_MS) {
         this.#stopVm(vm, 'its job ended and its runner did not exit');
       }
     }
@@ -463,6 +484,8 @@ export class Manager {
       logFull: false,
       retiring: false,
       listening: false,
+      removeFailed: false,
+      missingSince: null,
     };
     this.#vms.set(vm.name, vm);
     this.#say('info', `${vm.name}: starting for ${repo}`);
@@ -506,7 +529,6 @@ export class Manager {
 
       const runner = await github.registerRunner(vm.repo, vm.name, [...LABELS[vm.pool]]);
       vm.runnerId = runner.runnerId;
-      this.#startFailures[vm.pool] = 0;
       this.#setStatus(vm, 'waiting');
       const code = await tart.exec(vm.name, guestShell(vm.pool, RUN_SCRIPT), {
         stdin: `${runner.jitConfig}\n`,
@@ -527,7 +549,7 @@ export class Manager {
         await tart.stop(vm.name).catch(() => {});
         await tart.remove(vm.name).catch((error: unknown) => {
           this.#say('warn', `Could not remove ${vm.name}: ${message(error)}; trying again`);
-          this.#sweepAt = 0;
+          vm.removeFailed = true;
         });
       }
       await this.#finish(github, vm);
@@ -574,7 +596,11 @@ export class Manager {
       vm.job ??= { id: null, name: started[1], workflow: '', url: '' };
       if (vm.status === 'waiting') this.#setStatus(vm, 'running');
     }
-    if (RUNNER_LISTENING.test(line)) vm.listening = true;
+    if (RUNNER_LISTENING.test(line)) {
+      vm.listening = true;
+      // Booted, registered and connected: this kind of VM starts.
+      this.#startFailures[vm.pool] = 0;
+    }
     const ended = RUNNER_ENDED.exec(line);
     if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
     this.#changed();
@@ -615,6 +641,8 @@ export class Manager {
       this.#say('info', `${vm.name}: removed (${vm.stopReason ?? 'it never got a job'})`);
     }
     this.#vms.delete(vm.name);
+    // Only now: a sweep skips the VMs the manager still knows.
+    if (vm.removeFailed) this.#sweepAt = 0;
     this.#pastLogs.set(vm.name, vm.log);
     for (const name of [...this.#pastLogs.keys()].slice(0, -30)) this.#pastLogs.delete(name);
     this.#changed();
