@@ -3,7 +3,7 @@
 #
 # Needs GH_TOKEN, a token that can write to the tap (the release bot's), and SOURCE_REPO.
 # Safe to run again at any time: a tap that is already right is left alone, and a proposal
-# that is already open is picked up where it was.
+# is always rebuilt on the tap's current main, so a stale one never gets in the way.
 set -eu
 
 TAP=zurfyx/homebrew-tap
@@ -19,34 +19,67 @@ esac
 SHA256=$(gh release download "$TAG" --repo "$SOURCE" --pattern "minitart-$VERSION.tar.gz.sha256" --output - | cut -d' ' -f1)
 node scripts/release.mjs formula "$VERSION" "$SHA256" > formula.rb
 
-CURRENT=$(gh api "repos/$TAP/contents/Formula/minitart.rb" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true)
-if [ "$CURRENT" = "$(cat formula.rb)" ]; then
+current() {
+  gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true
+}
+
+if [ "$(current main)" = "$(cat formula.rb)" ]; then
   echo "The tap already has minitart $VERSION."
   exit 0
 fi
 
 BRANCH="minitart-$VERSION"
-BASE=$(gh api "repos/$TAP/git/ref/heads/main" --jq .object.sha)
-gh api "repos/$TAP/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$BASE" >/dev/null 2>&1 || true
 
-# The file's current blob on that branch, if it is there, is what an update must name.
-BLOB=$(gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$BRANCH" --jq .sha 2>/dev/null || true)
-if [ -n "$BLOB" ]; then
+# Up to three goes: the tap has other projects' releases merging into it, and its main has
+# to be in the branch before a merge is allowed.
+attempt=1
+while :; do
+  # The branch starts from the tap's main as it is now, whatever an earlier run left there.
+  BASE=$(gh api "repos/$TAP/git/ref/heads/main" --jq .object.sha)
+  gh api -X PATCH "repos/$TAP/git/refs/heads/$BRANCH" -f sha="$BASE" -F force=true >/dev/null 2>&1 ||
+    gh api "repos/$TAP/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$BASE" >/dev/null
+
+  # An update has to name the file's current blob; a new file has none.
+  BLOB=$(gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$BRANCH" --jq .sha 2>/dev/null || true)
   gh api -X PUT "repos/$TAP/contents/Formula/minitart.rb" \
-    -f message="minitart $VERSION" -f branch="$BRANCH" -f sha="$BLOB" \
+    -f message="minitart $VERSION" -f branch="$BRANCH" ${BLOB:+-f sha="$BLOB"} \
     -f content="$(base64 < formula.rb | tr -d '\n')" >/dev/null
-else
-  gh api -X PUT "repos/$TAP/contents/Formula/minitart.rb" \
-    -f message="minitart $VERSION" -f branch="$BRANCH" \
-    -f content="$(base64 < formula.rb | tr -d '\n')" >/dev/null
+
+  # An open proposal for this branch is picked up; a merged or closed one is not.
+  PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+  if [ -z "$PR" ]; then
+    gh pr create --repo "$TAP" --head "$BRANCH" --base main \
+      --title "minitart $VERSION" \
+      --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null
+    PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number')
+  fi
+
+  # The tap's own CI installs the formula and runs its test. It takes a moment to start:
+  # watching before it has would end at once with nothing to watch.
+  waited=0
+  until [ "$(gh pr view "$PR" --repo "$TAP" --json statusCheckRollup --jq '.statusCheckRollup | length')" -gt 0 ]; do
+    waited=$((waited + 10))
+    if [ "$waited" -gt 300 ]; then
+      echo "The tap's CI did not start on pull request $PR." >&2
+      exit 1
+    fi
+    sleep 10
+  done
+  gh pr checks "$PR" --repo "$TAP" --watch --required --interval 20
+
+  if gh pr merge "$PR" --repo "$TAP" --squash --delete-branch; then
+    break
+  fi
+  if [ "$attempt" -ge 3 ]; then
+    echo "Could not merge pull request $PR on the tap." >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  echo "The tap moved on meanwhile; proposing again on its new main."
+done
+
+if [ "$(current main)" != "$(cat formula.rb)" ]; then
+  echo "The pull request merged, and the tap's formula is not the one proposed." >&2
+  exit 1
 fi
-
-gh pr view "$BRANCH" --repo "$TAP" >/dev/null 2>&1 ||
-  gh pr create --repo "$TAP" --head "$BRANCH" --base main \
-    --title "minitart $VERSION" \
-    --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow."
-
-# The tap's own CI installs the formula and runs its test. Only then is it merged.
-gh pr checks "$BRANCH" --repo "$TAP" --watch --required --interval 20
-gh pr merge "$BRANCH" --repo "$TAP" --squash --delete-branch
 echo "The tap has minitart $VERSION."

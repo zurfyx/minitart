@@ -54,6 +54,11 @@ test('a release is the next patch, and only when something that ships changed', 
     'noop',
   );
   assert.equal(plan({ tags, tagsAtHead: ['v0.1.1'], changedSinceLast: [] }).action, 'noop');
+  // An old commit run again must not become a release newer than what is out.
+  assert.equal(
+    plan({ tags, tagsAtHead: [], changedSinceLast: ['src/tart.ts'], lastIsAncestor: false }).action,
+    'noop',
+  );
   // A minor started by hand is carried on from.
   assert.equal(
     plan({ tags: [...tags, 'v0.2.0'], tagsAtHead: [], changedSinceLast: ['package.json'] }).version,

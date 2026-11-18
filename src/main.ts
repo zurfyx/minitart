@@ -6,7 +6,7 @@ import { availableParallelism, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
 import { runChecks, type Check } from './doctor.ts';
 import { AppAuth, parseAppCredentials, type AppCredentials } from './github/app.ts';
@@ -21,7 +21,7 @@ import { installService, LABEL, plistPath, uninstallService } from './service.ts
 import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
 import { readTailnet, type TailnetName } from './tailnet.ts';
 import { TartCli, type Network, type Tart } from './tart.ts';
-import { installKind, Running, upgradeSteps } from './upgrade.ts';
+import { installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
 import { VERSION } from './version.ts';
 
 const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a fresh VM
@@ -365,30 +365,43 @@ async function main(): Promise<number> {
 
   if (command === 'upgrade') {
     const install = installKind(fileURLToPath(import.meta.url));
-    const running = new Running(port);
+    // How minitart is kept running here, and with which flags: the service's own, not this
+    // command's defaults.
+    const ownPlist = existsSync(plistPath()) ? readFileSync(plistPath(), 'utf8') : null;
+    const brewService =
+      spawnSync('launchctl', ['print', `gui/${process.getuid?.() ?? 0}/homebrew.mxcl.minitart`])
+        .status === 0;
+    const service = ownPlist !== null ? 'own' : brewService ? 'brew' : 'none';
+    const flags = ownPlist !== null ? serviceArgs(ownPlist) : [];
+    const servicePort = Number(flags[flags.indexOf('--port') + 1]);
+    const running = new Running(
+      flags.includes('--port') && Number.isInteger(servicePort) ? servicePort : port,
+    );
     if (values.now) {
       console.log('Not waiting for running jobs: they fail on GitHub and can be re-run.');
     } else if (await running.drained((line) => console.log(line))) {
       console.log('No job is running.');
     } else {
-      console.log('No minitart is running, so there is nothing to wait for.');
+      console.log('No minitart is answering, so there is nothing to wait for.');
     }
-    const serviceArgs = ['--port', String(port)];
-    if (network === 'shared') serviceArgs.push('--unsafe-shared-network');
-    const steps = upgradeSteps(install, {
-      node: process.execPath,
-      ownService: existsSync(plistPath()),
-      serviceArgs,
-    });
+    const steps = upgradeSteps(install, { node: process.execPath, service, serviceArgs: flags });
     for (const step of steps) {
       console.log(`${step.what}: ${step.command.join(' ')}`);
       const status = runAttached(step.command);
-      if (status !== 0 && !step.optional) {
-        // minitart is still draining, on purpose: nothing new starts on a half-done upgrade.
-        throw new Error(
-          `That step failed (exit ${status}). Put it right and run \`minitart upgrade\` again, or \`minitart resume\` to carry on with the version that is running.`,
-        );
+      if (status === 0) continue;
+      if (step.optional) {
+        console.log(`  (exit ${status}; carrying on)`);
+        continue;
       }
+      // minitart is still draining, on purpose: nothing new starts on a half-done upgrade.
+      throw new Error(
+        `That step failed (exit ${status}). Put it right and run \`minitart upgrade\` again, or \`minitart resume\` to carry on with the version that is running.`,
+      );
+    }
+    if (service === 'none') {
+      console.log(
+        'minitart is not run as a service here: start it again yourself, `minitart start`.',
+      );
     }
     return 0;
   }

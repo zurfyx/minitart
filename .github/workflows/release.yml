@@ -4,8 +4,11 @@ name: Release
 # or edits one: scripts/release.mjs takes the next patch number after the highest tag, and
 # does nothing when what ships has not changed.
 #
-#   release   checks this very commit again, packs the archive, tags it, publishes it
+#   check     the same gate as CI, on this very commit
+#   release   packs the archive from a clean checkout, tags it, publishes it
 #   tap       makes the Homebrew tap's formula match the newest release
+#
+# Only from main: started by hand on another branch, every job is skipped.
 #
 # The tap job acts as a GitHub App (the release bot), because a pull request opened with this
 # workflow's own token would not start the tap's CI. It is skipped until the App is set up
@@ -26,8 +29,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    # The same gate as CI, on the commit being released. Its own job: the tools it installs
+    # never touch the tree that is packed, and never hold a token that can publish.
+    name: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
   release:
+    # A fresh checkout and Node, nothing installed: what is packed is what is in git.
     name: release
+    needs: check
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write # creating the tag and the release
@@ -40,16 +67,9 @@ jobs:
           # The plan compares against every earlier release.
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          # No cache: a job that publishes restores nothing another run wrote.
-      - run: pnpm install --frozen-lockfile
-      # The same gate as CI, on the commit being released, in the job that releases it.
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
       - id: plan
         run: node scripts/release.mjs plan
       - if: steps.plan.outputs.action == 'publish'
@@ -73,7 +93,7 @@ jobs:
     # behind, so a run that failed halfway, or the App being set up later, loses nothing.
     name: tap
     needs: release
-    if: vars.RELEASE_APP_ID != ''
+    if: github.ref == 'refs/heads/main' && vars.RELEASE_APP_ID != ''
     runs-on: ubuntu-latest
     environment: release
     permissions:

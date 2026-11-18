@@ -51,9 +51,14 @@ export function highest(tags) {
  * What a push to main does. The first release is 0.1.0; after that each one is the next
  * patch. A new minor or major is started by tagging it by hand, once.
  */
-export function plan({ tags, tagsAtHead, changedSinceLast }) {
+export function plan({ tags, tagsAtHead, changedSinceLast, lastIsAncestor = true }) {
   const last = highest(tags);
   if (last === null) return { action: 'publish', version: '0.1.0', reason: 'the first release' };
+  // An old commit run again, or a branch that never had the last release in it: its next
+  // patch number would be a release of something older than what is out.
+  if (!lastIsAncestor) {
+    return { action: 'noop', version: '', reason: 'the newest release is not in this history' };
+  }
   if (highest(tagsAtHead) !== null) {
     return { action: 'noop', version: '', reason: 'this commit is already a release' };
   }
@@ -136,6 +141,15 @@ function git(...args) {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();
 }
 
+function isAncestor(ref) {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', ref, 'HEAD']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function lines(text) {
   return text.split('\n').filter(Boolean);
 }
@@ -201,6 +215,7 @@ function main() {
       tagsAtHead: lines(git('tag', '--points-at', 'HEAD')),
       changedSinceLast:
         last === null ? [] : lines(git('diff', '--name-only', `v${last.join('.')}..HEAD`)),
+      lastIsAncestor: last === null || isAncestor(`v${last.join('.')}`),
     });
     console.log(`${result.action}${result.version ? ` ${result.version}` : ''}: ${result.reason}`);
     if (process.env.GITHUB_OUTPUT) {

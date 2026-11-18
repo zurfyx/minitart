@@ -9,7 +9,8 @@ import { Manager } from './manager.ts';
 import { createDashboardServer } from './server.ts';
 import { defaultSettings } from './settings.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
-import { installKind, Running, upgradeSteps } from './upgrade.ts';
+import { plist } from './service.ts';
+import { installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
 import { DEVELOPMENT, readVersion } from './version.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -100,52 +101,71 @@ test('where main.ts lives says how minitart was installed', () => {
   assert.equal(installKind('/Users/me/Cellar/minitart/src/main.ts').kind, 'git');
 });
 
-test('an upgrade changes the software, then puts right what needs the password, then restarts', () => {
-  const options = {
-    node: '/opt/homebrew/bin/node',
-    ownService: false,
-    serviceArgs: ['--port', '4141'],
-  };
-  const brew = upgradeSteps({ kind: 'brew', prefix: '/opt/homebrew' }, options).map((step) =>
-    step.command.join(' '),
+test('an upgrade changes the software, puts right what needs the password, and restarts', () => {
+  const options = { node: '/opt/homebrew/bin/node', service: 'brew' as const, serviceArgs: [] };
+  const brew = upgradeSteps({ kind: 'brew', prefix: '/opt/homebrew' }, options);
+  assert.deepEqual(
+    brew.map((step) => `${step.optional ? '(may fail) ' : ''}${step.command.join(' ')}`),
+    [
+      '/opt/homebrew/bin/brew update --quiet',
+      '/opt/homebrew/bin/brew upgrade zurfyx/tap/minitart',
+      // Each on its own: one that is not installed, or not pinned, fails alone.
+      '(may fail) /opt/homebrew/bin/brew upgrade openai/tools/tart',
+      '(may fail) /opt/homebrew/bin/brew unpin softnet',
+      '(may fail) /opt/homebrew/bin/brew upgrade openai/tools/softnet',
+      '(may fail) /opt/homebrew/bin/brew pin softnet',
+      // The new minitart's doctor, and before the restart: Softnet's permission comes first.
+      // What doctor still finds wrong (a full disk, say) never leaves minitart stopped.
+      '(may fail) /opt/homebrew/bin/minitart doctor --fix',
+      '/opt/homebrew/bin/brew services restart zurfyx/tap/minitart',
+    ],
   );
-  assert.deepEqual(brew, [
-    '/opt/homebrew/bin/brew update --quiet',
-    '/opt/homebrew/bin/brew unpin softnet',
-    '/opt/homebrew/bin/brew upgrade zurfyx/tap/minitart openai/tools/tart openai/tools/softnet',
-    '/opt/homebrew/bin/brew pin softnet',
-    // The new minitart's doctor, not the one that is running.
-    '/opt/homebrew/bin/minitart doctor --fix',
-    '/opt/homebrew/bin/brew services restart zurfyx/tap/minitart',
-  ]);
+
   const own = upgradeSteps(
     { kind: 'brew', prefix: '/opt/homebrew' },
-    { ...options, ownService: true },
+    { ...options, service: 'own', serviceArgs: ['--port', '4242'] },
   );
   assert.deepEqual(own.at(-1)?.command, [
     '/opt/homebrew/bin/minitart',
     'service',
     'install',
     '--port',
-    '4141',
+    '4242',
   ]);
 
-  const git = upgradeSteps({ kind: 'git', root: '/Users/me/minitart' }, options).map((step) =>
-    step.command.join(' '),
+  // Started by hand in a terminal: nothing is installed or started behind the owner's back.
+  const none = upgradeSteps(
+    { kind: 'brew', prefix: '/opt/homebrew' },
+    { ...options, service: 'none' },
   );
-  assert.deepEqual(git, [
-    'git -C /Users/me/minitart pull --ff-only',
-    '/opt/homebrew/bin/node /Users/me/minitart/src/main.ts doctor --fix',
-    '/opt/homebrew/bin/node /Users/me/minitart/src/main.ts service install --port 4141',
-  ]);
-  // Only pinning may fail and be carried on from.
-  const optional = upgradeSteps({ kind: 'brew', prefix: '/opt/homebrew' }, options).filter(
-    (s) => s.optional,
+  assert.ok(
+    !none.some((step) => step.command.includes('services') || step.command.includes('service')),
+  );
+
+  const git = upgradeSteps(
+    { kind: 'git', root: '/Users/me/minitart' },
+    { ...options, service: 'own', serviceArgs: ['--port', '4141'] },
   );
   assert.deepEqual(
-    optional.map((step) => step.command[1]),
-    ['unpin', 'pin'],
+    git.map((step) => step.command.join(' ')),
+    [
+      'git -C /Users/me/minitart pull --ff-only',
+      '/opt/homebrew/bin/node /Users/me/minitart/src/main.ts doctor --fix',
+      '/opt/homebrew/bin/node /Users/me/minitart/src/main.ts service install --port 4141',
+    ],
   );
+});
+
+test('an upgrade restarts the service with the flags it already runs with', () => {
+  const xml = plist({
+    node: '/opt/homebrew/bin/node',
+    main: '/Users/me/minitart/src/main.ts',
+    args: ['--port', '4242', '--unsafe-shared-network'],
+    log: '/Users/me/.minitart/logs/manager.log',
+    path: '/opt/homebrew/bin:/usr/bin',
+  });
+  assert.deepEqual(serviceArgs(xml), ['--port', '4242', '--unsafe-shared-network']);
+  assert.deepEqual(serviceArgs(xml.replace('<string>start</string>', '')), []);
 });
 
 test('an upgrade waits for the running job, through the running minitart', async () => {
@@ -212,5 +232,37 @@ test('an upgrade waits for the running job, through the running minitart', async
 
   // Nothing listening: there is nothing to wait for, and the upgrade carries on.
   assert.equal(await new Running(1).drained(() => {}), false);
+
+  // One missed answer while a job runs is not "nothing is running".
+  manager.setDraining(false);
+  const again = github.queue('octo/app', ['minitart-linux'], 'second');
+  await manager.tick();
+  await settle();
+  const [second] = tart.runners();
+  assert.ok(second);
+  github.take(second);
+  tart.print(second, '2026-11-18 10:00:15Z: Running job: second');
+  const flaky = new Running(port);
+  const real = flaky.vms.bind(flaky);
+  let asked = 0;
+  flaky.vms = async () => {
+    asked++;
+    if (asked === 1) return null;
+    if (asked === 3) {
+      tart.print(second, '2026-11-18 10:00:19Z: Job second completed with result: Succeeded');
+      github.complete(again);
+      tart.exit(second, 0);
+      await settle();
+    }
+    return real();
+  };
+  assert.equal(
+    await flaky.drained(
+      () => {},
+      async () => {},
+    ),
+    true,
+  );
+  assert.equal(manager.snapshot().done[0]?.job.name, 'second');
   await manager.stop();
 });

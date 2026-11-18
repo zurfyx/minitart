@@ -21,61 +21,95 @@ export function installKind(mainPath: string): Install {
 export interface Step {
   what: string;
   command: string[];
-  /** A step that may fail without stopping the upgrade (a formula that is not pinned). */
+  /**
+   * A step whose failure does not stop the upgrade: a formula that is not pinned or not
+   * installed, and doctor, which also fails for things an upgrade has nothing to do with.
+   */
   optional?: boolean;
 }
 
 /**
- * The commands of an upgrade, after the drain. `ownService` is whether minitart runs as the
- * LaunchAgent that `minitart service install` wrote, rather than as a Homebrew service.
+ * How the minitart that runs on this Mac is kept running: the LaunchAgent that
+ * `minitart service install` wrote, Homebrew's service, or neither (someone started it in a
+ * terminal, and will start it again themselves).
  */
+export type Service = 'own' | 'brew' | 'none';
+
+/** The flags a LaunchAgent written by `service install` starts minitart with. */
+export function serviceArgs(plist: string): string[] {
+  const strings = [...plist.matchAll(/<string>([^<]*)<\/string>/g)].map((match) => match[1] ?? '');
+  const start = strings.indexOf('start');
+  if (start === -1) return [];
+  const args: string[] = [];
+  for (const value of strings.slice(start + 1)) {
+    // The arguments end where the next key's values begin; flags and their numbers only.
+    if (!/^(--[a-z-]+|\d+)$/.test(value)) break;
+    args.push(value);
+  }
+  return args;
+}
+
+/** The commands of an upgrade, after the drain. */
 export function upgradeSteps(
   install: Install,
-  options: { node: string; ownService: boolean; serviceArgs: readonly string[] },
+  options: { node: string; service: Service; serviceArgs: readonly string[] },
 ): Step[] {
-  if (install.kind === 'git') {
-    const main = `${install.root}/src/main.ts`;
-    return [
-      { what: 'Getting the new source', command: ['git', '-C', install.root, 'pull', '--ff-only'] },
-      // The new doctor, not this one: it knows what the new version needs.
-      {
-        what: 'Putting right what needs the password',
-        command: [options.node, main, 'doctor', '--fix'],
-      },
-      {
-        what: 'Starting minitart again',
-        command: [options.node, main, 'service', 'install', ...options.serviceArgs],
-      },
-    ];
-  }
-  const brew = `${install.prefix}/bin/brew`;
-  const minitart = `${install.prefix}/bin/minitart`;
-  return [
-    { what: 'Asking Homebrew what is new', command: [brew, 'update', '--quiet'] },
-    // Softnet is kept pinned, so that only this command replaces its binary, which costs it
-    // its permission: Tart, minitart and Softnet change together, and are put right together.
-    { what: 'Unpinning Softnet', command: [brew, 'unpin', 'softnet'], optional: true },
-    {
-      what: 'Upgrading minitart, Tart and Softnet',
-      command: [
-        brew,
-        'upgrade',
-        'zurfyx/tap/minitart',
-        'openai/tools/tart',
-        'openai/tools/softnet',
-      ],
-    },
-    { what: 'Pinning Softnet', command: [brew, 'pin', 'softnet'], optional: true },
-    { what: 'Putting right what needs the password', command: [minitart, 'doctor', '--fix'] },
-    options.ownService
-      ? {
+  const restart = (minitart: string[], brew?: string): Step[] => {
+    if (options.service === 'own') {
+      return [
+        {
           what: 'Starting minitart again',
-          command: [minitart, 'service', 'install', ...options.serviceArgs],
-        }
-      : {
+          command: [...minitart, 'service', 'install', ...options.serviceArgs],
+        },
+      ];
+    }
+    if (options.service === 'brew' && brew !== undefined) {
+      return [
+        {
           what: 'Starting minitart again',
           command: [brew, 'services', 'restart', 'zurfyx/tap/minitart'],
         },
+      ];
+    }
+    // Nothing keeps it running, so nothing is started behind the owner's back.
+    return [];
+  };
+  // The new doctor, not this one: it knows what the new version needs. It comes before the
+  // restart, since a minitart restarted before Softnet has its permission back starts no VM;
+  // and it never stops the upgrade, since it also fails for things that have nothing to do
+  // with one (a full disk), and those must not leave minitart stopped.
+  const doctor = (minitart: string[]): Step => ({
+    what: 'Putting right what needs the password',
+    command: [...minitart, 'doctor', '--fix'],
+    optional: true,
+  });
+
+  if (install.kind === 'git') {
+    const minitart = [options.node, `${install.root}/src/main.ts`];
+    return [
+      { what: 'Getting the new source', command: ['git', '-C', install.root, 'pull', '--ff-only'] },
+      doctor(minitart),
+      ...restart(minitart),
+    ];
+  }
+  const brew = `${install.prefix}/bin/brew`;
+  const minitart = [`${install.prefix}/bin/minitart`];
+  return [
+    { what: 'Asking Homebrew what is new', command: [brew, 'update', '--quiet'] },
+    { what: 'Upgrading minitart', command: [brew, 'upgrade', 'zurfyx/tap/minitart'] },
+    // Tart and Softnet change with it, and are put right with it. Softnet is kept pinned, so
+    // that only this command replaces its binary, which costs it its permission. Each on its
+    // own line: one that is not installed fails alone.
+    { what: 'Upgrading Tart', command: [brew, 'upgrade', 'openai/tools/tart'], optional: true },
+    { what: 'Unpinning Softnet', command: [brew, 'unpin', 'softnet'], optional: true },
+    {
+      what: 'Upgrading Softnet',
+      command: [brew, 'upgrade', 'openai/tools/softnet'],
+      optional: true,
+    },
+    { what: 'Pinning Softnet', command: [brew, 'pin', 'softnet'], optional: true },
+    doctor(minitart),
+    ...restart(minitart, brew),
   ];
 }
 
@@ -121,9 +155,17 @@ export class Running {
   ): Promise<boolean> {
     if (!(await this.drain(true))) return false;
     let said = -1;
+    let silent = 0;
     for (;;) {
       const vms = await this.vms();
-      if (vms === null || vms === 0) return vms === 0;
+      if (vms === 0) return true;
+      if (vms === null) {
+        // One answer missed is not a minitart that has gone: its jobs may still be running.
+        if (++silent >= 3) return false;
+        await sleep(2000);
+        continue;
+      }
+      silent = 0;
       if (vms !== said) print(`Waiting for ${vms} VM${vms === 1 ? '' : 's'} to finish its job`);
       said = vms;
       await sleep(5000);
