@@ -50,8 +50,11 @@ const STATUSES: Record<string, JobStatus> = {
   requested: 'pending',
 };
 
-/** The statuses GitHub gives a workflow run that can still have a job for a runner. */
-const ACTIVE_RUN_STATUSES = ['queued', 'in_progress', 'waiting', 'pending'];
+/**
+ * Every status GitHub gives a workflow run that has not completed. All of them are asked
+ * for: a run left out is a run whose queued job is never seen.
+ */
+const ACTIVE_RUN_STATUSES = ['requested', 'queued', 'in_progress', 'waiting', 'pending'] as const;
 
 export class GitHubClient implements GitHub {
   readonly #auth: Auth;
@@ -73,7 +76,8 @@ export class GitHubClient implements GitHub {
     // ones finish. A waiting run (an approval is pending) can still have jobs to run. So
     // can a pending one: a run that took over its concurrency group from a cancelled run
     // has been seen to stay pending while its job sat queued, with no runner to take it.
-    // Whether a job is ready is the job's own status, never the run's.
+    // (A run that is still waiting for its group lists no jobs at all.) Whether a job is
+    // ready is the job's own status, never the run's.
     const ids = new Set<number>();
     for (const status of ACTIVE_RUN_STATUSES) {
       const runs = (await this.#pages(
