@@ -340,6 +340,34 @@ function onPath(name: string): boolean {
 }
 
 /**
+ * Why no VM may be started, from the checks: `null` when the Mac is set up to isolate one.
+ * A VM that would not be isolated is not started at all (D04, D21); the owner who asked for
+ * the unsafe network has said they know.
+ */
+export function blockedBy(checks: readonly Check[], network: Network): string | null {
+  if (network === 'shared') return null;
+  for (const id of ['network', 'firewall']) {
+    const found = checks.find((c) => c.id === id);
+    // Not knowing is not the same as being closed.
+    if (found === undefined) return 'This Mac has not been checked yet';
+    if (found.ok) continue;
+    // `doctor --fix` when it can do it; the command itself when it cannot.
+    const how =
+      found.sudo !== undefined || found.commands !== undefined || found.fix === null
+        ? 'minitart doctor --fix'
+        : found.fix;
+    return `${found.title}: ${found.detail}. Run: ${how}`;
+  }
+  return null;
+}
+
+/** Whether the firewall rule's files are in place, for commands that boot a VM by themselves. */
+export function firewallInstalled(): boolean {
+  const firewall = readFirewall();
+  return firewall.daemon && (firewall.rules?.includes(FIREWALL_VERSION) ?? false);
+}
+
+/**
  * `doctor --fix`: installs what is missing, then runs the fixes that need root, checking
  * again after each so that a fix one check's commands already made is not made twice.
  * `run` runs a command with the terminal attached and resolves with its exit code, or

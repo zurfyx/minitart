@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   applyFixes,
   atLeast,
+  blockedBy,
   FIREWALL_VERSION,
   neverSleeps,
   runChecks,
@@ -563,4 +564,51 @@ test('doctor: a Tart that is installed and does not answer is never reinstalled'
   const tart = checks.find((c) => c.id === 'tart');
   assert.equal(tart?.ok, false);
   assert.equal(tart?.commands, undefined);
+});
+
+test('a Mac whose network is not closed starts no VM, and says which step is missing', async () => {
+  const checks = (firewall: boolean, setuid: boolean) =>
+    runChecks({
+      network: 'softnet',
+      settings,
+      images: null,
+      hasApp: false,
+      run: async (command) => (command === 'tart' ? '2.42.0\n' : null),
+      softnet: () => ({
+        path: '/opt/homebrew/bin/softnet',
+        uid: setuid ? 0 : 501,
+        mode: setuid ? 0o104755 : 0o100755,
+      }),
+      firewall: () =>
+        firewall
+          ? { rules: `# ${FIREWALL_VERSION}.`, daemon: true }
+          : { rules: null, daemon: false },
+      freeDiskGb: 5,
+    });
+  // Softnet could run, and the firewall rule was never installed: the half-done setup.
+  assert.match(
+    blockedBy(await checks(false, true), 'softnet') ?? '',
+    /^Firewall: .*Run: minitart doctor --fix$/,
+  );
+  assert.match(
+    blockedBy(await checks(true, false), 'softnet') ?? '',
+    /^Network: Softnet cannot run as root/,
+  );
+  // Everything else that doctor finds (no App, no image, a full disk) stops no VM by itself.
+  assert.equal(blockedBy(await checks(true, true), 'softnet'), null);
+  // The owner who asked for the unsafe network has said they know.
+  assert.equal(blockedBy(await checks(false, false), 'shared'), null);
+  // Not knowing is not the same as being closed.
+  assert.match(blockedBy([], 'softnet') ?? '', /has not been checked yet/);
+  // What `doctor --fix` cannot do is named by its own command.
+  const old = await runChecks({
+    network: 'softnet',
+    settings,
+    images: null,
+    hasApp: false,
+    run: async (command) => (command === 'softnet' ? 'softnet 0.24.0\n' : null),
+    softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
+    firewall: () => ({ rules: `# ${FIREWALL_VERSION}.`, daemon: true }),
+  });
+  assert.match(blockedBy(old, 'softnet') ?? '', /Run: brew upgrade softnet$/);
 });

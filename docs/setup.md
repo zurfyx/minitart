@@ -41,6 +41,10 @@ would cost it the permission of step 2. `minitart upgrade` is what upgrades it (
 Check: `minitart doctor` prints a list with no `FIX` for Tart, Network, Firewall or Sleep.
 What is left are the steps from 4 on.
 
+If you skip this line, nothing unsafe happens and nothing runs: minitart starts no VM on a
+Mac whose network is not closed. Jobs wait on GitHub, and `minitart doctor` and the
+dashboard both say that this is the step that is missing.
+
 To run it from the source instead, clone the repo and write `node src/main.ts` wherever
 this page says `minitart`.
 

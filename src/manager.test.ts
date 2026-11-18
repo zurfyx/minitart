@@ -465,3 +465,54 @@ test('polling never lists VMs', async () => {
   }
   assert.equal(tart.lists, 0);
 });
+
+test('no VM is started on a Mac that is not set up to isolate one; the jobs wait', async () => {
+  let blocked: string | null = 'Firewall: A job can reach what this Mac serves to every network';
+  const now = Date.parse('2026-11-18T10:00:00Z');
+  const github = new FakeGitHub(() => now);
+  github.repoList = [{ fullName: 'octo/app', private: true }];
+  const tart = new FakeTart();
+  tart.addImage('minitart-base-linux');
+  const manager = new Manager({
+    github: () => github,
+    tart,
+    network: 'softnet',
+    settings: { ...defaultSettings(machine), repos: SERVED },
+    saveSettings: () => {},
+    history: [],
+    saveHistory: () => {},
+    now: () => now,
+    sleep: () => new Promise((resolve) => setImmediate(resolve)),
+    blocked: () => blocked,
+  });
+  github.queue('octo/app', ['minitart-linux']);
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(jobVms(tart), []);
+  assert.match(manager.snapshot().blocked ?? '', /^Firewall/);
+  assert.match(
+    manager.snapshot().queued[0]?.note ?? '',
+    /No VM is started until this is put right/,
+  );
+
+  // Put right: the next round serves the queue.
+  blocked = null;
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(jobVms(tart).length, 1);
+
+  // It stops being closed while VMs are up: one with its job finishes, one without goes.
+  const [first] = tart.runners();
+  assert.ok(first);
+  github.take(first);
+  tart.print(first, '2026-11-18 10:00:05Z: Running job: build');
+  github.queue('octo/app', ['minitart-linux'], 'second');
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(tart.runners().length, 2);
+  blocked = 'Network: Softnet cannot run as root yet';
+  await manager.tick();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(tart.runners(), [first], 'the idle VM is gone, the busy one is left to finish');
+  await manager.stop();
+});
