@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
-import { runChecks, type Check } from './doctor.ts';
+import { applyFixes, runChecks, type Check } from './doctor.ts';
 import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
 import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
@@ -124,10 +124,13 @@ async function newestMinitart(): Promise<string | null> {
 }
 
 /** Runs a command with the terminal attached, so it can ask for a password. */
-function runAttached(command: readonly string[]): number {
+function runAttached(command: readonly string[]): number | null {
   const [program, ...args] = command;
   if (program === undefined) return 1;
-  return spawnSync(program, args, { stdio: 'inherit' }).status ?? 1;
+  const result = spawnSync(program, args, { stdio: 'inherit' });
+  // No such program is told apart from a program that failed.
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') return null;
+  return result.status ?? 1;
 }
 
 async function newestRunner(): Promise<string | null> {
@@ -345,18 +348,16 @@ async function main(): Promise<number> {
         versions: { running: VERSION, latest: await newestMinitart() },
         tailnet: await readTailnet(port),
       });
-    let checks = await check();
-    if (values.fix) {
-      // Only the fixes that are a command to run as root; sudo asks for the password itself.
-      const fixable = checks.filter((c) => !c.ok && c.sudo !== undefined);
-      for (const broken of fixable) {
-        console.log(`Fixing ${broken.title}: ${broken.fix}`);
-        for (const args of broken.sudo ?? []) {
-          if (runAttached(['sudo', ...args]) !== 0) break;
-        }
-      }
-      if (fixable.length > 0) checks = await check();
-    }
+    // The Homebrew that installed minitart, not whichever comes first on the PATH.
+    const install = installKind(fileURLToPath(import.meta.url));
+    const brew = install.kind === 'brew' ? `${install.prefix}/bin/brew` : 'brew';
+    const checks = values.fix
+      ? await applyFixes(
+          check,
+          (argv) => runAttached(argv[0] === 'brew' ? [brew, ...argv.slice(1)] : argv),
+          (line) => console.log(line),
+        )
+      : await check();
     return printChecks(checks) ? 0 : 1;
   }
 
@@ -401,12 +402,12 @@ async function main(): Promise<number> {
       const status = runAttached(step.command);
       if (status === 0) continue;
       if (step.optional) {
-        console.log(`  (exit ${status}; carrying on)`);
+        console.log(`  (${status === null ? 'not found' : `exit ${status}`}; carrying on)`);
         continue;
       }
       // minitart is still draining, on purpose: nothing new starts on a half-done upgrade.
       throw new Error(
-        `That step failed (exit ${status}). Put it right and run \`minitart upgrade\` again, or \`minitart resume\` to carry on with the version that is running.`,
+        `That step failed (${status === null ? 'the program was not found' : `exit ${status}`}). Put it right and run \`minitart upgrade\` again, or \`minitart resume\` to carry on with the version that is running.`,
       );
     }
     if (service === 'none') {

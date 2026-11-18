@@ -25,6 +25,28 @@ export interface Check {
    * Only fixes that are a command and nothing else have one.
    */
   sudo?: string[][];
+  /**
+   * A fix that is commands to run as the owner, in order, for `doctor --fix`: installing a
+   * tool that is missing. One that `mayFail` (a Homebrew too old to know the command) does
+   * not stop the rest.
+   */
+  commands?: { argv: string[]; mayFail?: boolean }[];
+}
+
+/**
+ * Installing Tart or Softnet from their tap. Homebrew refuses a formula from a tap it has
+ * not been told to trust, so that is said first, for these two formulae and no others. And
+ * Softnet is pinned, so that only `minitart upgrade` replaces its binary.
+ */
+function brewInstall(formula: 'tart' | 'softnet'): { argv: string[]; mayFail?: boolean }[] {
+  return [
+    {
+      argv: ['brew', 'trust', '--formula', 'openai/tools/tart', 'openai/tools/softnet'],
+      mayFail: true,
+    },
+    { argv: ['brew', 'install', `openai/tools/${formula}`] },
+    { argv: ['brew', 'pin', 'softnet'], mayFail: true },
+  ];
 }
 
 /** Older versions have bugs minitart would hit: leaked sockets and a spinning `exec -i`. */
@@ -54,6 +76,8 @@ export interface DoctorInput {
   hasApp: boolean;
   /** Runs a command and resolves with its output, or `null` when it fails. */
   run?: (command: string, args: string[]) => Promise<string | null>;
+  /** Whether a program of this name is on the PATH. */
+  tartInstalled?: (name: string) => boolean;
   /** The Softnet binary's real path, owner and mode, or `null` when it is not installed. */
   softnet?: () => { path: string; uid: number; mode: number } | null;
   /** Whether the rules that close this Mac to its VMs are installed, and at which version. */
@@ -95,6 +119,11 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
           ? `Tart ${version}`
           : `Tart ${version} is older than ${MIN_TART}, which fixed bugs minitart would hit`,
     fix: version === null ? 'brew install openai/tools/tart' : tartOk ? null : 'brew upgrade tart',
+    // Tart brings Softnet with it: it is one of Tart's own dependencies. Only a Tart that
+    // is not there is installed: one that is there and did not answer is left alone.
+    ...(version === null && !(input.tartInstalled ?? onPath)('tart')
+      ? { commands: brewInstall('tart') }
+      : {}),
   });
 
   if (input.network === 'shared') {
@@ -130,6 +159,7 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,
+      ...(softnet === null ? { commands: brewInstall('softnet') } : {}),
       ...(softnet !== null && current && !setuid
         ? {
             sudo: [
@@ -303,6 +333,53 @@ function runCommand(command: string, args: string[]): Promise<string | null> {
       resolve(error ? null : stdout);
     });
   });
+}
+
+function onPath(name: string): boolean {
+  return (process.env['PATH'] ?? '').split(delimiter).some((dir) => existsSync(join(dir, name)));
+}
+
+/**
+ * `doctor --fix`: installs what is missing, then runs the fixes that need root, checking
+ * again after each so that a fix one check's commands already made is not made twice.
+ * `run` runs a command with the terminal attached and resolves with its exit code, or
+ * `null` when the program itself was not found.
+ */
+export async function applyFixes(
+  check: () => Promise<Check[]>,
+  run: (argv: string[]) => number | null,
+  print: (line: string) => void,
+): Promise<Check[]> {
+  let checks = await check();
+  const attempt = (argv: string[]): boolean => {
+    print(`  ${argv.join(' ')}`);
+    const status = run(argv);
+    if (status === null) print(`  ${argv[0]} was not found on this Mac`);
+    return status === 0;
+  };
+  const tried = new Set<string>();
+  const next = (kind: 'commands' | 'sudo') =>
+    checks.find((c) => !c.ok && c[kind] !== undefined && !tried.has(`${kind} ${c.id}`));
+
+  // What is missing is installed first: the checks that follow are about what it brought.
+  for (let broken = next('commands'); broken; broken = next('commands')) {
+    tried.add(`commands ${broken.id}`);
+    print(`Fixing ${broken.title}: ${broken.detail}`);
+    for (const { argv, mayFail } of broken.commands ?? []) {
+      if (!attempt(argv) && !mayFail) break;
+    }
+    checks = await check();
+  }
+  // Then what needs root; sudo asks for the password itself.
+  for (let broken = next('sudo'); broken; broken = next('sudo')) {
+    tried.add(`sudo ${broken.id}`);
+    print(`Fixing ${broken.title}: ${broken.detail}`);
+    for (const argv of broken.sudo ?? []) {
+      if (!attempt(['sudo', ...argv])) break;
+    }
+    checks = await check();
+  }
+  return checks;
 }
 
 function findSoftnet(): { path: string; uid: number; mode: number } | null {
