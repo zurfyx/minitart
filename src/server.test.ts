@@ -6,7 +6,7 @@ import type { AppCredentials } from './github/app.ts';
 import { Manager } from './manager.ts';
 import { createDashboardServer, isLoopback } from './server.ts';
 import { defaultSettings } from './settings.ts';
-import { FakeGitHub, FakeTart } from './testing/fakes.ts';
+import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
 
@@ -28,7 +28,7 @@ async function setup(options: { local?: boolean; app?: AppCredentials | null } =
     github: () => github,
     tart,
     network: 'softnet',
-    settings: defaultSettings(machine),
+    settings: { ...defaultSettings(machine), repos: SERVED },
     saveSettings: () => {},
     history: [],
     saveHistory: () => {},
@@ -44,7 +44,6 @@ async function setup(options: { local?: boolean; app?: AppCredentials | null } =
     saveApp: (created) => (app = created),
     health: () => [],
     machine,
-    host: '127.0.0.1',
     port,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
     isLocal: () => options.local ?? true,
@@ -89,7 +88,6 @@ test('the page and its state are served, with a policy that allows no outside sc
     assert.equal((await fetch(`${origin}${path}`)).status, 200, path);
   }
   const state = (await (await fetch(`${origin}/api/state`)).json()) as Record<string, unknown>;
-  assert.equal(state['canEdit'], true);
   assert.equal(state['app'], null);
   assert.equal((await fetch(`${origin}/../../etc/passwd`)).status, 404);
 });
@@ -125,14 +123,14 @@ test('settings change from the Mac, same origin, as JSON, and are validated', as
   assert.equal(manager.settings.linux.max, 3);
 });
 
-test('a browser that is not on the Mac can read and cannot change anything', async () => {
+test('a connection that is not from this Mac gets nothing', async () => {
   const { origin, post, manager } = await setup({ local: false });
-  const state = (await (await fetch(`${origin}/api/state`)).json()) as Record<string, unknown>;
-  assert.equal(state['canEdit'], false);
-  assert.equal((await post({ linux: { max: 8 } })).status, 403);
+  assert.equal((await fetch(`${origin}/`)).status, 403);
+  assert.equal((await fetch(`${origin}/api/state`)).status, 403);
+  assert.equal((await fetch(`${origin}/api/events`)).status, 403);
+  assert.equal((await post({ linux: { max: 3 } })).status, 403);
   assert.equal(manager.settings.linux.max, 2);
   assert.equal((await fetch(`${origin}/setup/manifest`)).status, 403);
-  assert.equal((await fetch(`${origin}/setup/callback?code=abc&state=x`)).status, 403);
 });
 
 test('creating the GitHub App: the manifest, then the callback with the same state', async () => {

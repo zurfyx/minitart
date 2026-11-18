@@ -1,6 +1,6 @@
 # D05: Public repos are skipped unless the owner allows them
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

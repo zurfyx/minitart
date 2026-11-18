@@ -106,11 +106,16 @@ from a browser that is logged in as you, so this is two clicks nobody can make f
 The App's key is saved to `~/.minitart/app.json` by itself. It has to be a browser on the
 Mac: the dashboard refuses setup from any other machine.
 
-Check: the dashboard's **Repos** section lists the repos you picked, each `Watching`. A
-public repo shows `Public, skipped`; that is the default, on purpose.
+Back in the dashboard, the **Repos** section lists the repos you picked, each `Not served`.
+Click **Serve** on the ones this Mac should run jobs for. A repo is served only when the App
+is installed on it _and_ it is turned on here, so choosing "All repositories" by mistake
+serves nothing.
 
-To add or remove repos later, use the link under the list. It goes to the App's page on
-GitHub.
+Check: those repos show `Watching`. A public repo shows `Public, skipped`; that is the
+default, on purpose.
+
+To install the App on more repos later, use the link under the list. It goes to the App's
+page on GitHub.
 
 ## 8. Point a workflow at it
 
@@ -154,9 +159,15 @@ unless the Mac logs in by itself, and macOS allows that only with FileVault off.
   weeks after a new one is out. Rebuild that image (step 4); it replaces the old one only
   when the build succeeds.
 - **Updating minitart.** `git pull`, then `node src/main.ts service install` again.
-- **Seeing the dashboard from another device.** Add `--host <the Mac's address on your
-tailnet>` to `start` or `service install`. From there it is read-only, and everyone who
-  can reach that address can read it.
+- **Backing up.** `~/.minitart/settings.json` is the whole configuration: the repos that
+  are served, VM counts and size, timings. It is plain JSON, written by the dashboard and
+  checked every time it is read. `~/.minitart/app.json` holds the App's key: back it up like
+  a password, or do not, and create a new App on a new Mac.
+- **Seeing the dashboard from another device.** Not yet: it is served to the Mac itself only
+  ([D20](decisions/D20-the-dashboard-on-a-tailnet.md)).
+- **Running it as its own macOS user.** It works: do every step above logged in as that
+  user, and make it the user that logs in automatically
+  ([D09](decisions/D09-a-launchagent-in-your-account.md)).
 - **Removing it.** `node src/main.ts service uninstall`, delete the App on GitHub (Settings,
   Developer settings, GitHub Apps), and delete `~/.minitart` and the two images
   (`tart delete minitart-base-linux minitart-base-macos`).

@@ -10,7 +10,7 @@ The files named `src/prior-art.*.test.ts` hold scenarios taken from the test sui
 projects that did this before: Runscaler, ephemerd, Sand, Graftery, KnobanLabs'
 macos-ephemeral-runners, Cirrus CLI and Cilicon. Each is rewritten against minitart's own
 fakes, with a comment naming the test it comes from. They are what other people's bugs look
-like here: a runner that exits before it connects, a repo paused while its job runs, one
+like here: a runner that exits before it connects, a repo turned off while its job runs, one
 unreachable installation among several.
 
 The manager is tested whole, against a GitHub and a Tart that live in memory
@@ -22,7 +22,7 @@ rate limit, a public repo, a full pool, leftovers from a crash.
 What is security-relevant has a test that names it: the runner config is never an argument;
 the App's key is never sent or shown; a VM always gets the network the manager was started
 with; settings from a request are validated, not coerced; the dashboard refuses another
-`Host`, another `Origin`, and changes from another machine; a job log is served only for a
+`Host`, another `Origin`, and any connection from another machine; a job log is served only for a
 job minitart ran.
 
 ## 2. Static: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`

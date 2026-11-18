@@ -78,8 +78,8 @@ export interface DoneView {
 export interface RepoView {
   fullName: string;
   private: boolean;
-  /** `watching`, or why it is not. */
-  state: 'watching' | 'paused' | 'public';
+  /** `watching`; `off` until the owner turns it on; `public` when public repos are skipped. */
+  state: 'watching' | 'off' | 'public';
   error: string | null;
 }
 
@@ -402,7 +402,7 @@ export class Manager {
 
   #repoState(repo: Repo): RepoView['state'] {
     if (!repo.private && !this.#settings.allowPublicRepos) return 'public';
-    return this.#settings.pausedRepos.includes(repo.fullName) ? 'paused' : 'watching';
+    return this.#settings.repos.includes(repo.fullName) ? 'watching' : 'off';
   }
 
   #limits(): Record<Pool, number> {

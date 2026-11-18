@@ -21,10 +21,11 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   deleted.
 - **A network that is an allowlist.** A VM can send to public internet addresses and nowhere
   else. Your router, your NAS and your tailnet are out of reach without being listed.
-- **GitHub holds the list of repos.** minitart is a GitHub App you create in one click and
-  install on the repos you choose. Public repos are skipped.
-- **Nothing to configure by hand.** No config file. VM counts start from what the Mac can
-  hold and change in the dashboard.
+- **You choose the repos twice.** minitart is a GitHub App you create in one click and
+  install on repos; a repo is served once you also turn it on in the dashboard. Installing
+  the App on your whole account by mistake serves nothing. Public repos are skipped.
+- **Nothing to configure by hand.** No file to write. VM counts start from what the Mac can
+  hold and change in the dashboard, which saves them as plain JSON you can back up.
 - **A dashboard**: what is queued, running and done, with logs.
 - **Small enough to read.** TypeScript that Node runs as it is; no build, no runtime
   dependencies.
@@ -67,8 +68,8 @@ node src/main.ts start               # the manager, and the dashboard at 127.0.0
 filter) run as root, and stopping the Mac from sleeping.
 
 Then open <http://127.0.0.1:4141> on the Mac, click **Create the GitHub App**, and on
-GitHub choose "Only select repositories" and pick yours. Jobs with a minitart label start
-running.
+GitHub choose "Only select repositories" and pick yours. Back in the dashboard, click
+**Serve** on each. Jobs with a minitart label start running.
 
 To keep it running across restarts:
 

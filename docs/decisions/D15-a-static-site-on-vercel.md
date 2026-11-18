@@ -1,6 +1,6 @@
 # D15: minitart.rovira.sh is one static page, on Vercel
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

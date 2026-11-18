@@ -23,8 +23,6 @@ const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a 
 
   minitart start                  run the manager and its dashboard
       --port <n>                  the dashboard's port (default 4141)
-      --host <address>            the address it listens on (default 127.0.0.1)
-      --allow-host <name>         another name the dashboard is opened by; repeatable
       --unsafe-shared-network     let VMs reach your LAN (for trying minitart out only)
       --demo                      made-up jobs and VMs, to look at the dashboard
   minitart doctor                 check that this Mac is set up
@@ -108,13 +106,7 @@ function printChecks(checks: readonly Check[]): boolean {
   return checks.every((check) => check.ok || check.optional);
 }
 
-async function start(flags: {
-  port: number;
-  host: string;
-  allowedHosts: string[];
-  network: Network;
-  demo: boolean;
-}): Promise<void> {
+async function start(flags: { port: number; network: Network; demo: boolean }): Promise<void> {
   const demo = flags.demo ? demoWorld() : null;
   const home = demo ? null : new Home();
   const tart: Tart = demo?.tart ?? new TartCli();
@@ -131,7 +123,9 @@ async function start(flags: {
     github: () => github,
     tart,
     network: flags.network,
-    settings: home ? loadSettings(home) : defaultSettings(machine),
+    settings: home
+      ? loadSettings(home)
+      : { ...defaultSettings(machine), repos: ['octo/app', 'octo/api', 'octo/site'] },
     saveSettings: (settings) => {
       home?.writeJson('settings.json', settings);
       // The health line follows a settings change without waiting a minute.
@@ -193,13 +187,11 @@ async function start(flags: {
     health: () => health,
     machine,
     ...(demo ? { machineName: 'mac-mini.local' } : {}),
-    host: flags.host,
     port: flags.port,
-    allowedHosts: flags.allowedHosts,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
   });
-  server.listen(flags.port, flags.host, () => {
-    console.log(`minitart: the dashboard is at http://${flags.host}:${flags.port}`);
+  server.listen(flags.port, '127.0.0.1', () => {
+    console.log(`minitart: the dashboard is at http://127.0.0.1:${flags.port}`);
     if (flags.network === 'shared') {
       console.log('minitart: WARNING: --unsafe-shared-network lets jobs reach your LAN.');
     }
@@ -227,8 +219,6 @@ async function main(): Promise<number> {
     allowPositionals: true,
     options: {
       port: { type: 'string', default: process.env['MINITART_PORT'] ?? '4141' },
-      host: { type: 'string', default: process.env['MINITART_HOST'] ?? '127.0.0.1' },
-      'allow-host': { type: 'string', multiple: true, default: [] },
       'unsafe-shared-network': { type: 'boolean', default: false },
       demo: { type: 'boolean', default: false },
       from: { type: 'string' },
@@ -248,8 +238,6 @@ async function main(): Promise<number> {
   if (command === 'start') {
     await start({
       port,
-      host: values.host,
-      allowedHosts: values['allow-host'],
       network,
       demo: values.demo,
     });
@@ -317,8 +305,7 @@ async function main(): Promise<number> {
 
   if (command === 'service' && rest[0] === 'install') {
     const home = new Home();
-    const args = ['--port', String(port), '--host', values.host];
-    for (const name of values['allow-host']) args.push('--allow-host', name);
+    const args = ['--port', String(port)];
     if (network === 'shared') args.push('--unsafe-shared-network');
     const path = await installService({
       main: fileURLToPath(import.meta.url),

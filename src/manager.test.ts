@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isJobVm, Manager, RUN_SCRIPT, type DoneView } from './manager.ts';
 import { defaultSettings, type Settings } from './settings.ts';
-import { FakeGitHub, FakeTart } from './testing/fakes.ts';
+import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
 import type { Network } from './tart.ts';
 
@@ -20,7 +20,7 @@ function setup(options: { settings?: Partial<Settings>; network?: Network } = {}
     github: () => github,
     tart,
     network: options.network ?? 'softnet',
-    settings: { ...defaultSettings(machine), ...options.settings },
+    settings: { ...defaultSettings(machine), repos: SERVED, ...options.settings },
     saveSettings: (settings) => (saved.settings = settings),
     history: [],
     saveHistory: (history) => (saved.history = history),
@@ -131,13 +131,25 @@ test('a public repo is not served unless the owner allows it', async () => {
   assert.equal(jobVms(tart).length, 1);
 });
 
-test('a paused repo is not served', async () => {
-  const { github, tart, manager, settle } = setup({ settings: { pausedRepos: ['octo/app'] } });
+test('a repo the App is installed on is not served until the owner turns it on', async () => {
+  // What "install on all repositories" does: the App can see a repo nobody chose.
+  const { github, tart, manager, settle } = setup({ settings: { repos: [] } });
   github.queue('octo/app', ['minitart-linux']);
   await manager.tick();
   await settle();
   assert.deepEqual(jobVms(tart), []);
-  assert.equal(manager.snapshot().repos[0]?.state, 'paused');
+  assert.equal(manager.snapshot().repos[0]?.state, 'off');
+  assert.deepEqual(manager.snapshot().queued, [], 'its queue is not even read');
+
+  manager.updateSettings({ ...manager.settings, repos: ['octo/app'] });
+  await manager.tick();
+  await settle();
+  assert.equal(jobVms(tart).length, 1);
+  assert.equal(manager.snapshot().repos[0]?.state, 'watching');
+});
+
+test('a fresh install serves nothing', () => {
+  assert.deepEqual(defaultSettings(machine).repos, []);
 });
 
 test('no more VMs than the limit; the rest of the queue waits', async () => {

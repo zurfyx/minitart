@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { isJobVm, Manager } from './manager.ts';
 import { route } from './schedule.ts';
 import { defaultSettings, type Settings } from './settings.ts';
-import { FakeGitHub, FakeTart } from './testing/fakes.ts';
+import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -25,7 +25,7 @@ function setup(options: { settings?: Partial<Settings> } = {}) {
     github: () => github,
     tart,
     network: 'softnet',
-    settings: { ...defaultSettings(machine), ...options.settings },
+    settings: { ...defaultSettings(machine), repos: SERVED, ...options.settings },
     saveSettings: () => {},
     history: [],
     saveHistory: () => {},
@@ -222,7 +222,7 @@ test('pausing a repo lets a job that is already running finish', async () => {
   tart.print(name, 'Running job: long');
   await manager.tick();
 
-  manager.updateSettings({ ...manager.settings, pausedRepos: ['octo/app'] });
+  manager.updateSettings({ ...manager.settings, repos: [] });
   for (let i = 0; i < 10; i++) {
     advance(60_000);
     await manager.tick();

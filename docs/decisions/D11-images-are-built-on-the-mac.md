@@ -1,6 +1,6 @@
 # D11: Images are built on the Mac from an upstream image and a readable script
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

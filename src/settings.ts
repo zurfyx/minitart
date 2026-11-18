@@ -26,8 +26,12 @@ export interface Settings {
   idleSeconds: number;
   /** Public repos are skipped unless this is on (D05). */
   allowPublicRepos: boolean;
-  /** Repos the App can see that the owner has paused, as `owner/name`. */
-  pausedRepos: string[];
+  /**
+   * The repos this Mac serves, as `owner/name` (D03). A repo is served only when the GitHub
+   * App is installed on it and it is listed here: installing the App on a whole account
+   * serves nothing by itself.
+   */
+  repos: string[];
 }
 
 const GB = 1024 ** 3;
@@ -46,7 +50,7 @@ export function defaultSettings(machine: Machine): Settings {
     pollSeconds: 5,
     idleSeconds: 180,
     allowPublicRepos: false,
-    pausedRepos: [],
+    repos: [],
   };
 }
 
@@ -81,7 +85,7 @@ export function mergeSettings(base: Settings, patch: unknown, machine: Machine):
       given(input['allowPublicRepos'], base.allowPublicRepos),
       'allowPublicRepos',
     ),
-    pausedRepos: repoNames(given(input['pausedRepos'], base.pausedRepos), 'pausedRepos'),
+    repos: repoNames(given(input['repos'], base.repos), 'repos'),
   };
   // Each value can be in range while the whole is not: the VMs run at the same time.
   const vms = next.linux.max + next.macos.max;

@@ -19,10 +19,10 @@ test('defaults fit the machine', () => {
 
 test('a patch changes only what it names', () => {
   const base = defaultSettings(mini);
-  const next = mergeSettings(base, { linux: { max: 3 }, pausedRepos: ['octo/app'] }, mini);
+  const next = mergeSettings(base, { linux: { max: 3 }, repos: ['octo/app'] }, mini);
   assert.equal(next.linux.max, 3);
   assert.equal(next.linux.image, base.linux.image);
-  assert.deepEqual(next.pausedRepos, ['octo/app']);
+  assert.deepEqual(next.repos, ['octo/app']);
   assert.deepEqual(next.macos, base.macos);
 });
 
@@ -44,8 +44,9 @@ test('untrusted input is refused, not coerced', () => {
     { vm: { memoryMb: 1 } },
     { pollSeconds: 0 },
     { allowPublicRepos: 'yes' },
-    { pausedRepos: ['not a repo'] },
-    { pausedRepos: 'octo/app' },
+    { repos: ['not a repo'] },
+    { repos: 'octo/app' },
+    { pausedRepos: [] },
   ];
   for (const patch of bad) {
     assert.throws(() => mergeSettings(base, patch, mini), SettingsError, JSON.stringify(patch));

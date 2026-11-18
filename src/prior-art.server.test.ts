@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Manager } from './manager.ts';
 import { createDashboardServer } from './server.ts';
 import { defaultSettings } from './settings.ts';
-import { FakeGitHub, FakeTart } from './testing/fakes.ts';
+import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -31,7 +31,7 @@ async function setup() {
     github: () => github,
     tart,
     network: 'softnet',
-    settings: defaultSettings(machine),
+    settings: { ...defaultSettings(machine), repos: SERVED },
     saveSettings: () => {},
     history: [],
     saveHistory: () => {},
@@ -45,7 +45,6 @@ async function setup() {
     saveApp: () => {},
     health: () => [],
     machine,
-    host: '127.0.0.1',
     port,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
     isLocal: () => true,

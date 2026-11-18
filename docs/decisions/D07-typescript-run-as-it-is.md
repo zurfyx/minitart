@@ -1,6 +1,6 @@
 # D07: TypeScript that Node runs as it is: no build, no runtime dependencies
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 

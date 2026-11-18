@@ -4,6 +4,9 @@
 import type { GitHub, Job, Repo } from '../github/types.ts';
 import type { ExecOptions, Network, Tart, TartVm } from '../tart.ts';
 
+/** The repos the tests' owner has turned on. */
+export const SERVED = ['octo/app', 'octo/api', 'octo/site', 'octo/public', 'acme/api'];
+
 export class FakeGitHub implements GitHub {
   repoList: Repo[] = [];
   /** Thrown by every call while set. */

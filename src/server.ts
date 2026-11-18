@@ -1,6 +1,6 @@
-// The dashboard's HTTP server (D10). It serves one page and the state behind it, and it
-// accepts changes only from a browser on this Mac. There are no accounts: anyone who can
-// reach the port can read, so by default the port is on 127.0.0.1 only.
+// The dashboard's HTTP server (D10). It serves one page and the state behind it, to this Mac
+// only: it listens on 127.0.0.1, and refuses anything that did not come from there. There
+// are no accounts, because there is nobody else to tell apart.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -21,10 +21,7 @@ export interface ServerDeps {
   saveApp: (app: AppCredentials) => void;
   health: () => Check[];
   machine: Machine;
-  host: string;
   port: number;
-  /** Extra names the dashboard is opened by, such as a Tailscale MagicDNS name. */
-  allowedHosts?: readonly string[];
   dashboardDir: string;
   fetch?: Fetch;
   /** The Mac's name as the page shows it. */
@@ -58,28 +55,25 @@ export function isLoopback(address: string | undefined): boolean {
 
 export function createDashboardServer(deps: ServerDeps): Server {
   const fetchImpl = deps.fetch ?? fetch;
-  const hosts = new Set(
-    ['127.0.0.1', 'localhost', '[::1]', deps.host, ...(deps.allowedHosts ?? [])].map(
-      (name) => `${name.toLowerCase()}:${deps.port}`,
-    ),
-  );
+  const hosts = new Set(['127.0.0.1', 'localhost', '[::1]'].map((name) => `${name}:${deps.port}`));
   /** The pending "create the GitHub App" round trip: its secret and when it expires. */
   let setup: { state: string; expiresAt: number } | null = null;
 
-  const state = (local: boolean) => ({
+  const state = () => ({
     ...deps.manager.snapshot(),
     health: deps.health(),
     app: appView(deps.app()),
     machine: { name: deps.machineName ?? hostname(), ...deps.machine },
-    /** Whether this browser may change settings: only one on the Mac itself. */
-    canEdit: local,
   });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const host = (request.headers.host ?? '').toLowerCase();
     // A page on another site cannot read this one by pointing its own name at 127.0.0.1.
     if (!hosts.has(host)) return send(response, 421, 'Unknown host');
-    const local = (deps.isLocal ?? isLoopback)(request.socket.remoteAddress);
+    // The server listens on 127.0.0.1 only; this holds even if that is ever changed.
+    if (!(deps.isLocal ?? isLoopback)(request.socket.remoteAddress)) {
+      return send(response, 403, 'The dashboard is served to this Mac only');
+    }
     const url = new URL(request.url ?? '/', `http://${host}`);
     const path = url.pathname;
 
@@ -91,8 +85,8 @@ export function createDashboardServer(deps: ServerDeps): Server {
         response.end(body);
         return;
       }
-      if (path === '/api/state') return json(response, 200, state(local));
-      if (path === '/api/events') return events(request, response, local);
+      if (path === '/api/state') return json(response, 200, state());
+      if (path === '/api/events') return events(request, response);
 
       const vmLog = /^\/api\/vms\/(minitart-(?:linux|macos)-[0-9a-f]{6})\/log$/.exec(path);
       if (vmLog?.[1] !== undefined) {
@@ -116,7 +110,6 @@ export function createDashboardServer(deps: ServerDeps): Server {
       }
 
       if (path === '/setup/manifest') {
-        if (!local) return send(response, 403, 'Open the dashboard on the Mac itself');
         if (deps.app()) return send(response, 409, 'The GitHub App already exists');
         // Only this page may start the round trip: a browser says where a request came from.
         const site = request.headers['sec-fetch-site'];
@@ -137,7 +130,6 @@ export function createDashboardServer(deps: ServerDeps): Server {
       }
 
       if (path === '/setup/callback') {
-        if (!local) return send(response, 403, 'Open the dashboard on the Mac itself');
         const pending = setup;
         const given = url.searchParams.get('state') ?? '';
         // A request with the wrong secret changes nothing: it cannot cancel the real one.
@@ -164,7 +156,6 @@ export function createDashboardServer(deps: ServerDeps): Server {
     }
 
     if (request.method === 'POST' && path === '/api/settings') {
-      if (!local) return send(response, 403, 'Settings change only from the Mac itself');
       // A form on another site can post here; it cannot set this header pair.
       if (request.headers.origin !== `http://${host}`) return send(response, 403, 'Wrong origin');
       if (!(request.headers['content-type'] ?? '').startsWith('application/json')) {
@@ -182,18 +173,18 @@ export function createDashboardServer(deps: ServerDeps): Server {
         if (error instanceof SettingsError) return send(response, 400, error.message);
         throw error;
       }
-      return json(response, 200, state(local));
+      return json(response, 200, state());
     }
     return send(response, 405, 'Method not allowed');
   }
 
-  function events(request: IncomingMessage, response: ServerResponse, local: boolean): void {
+  function events(request: IncomingMessage, response: ServerResponse): void {
     response.writeHead(200, {
       ...SECURITY_HEADERS,
       'content-type': 'text/event-stream',
       connection: 'keep-alive',
     });
-    const push = () => response.write(`data: ${JSON.stringify(state(local))}\n\n`);
+    const push = () => response.write(`data: ${JSON.stringify(state())}\n\n`);
     // A VM prints many lines a second; the page needs the state a few times a second.
     let timer: NodeJS.Timeout | null = null;
     const unsubscribe = deps.manager.onChange(() => {

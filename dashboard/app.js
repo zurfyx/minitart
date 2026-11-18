@@ -32,7 +32,7 @@ const STATES = {
   cancelled: ['muted', '–', 'Cancelled'],
   lost: ['bad', '✕', 'Lost'],
   watching: ['ok', '●', 'Watching'],
-  paused: ['muted', '○', 'Paused'],
+  off: ['muted', '○', 'Not served'],
   public: ['warn', '!', 'Public, skipped'],
   ok: ['ok', '✓', 'OK'],
   fix: ['warn', '!', 'To fix'],
@@ -95,7 +95,7 @@ let logTimer = null;
 
 function render() {
   if (!state) return;
-  const { vms, queued, done, repos, settings, health, canEdit } = state;
+  const { vms, queued, done, repos, settings, health } = state;
 
   $('machine').textContent =
     `${state.machine.name} · ${state.machine.cpus} CPUs · ${Math.round(state.machine.memoryBytes / 1024 ** 3)} GB`;
@@ -111,8 +111,6 @@ function render() {
   );
 
   $('setup').hidden = state.app !== null || state.repos.length > 0;
-  $('create-app').hidden = !canEdit;
-  $('setup-remote').hidden = canEdit;
 
   $('slots').replaceChildren(
     ...['macos', 'linux'].map((pool) => {
@@ -212,11 +210,11 @@ function render() {
               repo.fullName,
               repo.error ? h('span', { class: 'note' }, status('fix', repo.error)) : null,
             ),
-            canEdit && repo.state !== 'public'
+            repo.state !== 'public'
               ? h(
                   'button',
-                  { type: 'button', class: 'quiet', onclick: () => togglePause(repo) },
-                  repo.state === 'paused' ? 'Resume' : 'Pause',
+                  { type: 'button', class: 'quiet', onclick: () => toggleServed(repo) },
+                  repo.state === 'watching' ? 'Stop serving' : 'Serve',
                 )
               : null,
           ),
@@ -227,7 +225,7 @@ function render() {
   help.replaceChildren();
   if (state.app) {
     help.append(
-      'The list is the repos the GitHub App is installed on. ',
+      'A repo is served when the GitHub App is installed on it and it is turned on here. ',
       h(
         'a',
         { href: `${state.app.htmlUrl}/installations/new`, target: '_blank', rel: 'noreferrer' },
@@ -252,7 +250,6 @@ function render() {
   );
 
   const form = /** @type {HTMLFormElement} */ ($('settings'));
-  form.hidden = !canEdit;
   // Never overwrite a field while it is being typed in.
   if (!form.contains(document.activeElement) && !form.dataset.dirty) {
     form.elements.linux.value = settings.linux.max;
@@ -334,11 +331,11 @@ async function saveSettings(patch) {
   render();
 }
 
-function togglePause(repo) {
-  const paused = new Set(state.settings.pausedRepos);
-  if (repo.state === 'paused') paused.delete(repo.fullName);
-  else paused.add(repo.fullName);
-  saveSettings({ pausedRepos: [...paused] }).catch((error) => alert(error.message));
+function toggleServed(repo) {
+  const served = new Set(state.settings.repos);
+  if (repo.state === 'watching') served.delete(repo.fullName);
+  else served.add(repo.fullName);
+  saveSettings({ repos: [...served].sort() }).catch((error) => alert(error.message));
 }
 
 const settingsForm = /** @type {HTMLFormElement} */ ($('settings'));

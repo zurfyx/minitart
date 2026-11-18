@@ -27,8 +27,9 @@ purpose.
 2. **A job reaches the internet and nothing of yours.** Not this Mac's files, not its
    keychain, not your router, not your NAS, not your tailnet. The network is an allowlist:
    public internet addresses, and nothing else ([security](security.md)).
-3. **GitHub decides which repos are served.** The allowlist is the list of repos the GitHub
-   App is installed on, changed on GitHub and nowhere else. Public repos are skipped unless
+3. **A repo is served only when you said so twice.** The GitHub App must be installed on
+   it, which GitHub enforces, and you must have turned it on in the dashboard, so installing
+   the App on a whole account serves nothing by itself. Public repos are skipped unless
    you say otherwise.
 4. **No secret a job can use against you.** A VM holds one thing of value: the single-use
    config of its own runner. The App's key stays on the Mac.

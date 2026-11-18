@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isJobVm, Manager } from './manager.ts';
 import { defaultSettings, type Settings } from './settings.ts';
-import { FakeGitHub, FakeTart } from './testing/fakes.ts';
+import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -21,7 +21,7 @@ function setup(options: { settings?: Partial<Settings> } = {}) {
     github: () => github,
     tart,
     network: 'softnet',
-    settings: { ...defaultSettings(machine), ...options.settings },
+    settings: { ...defaultSettings(machine), repos: SERVED, ...options.settings },
     saveSettings: () => {},
     history: [],
     saveHistory: () => {},

@@ -34,6 +34,8 @@ export function demoWorld(): {
   github.repoList = [
     ...REPOS.map((fullName) => ({ fullName, private: true })),
     { fullName: 'octo/dotfiles', private: false },
+    // Installed on, and not turned on: what a repo looks like before the owner serves it.
+    { fullName: 'octo/notes', private: true },
   ];
   const tart = new FakeTart();
   tart.addImage('minitart-base-linux');
