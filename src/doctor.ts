@@ -194,15 +194,21 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
   }
 
   for (const name of input.tailnet ?? []) {
-    // Funnel would put a page with no login, that changes settings, on the internet.
+    const why = {
+      // A page with no login, that changes settings, on the internet.
+      funnel: `Tailscale Funnel publishes ${name.host} to the internet, so the dashboard does not answer to it`,
+      'plain-http': `${name.host} is plain HTTP, so the dashboard does not answer to it`,
+      'raw-tcp': `Tailscale forwards bare TCP (${name.host}) to the dashboard, which no name check can guard`,
+    };
     checks.push({
       id: `tailnet-${name.host}`,
-      ok: !name.funnel,
+      ok: name.refused === null,
       title: 'Tailnet',
-      detail: name.funnel
-        ? `Tailscale Funnel publishes ${name.host} to the internet, so the dashboard does not answer to it`
-        : `The dashboard is at ${name.origin} for your tailnet`,
-      fix: name.funnel ? 'tailscale funnel reset' : null,
+      detail:
+        name.refused === null
+          ? `The dashboard is at ${name.origin} for your tailnet`
+          : why[name.refused],
+      fix: name.fix,
     });
   }
 

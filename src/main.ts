@@ -167,11 +167,9 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   let newestAt = 0;
   async function check(): Promise<void> {
     // One at a time: each check runs a few commands.
-    if (checking) return;
+    if (demo || checking) return;
     checking = true;
     try {
-      tailnet = await readTailnet(flags.port);
-      // The demo has no Mac to check, only names to answer to.
       if (demo) return;
       // GitHub's newest runner version is asked for once a day.
       if (Date.now() - newestAt > 24 * 60 * 60_000) {
@@ -190,6 +188,13 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
       checking = false;
     }
   }
+  // The tailnet names are read on their own, so nothing else that is slow can keep a name
+  // that has just been published to the internet answered for longer.
+  const readNames = async () => {
+    tailnet = await readTailnet(flags.port);
+  };
+  await readNames();
+  const everyHalfMinute = setInterval(() => void readNames(), 30_000);
   await check();
   const prune = () =>
     home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
@@ -220,7 +225,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   server.listen(flags.port, '127.0.0.1', () => {
     console.log(`minitart: the dashboard is at http://127.0.0.1:${flags.port}`);
     for (const name of tailnet) {
-      if (!name.funnel) console.log(`minitart: and at ${name.origin} for your tailnet`);
+      if (name.refused === null) console.log(`minitart: and at ${name.origin} for your tailnet`);
     }
     if (flags.network === 'shared') {
       console.log('minitart: WARNING: --unsafe-shared-network lets jobs reach your LAN.');
@@ -234,6 +239,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     stopping = true;
     console.log('minitart: stopping, and deleting every VM');
     clearInterval(everyMinute);
+    clearInterval(everyHalfMinute);
     demo?.stop();
     server.close();
     server.closeAllConnections();

@@ -225,7 +225,8 @@ test('the tailnet gets the same dashboard, at the name Tailscale forwards', asyn
     host: 'minitart.example.ts.net',
     origin: 'https://minitart.example.ts.net',
     service: 'svc:minitart',
-    funnel: false,
+    refused: null,
+    fix: null,
   };
   const { port, manager } = await setup({ tailnet: [name] });
   const get = (path: string, host = name.host) =>
@@ -252,18 +253,45 @@ test('the tailnet gets the same dashboard, at the name Tailscale forwards', asyn
   assert.ok(manifest.includes('https://minitart.example.ts.net/setup/callback'));
 });
 
-test('a name that Funnel publishes to the internet is never answered to', async () => {
+test('a name with something against it is never answered to', async () => {
+  for (const refused of ['funnel', 'plain-http'] as const) {
+    const name = {
+      host: 'mini.example.ts.net:8443',
+      origin: 'https://mini.example.ts.net:8443',
+      service: null,
+      refused,
+      fix: null,
+    };
+    const { port } = await setup({ tailnet: [name] });
+    const response = await viaTailscale(
+      port,
+      name.host,
+      'GET /api/state HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n',
+    );
+    assert.match(response, /^HTTP\/1\.1 421/, refused);
+  }
+});
+
+test('what Funnel brings in from the internet is refused, whatever the names say', async () => {
+  // Funnel was switched on a moment ago, and the names have not been read again yet.
   const name = {
-    host: 'mini.example.ts.net:8443',
-    origin: 'https://mini.example.ts.net:8443',
+    host: 'minitart.example.ts.net',
+    origin: 'https://minitart.example.ts.net',
     service: null,
-    funnel: true,
+    refused: null,
+    fix: null,
   };
   const { port } = await setup({ tailnet: [name] });
-  const response = await viaTailscale(
-    port,
-    name.host,
-    'GET /api/state HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n',
+  const get = (extra: string, host = name.host) =>
+    viaTailscale(
+      port,
+      host,
+      `GET /api/state HTTP/1.1\r\nHost: {host}\r\n${extra}Connection: close\r\n\r\n`,
+    );
+  assert.match(await get(''), /^HTTP\/1\.1 200/);
+  assert.match(await get('Tailscale-Funnel-Request: ?1\r\n'), /^HTTP\/1\.1 421/);
+  assert.match(
+    await get('Tailscale-Funnel-Request: ?1\r\n', `127.0.0.1:${port}`),
+    /^HTTP\/1\.1 421/,
   );
-  assert.match(response, /^HTTP\/1\.1 421/);
 });

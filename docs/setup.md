@@ -157,7 +157,7 @@ unless the Mac logs in by itself, and macOS allows that only with FileVault off.
 
 To open the dashboard from your phone or laptop, let Tailscale forward a name on your
 tailnet to it. minitart keeps listening on `127.0.0.1` only; it notices what Tailscale
-forwards and answers to it, within a minute. **Everyone your tailnet lets reach that name
+forwards and answers to it, within half a minute. **Everyone your tailnet lets reach that name
 can do everything you can do at the Mac.**
 
 For a name of its own, `https://minitart.<tailnet>.ts.net`, use a Tailscale Service. Part of
@@ -186,8 +186,11 @@ Check: `node src/main.ts doctor` shows `ok  Tailnet: The dashboard is at https:/
 address opens from another device on your tailnet. The first request can take a few seconds
 while Tailscale gets the certificate.
 
-Do not use `tailscale funnel` for it: that publishes to the internet, and minitart refuses
-to answer to a name Funnel publishes.
+Use `--https`, as above: minitart does not answer to a plain-HTTP name. And do not use
+`tailscale funnel` for it: that publishes to the internet, and minitart refuses whatever
+comes in that way. If `doctor` shows a `FIX  Tailnet` line, it comes with the command that
+puts that one name right; `tailscale funnel reset` is not it, since it removes every
+forward on the Mac.
 
 ## Later
 

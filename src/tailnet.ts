@@ -11,8 +11,15 @@ export interface TailnetName {
   origin: string;
   /** The Tailscale Service the name belongs to (`svc:minitart`), or `null` for the Mac's own name. */
   service: string | null;
-  /** Whether Tailscale Funnel publishes the name to the whole internet. */
-  funnel: boolean;
+  /**
+   * Why the dashboard does not answer to this name, or `null` when it does.
+   * `funnel`: Tailscale Funnel publishes it to the whole internet.
+   * `plain-http`: it is not HTTPS, and a browser guards a plain-HTTP page less.
+   * `raw-tcp`: Tailscale forwards bare TCP, so there is no name to check at all.
+   */
+  refused: 'funnel' | 'plain-http' | 'raw-tcp' | null;
+  /** The command that puts it right, when there is one. */
+  fix: string | null;
 }
 
 type Json = Record<string, unknown>;
@@ -23,6 +30,24 @@ function object(value: unknown): Json {
     : {};
 }
 
+/** Whether a Serve target is this Mac's dashboard: `http://127.0.0.1:<port>`, however written. */
+function isDashboard(target: unknown, port: number): boolean {
+  if (typeof target !== 'string') return false;
+  let url: URL;
+  try {
+    url = new URL(target.includes('://') ? target : `http://${target}`);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === '127.0.0.1' || url.hostname === 'localhost') &&
+    url.port === String(port) &&
+    url.pathname === '/' &&
+    url.search === ''
+  );
+}
+
 /**
  * The tailnet names that Tailscale Serve forwards to `port` on this Mac, from the output of
  * `tailscale serve status --json`. The config is read defensively: anything not understood
@@ -30,38 +55,65 @@ function object(value: unknown): Json {
  */
 export function tailnetNames(config: unknown, port: number): TailnetName[] {
   const root = object(config);
-  const targets = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
-  const funnels = object(root['AllowFunnel']);
-  const names: TailnetName[] = [];
+  const sections: [section: Json, service: string | null][] = [[root, null]];
+  for (const [service, section] of Object.entries(object(root['Services']))) {
+    sections.push([object(section), service]);
+  }
+  for (const section of Object.values(object(root['Foreground']))) {
+    sections.push([object(section), null]);
+  }
+  // Funnel is on for a name if any part of the config says so.
+  const funnelled = new Set<string>();
+  for (const [section] of sections) {
+    for (const [hostPort, on] of Object.entries(object(section['AllowFunnel']))) {
+      if (on === true) funnelled.add(hostPort.toLowerCase());
+    }
+  }
 
-  const read = (section: Json, service: string | null) => {
+  const names: TailnetName[] = [];
+  for (const [section, service] of sections) {
     const tcp = object(section['TCP']);
     for (const [hostPort, site] of Object.entries(object(section['Web']))) {
       const handlers = Object.values(object(object(site)['Handlers']));
       // Only a name that forwards its whole self here: a path of some other site does not
       // make that site minitart's.
       const ours =
-        handlers.length > 0 && handlers.every((h) => targets.has(String(object(h)['Proxy'])));
+        handlers.length > 0 && handlers.every((h) => isDashboard(object(h)['Proxy'], port));
       const match = /^([a-z0-9.-]+):(\d+)$/i.exec(hostPort);
       if (!ours || !match?.[1] || !match[2]) continue;
       const name = match[1].toLowerCase();
-      const https = object(tcp[match[2]])['HTTPS'] === true;
-      const standard = match[2] === (https ? '443' : '80');
-      const host = standard ? name : `${name}:${match[2]}`;
+      const outside = match[2];
+      const https = object(tcp[outside])['HTTPS'] === true;
+      const host = outside === (https ? '443' : '80') ? name : `${name}:${outside}`;
+      const flag = service === null ? '' : `--service=${service} `;
+      // Serving the name again, as HTTPS and without Funnel, replaces what is there for that
+      // port and touches nothing else.
+      const again = `tailscale serve ${flag}--bg --https=${https ? outside : '443'} http://127.0.0.1:${port}`;
+      const refused = funnelled.has(hostPort.toLowerCase())
+        ? 'funnel'
+        : https
+          ? null
+          : 'plain-http';
       names.push({
         host,
         origin: `${https ? 'https' : 'http'}://${host}`,
         service,
-        funnel: funnels[hostPort] === true || object(section['AllowFunnel'])[hostPort] === true,
+        refused,
+        fix: refused === null ? null : again,
       });
     }
-  };
-
-  read(root, null);
-  for (const [service, section] of Object.entries(object(root['Services']))) {
-    read(object(section), service);
+    // Bare TCP forwarded to the dashboard carries whatever Host the far end likes.
+    for (const [outside, handler] of Object.entries(tcp)) {
+      if (!isDashboard(object(handler)['TCPForward'], port)) continue;
+      names.push({
+        host: `tcp:${outside}`,
+        origin: '',
+        service,
+        refused: 'raw-tcp',
+        fix: `tailscale serve --tcp=${outside} off`,
+      });
+    }
   }
-  for (const section of Object.values(object(root['Foreground']))) read(object(section), null);
   return names;
 }
 

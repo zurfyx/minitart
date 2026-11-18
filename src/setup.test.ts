@@ -107,13 +107,15 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
         host: 'minitart.example.ts.net',
         origin: 'https://minitart.example.ts.net',
         service: 'svc:minitart',
-        funnel: false,
+        refused: null,
+        fix: null,
       },
       {
         host: 'mini.example.ts.net:8443',
         origin: 'https://mini.example.ts.net:8443',
         service: null,
-        funnel: true,
+        refused: 'funnel',
+        fix: 'tailscale serve --bg --https=8443 http://127.0.0.1:4141',
       },
     ],
   });
@@ -130,7 +132,10 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
     /https:\/\/minitart\.example\.ts\.net/,
   );
   assert.equal(byId['tailnet-mini.example.ts.net:8443']?.ok, false);
-  assert.match(byId['tailnet-mini.example.ts.net:8443']?.fix ?? '', /funnel/);
+  assert.equal(
+    byId['tailnet-mini.example.ts.net:8443']?.fix,
+    'tailscale serve --bg --https=8443 http://127.0.0.1:4141',
+  );
   assert.match(byId['login']?.fix ?? '', /FileVault/);
 });
 

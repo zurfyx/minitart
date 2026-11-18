@@ -117,7 +117,10 @@ permission.
   your tailnet lets reach that name can do everything someone at the Mac can: see every job
   and log, change which repos are served, create the GitHub App. There are no accounts in
   minitart; who gets in is your tailnet's access rules.
-- **Never the internet.** A name that Tailscale Funnel publishes is not answered to.
+- **Never the internet.** A name that Tailscale Funnel publishes is not answered to, and a
+  request that Tailscale marks as arriving through Funnel is refused outright. `doctor` also
+  flags bare TCP forwarded to the dashboard: that carries no name to check, so do not set it
+  up.
 - Requests under any other `Host` are refused, so a web page cannot read the dashboard by
   pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
 - Job, workflow and repo names come from GitHub and are written to the page as text, never

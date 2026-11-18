@@ -25,8 +25,8 @@ export interface ServerDeps {
   machine: Machine;
   port: number;
   /**
-   * The tailnet names Tailscale forwards to this server (D20). A name that Funnel also
-   * publishes to the internet is never answered to.
+   * The tailnet names Tailscale forwards to this server (D20). One with something against
+   * it (Funnel, plain HTTP) is never answered to.
    */
   tailnet?: () => readonly TailnetName[];
   dashboardDir: string;
@@ -78,10 +78,13 @@ export function createDashboardServer(deps: ServerDeps): Server {
     // A page on another site cannot read this one by pointing its own name at 127.0.0.1.
     // The page is opened at 127.0.0.1, or at a name Tailscale forwards here. Anything else is
     // a page on another site pointing a name of its own at this port.
-    const origin = hosts.has(host)
-      ? `http://${host}`
-      : (deps.tailnet?.().find((name) => name.host === host && !name.funnel)?.origin ?? null);
+    const origin = hosts.has(host) ? `http://${host}` : tailnetOrigin(deps.tailnet?.() ?? [], host);
     if (origin === null) return send(response, 421, 'Unknown host');
+    // Tailscale marks what Funnel brings in from the internet, and strips the mark from
+    // anything a client sends. Refusing it does not wait for the names to be read again.
+    if (request.headers['tailscale-funnel-request'] !== undefined) {
+      return send(response, 421, 'Not served to the internet');
+    }
     // The server listens on 127.0.0.1 only, and Tailscale's proxy connects from there too;
     // this holds even if the listening address is ever changed.
     if (!(deps.isLocal ?? isLoopback)(request.socket.remoteAddress)) {
@@ -221,6 +224,13 @@ export function createDashboardServer(deps: ServerDeps): Server {
       console.error(error);
     });
   });
+}
+
+/** The origin to answer `host` under, if it is a tailnet name with nothing against it. */
+function tailnetOrigin(names: readonly TailnetName[], host: string): string | null {
+  const matching = names.filter((name) => name.host === host);
+  if (matching.length === 0 || matching.some((name) => name.refused !== null)) return null;
+  return matching[0]?.origin ?? null;
 }
 
 function appView(app: AppCredentials | null): { slug: string; htmlUrl: string } | null {
