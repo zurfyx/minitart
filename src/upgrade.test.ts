@@ -10,7 +10,7 @@ import { createDashboardServer } from './server.ts';
 import { defaultSettings } from './settings.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { plist } from './service.ts';
-import { installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
+import { BREW_SERVICE_LABELS, installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
 import { DEVELOPMENT, readVersion } from './version.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
@@ -154,6 +154,11 @@ test('an upgrade changes the software, puts right what needs the password, and r
       '/opt/homebrew/bin/node /Users/me/minitart/src/main.ts service install --port 4141',
     ],
   );
+});
+
+test("Homebrew's service is looked for under both names Homebrew has given it", () => {
+  // Found by installing 0.1.0 for real: the Homebrew on the Mac it was built for says sh.brew.
+  assert.deepEqual(BREW_SERVICE_LABELS, ['sh.brew.minitart', 'homebrew.mxcl.minitart']);
 });
 
 test('an upgrade restarts the service with the flags it already runs with', () => {

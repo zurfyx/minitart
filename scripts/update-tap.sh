@@ -19,6 +19,18 @@ esac
 SHA256=$(gh release download "$TAG" --repo "$SOURCE" --pattern "minitart-$VERSION.tar.gz.sha256" --output - | cut -d' ' -f1)
 node scripts/release.mjs formula "$VERSION" "$SHA256" > formula.rb
 
+# GitHub answers 502 now and then. A step that only failed is tried again, twice.
+retry() {
+  tries=1
+  until "$@"; do
+    if [ "$tries" -ge 3 ]; then
+      return 1
+    fi
+    tries=$((tries + 1))
+    sleep 10
+  done
+}
+
 current() {
   gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true
 }
@@ -48,7 +60,7 @@ while :; do
   # An open proposal for this branch is picked up; a merged or closed one is not.
   PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
   if [ -z "$PR" ]; then
-    gh pr create --repo "$TAP" --head "$BRANCH" --base main \
+    retry gh pr create --repo "$TAP" --head "$BRANCH" --base main \
       --title "minitart $VERSION" \
       --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null
     PR=$(gh pr list --repo "$TAP" --head "$BRANCH" --state open --json number --jq '.[0].number')

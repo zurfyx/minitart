@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
 import { runChecks, type Check } from './doctor.ts';
-import { AppAuth, parseAppCredentials, type AppCredentials } from './github/app.ts';
+import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
 import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
@@ -21,7 +21,7 @@ import { installService, LABEL, plistPath, uninstallService } from './service.ts
 import { defaultSettings, mergeSettings, type Pool, type Settings } from './settings.ts';
 import { readTailnet, type TailnetName } from './tailnet.ts';
 import { TartCli, type Network, type Tart } from './tart.ts';
-import { installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
+import { BREW_SERVICE_LABELS, installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
 import { VERSION } from './version.ts';
 
 const USAGE = `minitart: GitHub Actions runners on your own Mac, every job in a fresh VM
@@ -166,6 +166,15 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   const connect = (credentials: AppCredentials) =>
     new GitHubClient(new AppAuth(credentials, fetch, Date.now, warn));
   let github: GitHub | null = demo?.github ?? (app ? connect(app) : null);
+  // An App can be renamed on GitHub, which changes its address: the saved one is refreshed.
+  const refreshApp = async () => {
+    if (!app || !home) return;
+    const now = await appIdentity(app).catch(() => null);
+    if (now === null || (now.slug === app.slug && now.htmlUrl === app.htmlUrl)) return;
+    app = { ...app, ...now };
+    home.writeJson('app.json', app);
+  };
+  void refreshApp();
   let health: Check[] = [];
 
   const stamp = (at: number) => new Date(at).toISOString();
@@ -368,9 +377,10 @@ async function main(): Promise<number> {
     // How minitart is kept running here, and with which flags: the service's own, not this
     // command's defaults.
     const ownPlist = existsSync(plistPath()) ? readFileSync(plistPath(), 'utf8') : null;
-    const brewService =
-      spawnSync('launchctl', ['print', `gui/${process.getuid?.() ?? 0}/homebrew.mxcl.minitart`])
-        .status === 0;
+    const brewService = BREW_SERVICE_LABELS.some(
+      (label) =>
+        spawnSync('launchctl', ['print', `gui/${process.getuid?.() ?? 0}/${label}`]).status === 0,
+    );
     const service = ownPlist !== null ? 'own' : brewService ? 'brew' : 'none';
     const flags = ownPlist !== null ? serviceArgs(ownPlist) : [];
     const servicePort = Number(flags[flags.indexOf('--port') + 1]);

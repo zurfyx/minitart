@@ -162,6 +162,25 @@ export class AppAuth implements Auth {
   }
 }
 
+/** What the App is called on GitHub now, and where its page is. Both change with a rename. */
+export async function appIdentity(
+  app: Pick<AppCredentials, 'appId' | 'pem'>,
+  fetchImpl: Fetch = fetch,
+  now: () => number = Date.now,
+): Promise<{ slug: string; htmlUrl: string }> {
+  const response = await fetchImpl(`${API}/app`, { headers: githubHeaders(appJwt(app, now())) });
+  await expectOk(response, 'Reading the GitHub App');
+  const body = (await response.json()) as { slug?: unknown; html_url?: unknown };
+  if (typeof body.slug !== 'string' || typeof body.html_url !== 'string') {
+    throw new Error('GitHub did not say what the App is called');
+  }
+  // Only ever a page on github.com: the dashboard links to it.
+  if (!/^https:\/\/github\.com\/apps\/[A-Za-z0-9-]+$/.test(body.html_url)) {
+    throw new Error('GitHub gave an address for the App that is not an App page');
+  }
+  return { slug: body.slug, htmlUrl: body.html_url };
+}
+
 /**
  * The App manifest (D03): the form the dashboard posts to GitHub, so creating the App is one
  * click. It asks for exactly what registering a runner and reading the queue need.

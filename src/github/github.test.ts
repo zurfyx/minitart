@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { createVerify, generateKeyPairSync } from 'node:crypto';
 import { test } from 'node:test';
-import { AppAuth, appJwt, appManifest, convertManifestCode, parseAppCredentials } from './app.ts';
+import {
+  AppAuth,
+  appIdentity,
+  appJwt,
+  appManifest,
+  convertManifestCode,
+  parseAppCredentials,
+} from './app.ts';
 import { GitHubClient, type Fetch } from './client.ts';
 import { GitHubError } from './types.ts';
 
@@ -305,4 +312,21 @@ test('an installation GitHub fails on for a moment keeps its repos; one GitHub r
   second = 'suspended';
   assert.deepEqual(await names(), ['octo/app']);
   await assert.rejects(auth.token('acme/api'), /not installed/);
+});
+
+test('the App is known by what GitHub calls it now, so a rename does not leave a dead link', async () => {
+  const { fetch, calls } = fakeFetch({
+    'GET /app': () => json({ slug: 'minitart', html_url: 'https://github.com/apps/minitart' }),
+  });
+  assert.deepEqual(await appIdentity(app, fetch), {
+    slug: 'minitart',
+    htmlUrl: 'https://github.com/apps/minitart',
+  });
+  assert.match(calls[0]?.headers['authorization'] ?? '', /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+
+  // The dashboard links to this address: nothing but an App's page on github.com is taken.
+  for (const html_url of ['https://evil.example/apps/minitart', 'javascript:alert(1)', 7]) {
+    const odd = fakeFetch({ 'GET /app': () => json({ slug: 'minitart', html_url }) });
+    await assert.rejects(appIdentity(app, odd.fetch));
+  }
 });
