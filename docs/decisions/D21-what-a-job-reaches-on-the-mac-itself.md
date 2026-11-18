@@ -39,8 +39,13 @@ replace.
   (`bridge100`, `bridge101`, …). The rules name the first thirty-two; minitart never runs
   more than ten VMs.
 - The rules apply to every VM on those interfaces, not only minitart's: a VM of the owner's
-  own, on Tart's default network, also stops reaching the Mac's services. DHCP, DNS and the
-  internet are unaffected.
+  own also stops reaching the Mac's services at its gateway. What the Mac itself starts
+  toward a VM (`ssh` into one, say) still works, and so do DHCP, DNS and the internet.
+- The rules cover the gateway address. Keeping a VM from the Mac's other addresses, on the
+  LAN and the tailnet, is Softnet's part ([D04](D04-the-internet-and-nothing-private.md)); a
+  VM started by hand on Tart's default network has only this half.
+- `doctor` can see that the two files are in place, not that pf has the rules loaded:
+  reading pf's state takes root. `selftest` is what shows they work.
 - A job still reaches the Mac's DNS resolver, and so can look up names the Mac can.
 - pf must be enabled; the LaunchDaemon enables it. On a Mac with no other pf rules that
   changes nothing else.

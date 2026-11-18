@@ -10,6 +10,6 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 launchctl bootout system/sh.rovira.minitart.firewall 2>/dev/null || true
-/sbin/pfctl -a com.apple/251.minitart -F all 2>/dev/null || true
+/sbin/pfctl -a com.apple/251.minitart -F rules 2>/dev/null || true
 rm -f /Library/LaunchDaemons/sh.rovira.minitart.firewall.plist /etc/pf.anchors/minitart
 echo "Removed. VMs can reach this Mac's own services at their gateway again."

@@ -35,9 +35,13 @@ trap 'rm -f "$NEW"' EXIT
   echo "# A VM reaches this Mac for DHCP and DNS, and for nothing else."
   n=100
   while [ "$n" -le 131 ]; do
-    echo "pass  in quick on bridge$n proto udp from any to any port { 53, 67 }"
+    # What the Mac starts toward a VM is its own business, and its answers come back.
+    echo "pass  out quick on bridge$n keep state"
+    # DHCP, which is asked for by broadcast, and DNS.
+    echo "pass  in quick on bridge$n proto udp from any to { (bridge$n), 255.255.255.255 } port { 53, 67 }"
     echo "pass  in quick on bridge$n proto tcp from any to (bridge$n) port 53"
-    echo "block in quick on bridge$n from any to { (bridge$n), (bridge$n:broadcast), 255.255.255.255, 224.0.0.0/4 }"
+    # Everything else addressed to the Mac on this network: to it, to all, to groups.
+    echo "block in quick on bridge$n from any to { (bridge$n), (bridge$n:broadcast), 255.255.255.255, 224.0.0.0/4, ff00::/8 }"
     n=$((n + 1))
   done
 } > "$NEW"
@@ -71,12 +75,22 @@ PLIST
 chmod 644 "$DAEMON"
 chown root:wheel "$DAEMON"
 
+# Loaded now, before launchd is told, so the two never load the same anchor at once. pfctl
+# always warns on stderr that -f could flush the system's rules; with -a it touches only
+# this anchor, so the warning is dropped and the exit status is what counts.
+/sbin/pfctl -E 2>/dev/null || true
+if ! /sbin/pfctl -a "$NAME" -f "$ANCHOR" 2>/dev/null; then
+  echo "pf did not load the rules:" >&2
+  /sbin/pfctl -a "$NAME" -f "$ANCHOR" >&2 || true
+  exit 1
+fi
 launchctl bootout system/sh.rovira.minitart.firewall 2>/dev/null || true
 launchctl bootstrap system "$DAEMON"
-# Loaded now as well, without waiting for launchd.
-/sbin/pfctl -E 2>/dev/null || true
-/sbin/pfctl -a "$NAME" -f "$ANCHOR" 2>/dev/null
 
 RULES=$(/sbin/pfctl -a "$NAME" -sr 2>/dev/null | wc -l | tr -d ' ')
+if [ "$RULES" -eq 0 ]; then
+  echo "The files are in place, but pf shows no rules in $NAME. Nothing is being blocked." >&2
+  exit 1
+fi
 echo "Installed: $RULES rules loaded in $NAME."
 echo "Check it from inside a VM: node src/main.ts selftest"

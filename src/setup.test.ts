@@ -320,21 +320,19 @@ test('doctor: the firewall that closes this Mac to its VMs is part of the setup'
 test('the firewall script writes the version doctor looks for, and passes only DHCP and DNS', () => {
   const script = read('../firewall/install.sh');
   assert.ok(script.includes(`echo "# ${FIREWALL_VERSION}.`));
-  const rules = script.split('\n').filter((line) => /^\s*echo "(pass|block) /.test(line));
-  assert.equal(rules.length, 3);
-  assert.match(
-    rules[0] ?? '',
-    /pass {2}in quick on bridge\$n proto udp from any to any port \{ 53, 67 \}/,
-  );
-  assert.match(
-    rules[1] ?? '',
-    /pass {2}in quick on bridge\$n proto tcp from any to \(bridge\$n\) port 53/,
-  );
-  assert.match(
-    rules[2] ?? '',
-    /^\s*echo "block in quick on bridge\$n from any to \{ \(bridge\$n\)/,
-  );
-  // Checked before anything is written, and nothing but its own two files is touched.
+  const rules = script
+    .split('\n')
+    .map((line) => /^\s*echo "((?:pass|block) .*)"$/.exec(line)?.[1])
+    .filter((rule) => rule !== undefined);
+  assert.deepEqual(rules, [
+    'pass  out quick on bridge$n keep state',
+    'pass  in quick on bridge$n proto udp from any to { (bridge$n), 255.255.255.255 } port { 53, 67 }',
+    'pass  in quick on bridge$n proto tcp from any to (bridge$n) port 53',
+    'block in quick on bridge$n from any to { (bridge$n), (bridge$n:broadcast), 255.255.255.255, 224.0.0.0/4, ff00::/8 }',
+  ]);
+  // Checked before anything is written, loaded before it is called installed, and nothing
+  // but its own two files is touched.
   assert.ok(script.indexOf('pfctl -n') < script.indexOf('install -m 644'));
-  assert.ok(!script.includes('/etc/pf.conf"') && !/>\s*\/etc\/pf\.conf/.test(script));
+  assert.match(script, /if \[ "\$RULES" -eq 0 \]; then/);
+  assert.ok(!/>\s*\/etc\/pf\.conf/.test(script));
 });
