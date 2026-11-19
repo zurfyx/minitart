@@ -120,7 +120,17 @@ export class SettingsError extends Error {}
  * `base` with the fields of `patch` laid over it. `patch` is untrusted (a file on disk, a
  * request body): an unknown field or a value out of range throws.
  */
-export function mergeSettings(base: Settings, patch: unknown, machine: Machine): Settings {
+export function mergeSettings(
+  base: Settings,
+  patch: unknown,
+  machine: Machine,
+  /**
+   * Set for the saved file: a provider or runner the price list no longer has is dropped or
+   * reset to its default, since a price list that changes must not cost the owner their
+   * settings. What the dashboard sends is checked strictly.
+   */
+  options: { saved?: boolean } = {},
+): Settings {
   const input = section(patch, 'settings', Object.keys(base));
   const pool = (name: Pool, limit: number) => {
     if (input[name] === undefined) return base[name];
@@ -146,7 +156,10 @@ export function mergeSettings(base: Settings, patch: unknown, machine: Machine):
       'allowPublicRepos',
     ),
     repos: repoNames(given(input['repos'], base.repos), 'repos'),
-    cost: input['cost'] === undefined ? base.cost : costSettings(input['cost'], base.cost),
+    cost:
+      input['cost'] === undefined
+        ? base.cost
+        : costSettings(input['cost'], base.cost, options.saved ?? false),
   };
   // Each value can be in range while the whole is not: the VMs run at the same time.
   const vms = next.linux.max + next.macos.max;
@@ -205,10 +218,10 @@ function imageName(value: unknown, name: string): string {
   return value;
 }
 
-function costSettings(value: unknown, base: CostSettings): CostSettings {
+function costSettings(value: unknown, base: CostSettings, saved: boolean): CostSettings {
   const input = section(value, 'cost', ['compare', 'macUsd', 'lifeMonths', 'watts', 'kwhUsd']);
   return {
-    compare: comparisons(given(input['compare'], base.compare)),
+    compare: comparisons(given(input['compare'], base.compare), saved),
     macUsd: amount(given(input['macUsd'], base.macUsd), 'cost.macUsd', 100_000),
     lifeMonths: integer(given(input['lifeMonths'], base.lifeMonths), 'cost.lifeMonths', 1, 120),
     watts: amount(given(input['watts'], base.watts), 'cost.watts', 2000),
@@ -217,26 +230,33 @@ function costSettings(value: unknown, base: CostSettings): CostSettings {
 }
 
 /** Providers and runners that are in the price list, each provider once. */
-function comparisons(value: unknown): CostSettings['compare'] {
-  if (!Array.isArray(value) || value.length > PROVIDERS.length) {
+function comparisons(value: unknown, saved: boolean): CostSettings['compare'] {
+  if (!Array.isArray(value) || value.length > (saved ? 100 : PROVIDERS.length)) {
     throw new SettingsError('cost.compare must be a list of providers');
   }
   const seen = new Set<string>();
-  return value.map((entry, index) => {
+  return value.flatMap((entry, index) => {
     const fields = section(entry, `cost.compare[${index}]`, ['provider', 'linux', 'macos']);
     const known = provider(String(fields['provider']));
     if (!known || seen.has(known.id)) {
+      // A provider since taken out of the price list is forgotten.
+      if (saved) return [];
       throw new SettingsError(
         `cost.compare[${index}].provider is not a provider, or is listed twice`,
       );
     }
     seen.add(known.id);
-    const linux = known.linux.find((runner) => runner.id === fields['linux']);
-    const macos = known.macos.find((runner) => runner.id === fields['macos']);
+    let linux = known.linux.find((runner) => runner.id === fields['linux']);
+    let macos = known.macos.find((runner) => runner.id === fields['macos']);
+    if ((!linux || !macos) && saved) {
+      // A runner since renamed or taken out: the provider's default instead.
+      linux ??= known.linux[0];
+      macos ??= known.macos[0];
+    }
     if (!linux || !macos) {
       throw new SettingsError(`cost.compare[${index}] names a runner ${known.name} does not have`);
     }
-    return { provider: known.id, linux: linux.id, macos: macos.id };
+    return [{ provider: known.id, linux: linux.id, macos: macos.id }];
   });
 }
 

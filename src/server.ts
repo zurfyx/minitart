@@ -13,7 +13,7 @@ import { appManifest, convertManifestCode, type AppCredentials } from './github/
 import type { Fetch } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import type { Manager } from './manager.ts';
-import { KEEP_MS, type History } from './history.ts';
+import { KEEP_MS, localDay, type History } from './history.ts';
 import { PRICES_CHECKED, PROVIDERS } from './pricing.ts';
 import type { ResourcesView } from './resources.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
@@ -142,11 +142,19 @@ export function createDashboardServer(deps: ServerDeps): Server {
         const since = new Date();
         since.setHours(0, 0, 0, 0);
         since.setDate(since.getDate() - (days - 1));
+        // The dates as the Mac counts them: a page in another time zone draws the same days.
+        const dates = Array.from({ length: days }, (_, index) =>
+          localDay(
+            new Date(since.getFullYear(), since.getMonth(), since.getDate() + index).getTime(),
+          ),
+        );
+        const oldestAt = deps.history?.stats().oldestAt ?? null;
         return json(response, 200, {
           days,
+          dates,
           since: since.getTime(),
           usage: deps.history?.usage(since.getTime()) ?? [],
-          oldestAt: deps.history?.stats().oldestAt ?? null,
+          oldestDay: oldestAt === null ? null : localDay(oldestAt),
           prices: { checked: PRICES_CHECKED, providers: PROVIDERS },
         });
       }

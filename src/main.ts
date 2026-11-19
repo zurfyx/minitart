@@ -61,7 +61,9 @@ function loadSettings(home: Home, warn: (text: string) => void = console.warn): 
   const defaults = defaultSettings(machine);
   try {
     const saved = home.readJson('settings.json');
-    return saved === undefined ? defaults : mergeSettings(defaults, saved, machine);
+    return saved === undefined
+      ? defaults
+      : mergeSettings(defaults, saved, machine, { saved: true });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     let kept = home.path('settings.json');

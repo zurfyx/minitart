@@ -5,6 +5,7 @@
 import { areaChart, columns, h, legend, meter, timeline } from './charts.js';
 import {
   compareProviders,
+  dayLabel,
   daysCounted,
   everyDay,
   macCost,
@@ -230,6 +231,8 @@ function render() {
       ),
   ];
   $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
+  // The Usage view's numbers can come before the state it also needs: drawn once both are in.
+  if (costData && !costDrawn && route().view === 'usage') drawCost();
 
   // A job that ends shows on the first page of the Jobs view, if that is what is open.
   const newest = done[0]?.vm ?? '';
@@ -858,6 +861,10 @@ function drawStorage() {
 const RANGES = [7, 30, 90, 365];
 /** The days, usage and prices on screen, and what was last asked for. */
 let costData = null;
+/** Whether the view has been drawn with the state it needs: until then, the state draws it. */
+let costDrawn = false;
+/** Changes to the providers compared, saved one after another so none undoes another. */
+let costSaving = Promise.resolve();
 let costAsked = '';
 
 async function loadCost() {
@@ -877,13 +884,14 @@ async function loadCost() {
 
 function drawCost() {
   if (!costData || !state) return;
-  const { days, since, usage, oldestAt, prices } = costData;
+  costDrawn = true;
+  const { days, dates, usage, oldestDay, prices } = costData;
   const cost = state.settings.cost;
   for (const link of document.querySelectorAll('#cost-range a')) {
     if (Number(link.dataset.days) === days) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  const counted = daysCounted(since, days, oldestAt, Date.now());
+  const counted = daysCounted(dates, oldestDay);
   const sum = totals(usage);
   const minutes = sum.linux.minutes + sum.macos.minutes;
   $('cost-summary').textContent =
@@ -913,12 +921,10 @@ function drawCost() {
           .filter(Boolean)
           .join(' · ');
 
-  const label = (day) =>
-    new Date(day.at).toLocaleDateString([], { day: 'numeric', month: 'short' });
   if (!inUse($('minutes-chart'))) {
     columns($('minutes-chart'), {
-      days: everyDay(usage, since, days).map((day) => ({
-        label: label(day),
+      days: everyDay(usage, dates).map((day) => ({
+        label: dayLabel(day.day),
         values: { linux: day.linux, macos: day.macos },
       })),
       series: [
@@ -963,17 +969,25 @@ function drawCost() {
         'aria-label': `Compare ${provider.name}`,
       });
       const save = () => {
-        const next = cost.compare.filter((entry) => entry.provider !== provider.id);
+        costSaving = costSaving.then(() => saveCompare());
+      };
+      const saveCompare = () => {
+        // What is saved now, not what was when the row was drawn: an earlier change may
+        // have been saved since.
+        const current = state.settings.cost.compare;
+        const next = current.filter((entry) => entry.provider !== provider.id);
         if (check.checked) {
           const entry = {
             provider: provider.id,
             linux: linuxSelect.value,
             macos: macosSelect.value,
           };
-          const at = cost.compare.findIndex((one) => one.provider === provider.id);
+          const at = current.findIndex((one) => one.provider === provider.id);
           next.splice(at < 0 ? next.length : at, 0, entry);
         }
-        saveSettings({ cost: { compare: next } }).then(drawCost, (error) => alert(error.message));
+        return saveSettings({ cost: { compare: next } }).then(drawCost, (error) =>
+          alert(error.message),
+        );
       };
       check.addEventListener('change', save);
       linuxSelect.addEventListener('change', save);

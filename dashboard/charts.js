@@ -366,7 +366,9 @@ export function columns(root, { days, series, format, height, label }) {
     const tip = h('div', { class: 'tip', hidden: true });
     days.forEach((day, index) => {
       const x = m.left + index * slot + (slot - bar) / 2;
-      if (index % every === 0 || index === days.length - 1) {
+      // Every so many days, and the last; a regular one too near the last gives way to it.
+      const last = index === days.length - 1;
+      if (last || (index % every === 0 && days.length - 1 - index >= every)) {
         svg.append(
           s(
             'text',
@@ -434,9 +436,16 @@ function columnPath(x, top, width, height, r) {
   return `M${x},${bottom}V${top + r}Q${x},${top} ${x + r},${top}H${x + width - r}Q${x + width},${top} ${x + width},${top + r}V${bottom}Z`;
 }
 
-/** A round top for an axis: 1, 2 or 5 times a power of ten, at or above `value`. */
+/**
+ * A round top for an axis, at or above `value` and at least 2, whose half is a whole number
+ * too: 2, 4, 6, 10, 20, 40, 60, 100 and so on.
+ */
 function niceMax(value) {
-  const power = 10 ** Math.floor(Math.log10(value));
-  for (const step of [1, 2, 5, 10]) if (step * power >= value) return step * power;
+  const wanted = Math.max(2, value);
+  const power = 10 ** Math.floor(Math.log10(wanted));
+  for (const step of [1, 2, 4, 6, 10]) {
+    const top = step * power;
+    if (top >= wanted && top % 2 === 0) return top;
+  }
   return 10 * power;
 }

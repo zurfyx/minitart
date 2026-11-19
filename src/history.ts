@@ -49,7 +49,7 @@ export function billedMinutes(entry: DoneView): number {
   return Math.ceil(Math.max(0, entry.endedAt - (entry.jobAt ?? entry.startedAt)) / 60_000);
 }
 
-function localDay(at: number): string {
+export function localDay(at: number): string {
   const date = new Date(at);
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;

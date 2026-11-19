@@ -2,36 +2,25 @@
 // charged for them at list price, and what this Mac costs. No page, no clock: tested in
 // cost.test.mjs.
 
-const DAY_MS = 24 * 60 * 60_000;
 /** An average month, for "a month" figures. */
 export const MONTH_DAYS = 30.44;
 
-/** `YYYY-MM-DD` of `at`, by this machine's calendar. */
-export function localDay(at) {
-  const date = new Date(at);
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
 /**
  * Every day of the range, oldest first, with each kind's minutes: days with no job are there
- * too, as zero, so that a chart of them has no gaps.
+ * too, as zero, so that a chart of them has no gaps. `dates` are the Mac's own (`YYYY-MM-DD`),
+ * so a page in another time zone draws the same days.
  */
-export function everyDay(usage, since, days) {
-  const result = [];
-  const start = new Date(since);
-  for (let index = 0; index < days; index++) {
-    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
-    const day = localDay(date.getTime());
+export function everyDay(usage, dates) {
+  return dates.map((day) => {
     const of = (pool) => usage.find((row) => row.day === day && row.pool === pool);
-    result.push({
-      day,
-      at: date.getTime(),
-      linux: of('linux')?.minutes ?? 0,
-      macos: of('macos')?.minutes ?? 0,
-    });
-  }
-  return result;
+    return { day, linux: of('linux')?.minutes ?? 0, macos: of('macos')?.minutes ?? 0 };
+  });
+}
+
+/** A `YYYY-MM-DD` as a short date, read as the calendar date it names. */
+export function dayLabel(day) {
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date).toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
 
 /** The range's work by kind: jobs, billed minutes, VM minutes. */
@@ -52,11 +41,10 @@ export function totals(usage) {
  * How many days of the range minitart was keeping its history: the range, less the days
  * before its oldest job. "A month" is worked out from these, not from days it did not see.
  */
-export function daysCounted(since, days, oldestAt, now) {
-  if (oldestAt === null || oldestAt === undefined) return 0;
-  const first = Math.max(since, new Date(oldestAt).setHours(0, 0, 0, 0));
-  const today = new Date(now).setHours(0, 0, 0, 0);
-  return Math.max(0, Math.min(days, Math.round((today - first) / DAY_MS) + 1));
+export function daysCounted(dates, oldestDay) {
+  return oldestDay === null || oldestDay === undefined
+    ? 0
+    : dates.filter((day) => day >= oldestDay).length;
 }
 
 /**

@@ -4,7 +4,7 @@ import {
   compareProviders,
   daysCounted,
   everyDay,
-  localDay,
+  dayLabel,
   macCost,
   MONTH_DAYS,
   perMonth,
@@ -30,15 +30,14 @@ const providers = [
   },
 ];
 
-const since = new Date(2026, 10, 17).getTime(); // 17 Nov, local midnight
 const usage = [
   { day: '2026-11-17', pool: 'linux', jobs: 10, minutes: 100, vmMinutes: 110 },
   { day: '2026-11-19', pool: 'linux', jobs: 5, minutes: 50, vmMinutes: 55 },
   { day: '2026-11-19', pool: 'macos', jobs: 2, minutes: 30, vmMinutes: 34 },
 ];
 
-test('every day of the range is there, a day with no job as zero', () => {
-  const days = everyDay(usage, since, 3);
+test('every day of the range is there, a day with no job as zero, as the Mac dates it', () => {
+  const days = everyDay(usage, ['2026-11-17', '2026-11-18', '2026-11-19']);
   assert.deepEqual(
     days.map((day) => [day.day, day.linux, day.macos]),
     [
@@ -47,7 +46,8 @@ test('every day of the range is there, a day with no job as zero', () => {
       ['2026-11-19', 50, 30],
     ],
   );
-  assert.equal(localDay(days[2].at), '2026-11-19');
+  // Read as the date it names, wherever the page is.
+  assert.match(dayLabel('2026-11-19'), /19/);
 });
 
 test('totals by kind', () => {
@@ -79,11 +79,11 @@ test('each provider prices each kind at the runner chosen for it', () => {
 });
 
 test('only the days minitart kept a history count toward a month', () => {
-  const now = new Date(2026, 10, 19, 15).getTime();
-  const oldest = new Date(2026, 10, 18, 9).getTime();
-  assert.equal(daysCounted(new Date(2026, 9, 21).getTime(), 30, oldest, now), 2);
-  assert.equal(daysCounted(since, 3, new Date(2026, 0, 1).getTime(), now), 3);
-  assert.equal(daysCounted(since, 3, null, now), 0);
+  const dates = ['2026-11-17', '2026-11-18', '2026-11-19'];
+  assert.equal(daysCounted(dates, '2026-11-18'), 2);
+  assert.equal(daysCounted(dates, '2026-01-01'), 3);
+  assert.equal(daysCounted(dates, null), 0);
+  assert.equal(daysCounted(dates, '2026-12-01'), 0, 'a history from later than the range');
   assert.equal(perMonth(10, 2), (10 / 2) * MONTH_DAYS);
   assert.equal(perMonth(10, 0), 0);
 });

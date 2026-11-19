@@ -174,3 +174,27 @@ test('cost: every provider compared at its defaults, and only known providers an
     );
   }
 });
+
+test('cost: a saved file naming providers or runners since gone keeps everything else', () => {
+  const machine = { cpus: 15, memoryBytes: 64 * GB };
+  const base = defaultSettings(machine);
+  const saved = {
+    repos: ['octo/app'],
+    cost: {
+      macUsd: 1999,
+      compare: [
+        { provider: 'gone-provider', linux: 'x', macos: 'y' },
+        { provider: 'github', linux: 'linux-2-renamed', macos: 'macos' },
+        { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
+      ],
+    },
+  };
+  const loaded = mergeSettings(base, saved, machine, { saved: true });
+  assert.deepEqual(loaded.repos, ['octo/app'], 'the repos served are kept');
+  assert.equal(loaded.cost.macUsd, 1999);
+  assert.deepEqual(loaded.cost.compare, [
+    { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
+  ]);
+  // What the dashboard sends is still held to the list.
+  assert.throws(() => mergeSettings(base, saved, machine), SettingsError);
+});
