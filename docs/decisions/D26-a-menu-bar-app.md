@@ -45,7 +45,7 @@ job (D20).
   password, and an App Store Connect API key with the Developer role, for notarization only.
   Signing never happens on minitart's own runner.
 - `minitart upgrade` upgrades the app with the rest when its cask is installed. The app needs
-  a minitart that says its version (0.1.19 and later), and says so otherwise.
+  a minitart that says its version (0.1.20 and later), and says so otherwise.
 
 ## Why
 

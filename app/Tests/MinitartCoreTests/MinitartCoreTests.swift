@@ -8,7 +8,7 @@ func makeState(_ fields: [String: Any] = [:]) -> State {
   var json: [String: Any] = [
     "now": 1_795_000_000_000.0, "vms": [], "queued": [], "draining": false, "blocked": NSNull(),
     "githubError": NSNull(), "shortOfMemory": NSNull(), "app": [:], "repos": [[:]],
-    "today": ["passed": 0, "finished": 0], "version": "0.1.19",
+    "today": ["passed": 0, "finished": 0], "version": "0.1.20",
   ]
   for (key, value) in fields { json[key] = value }
   let data = try! JSONSerialization.data(withJSONObject: json)
@@ -117,9 +117,9 @@ final class MenuTests: XCTestCase {
   }
 
   func testOnlyAMinitartThatSaysItsVersionIsNewEnough() {
-    XCTAssertTrue(isAtLeast("0.1.19"))
+    XCTAssertTrue(isAtLeast("0.1.20"))
     XCTAssertTrue(isAtLeast("0.2.0"))
-    XCTAssertFalse(isAtLeast("0.1.18"))
+    XCTAssertFalse(isAtLeast("0.1.19"), "released before the version field")
     XCTAssertFalse(isAtLeast(nil))
     XCTAssertTrue(isAtLeast("0.0.0-dev"), "a development copy")
   }

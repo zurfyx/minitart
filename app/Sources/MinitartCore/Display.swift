@@ -32,7 +32,7 @@ public struct BarLabel: Equatable, Sendable {
 }
 
 /// The oldest minitart that tells the app its version.
-public let minimumVersion = "0.1.19"
+public let minimumVersion = "0.1.20"
 
 /// How long a job may wait for a slot, memory or an image before the mark asks for the owner.
 public let longWaitSeconds: Double = 10 * 60
