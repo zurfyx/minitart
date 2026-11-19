@@ -45,13 +45,16 @@ no VM is started and the dashboard says why. The one exception is the flag
 warning on start and the dashboard shows it on every page load.
 
 Softnet needs root to create its network interface, so its binary is setuid root. That takes
-`sudo`, and again after every Softnet upgrade. Softnet is kept pinned, so only
-`minitart upgrade` replaces it, and that runs `doctor --fix` again.
+`sudo`, and again after every Softnet upgrade. When `doctor --fix` installs Softnet it pins
+it, so a routine `brew upgrade` leaves it alone; `minitart upgrade` replaces it on purpose
+and runs `doctor --fix` again. A Softnet that was already there is not pinned until the
+first `minitart upgrade`, and from a checkout it is upgraded by hand; either way `doctor`
+says when the bit is missing.
 
 `minitart doctor --fix` runs these as root, asking for the Mac's password: make Softnet
 setuid root; install the firewall rule below (its pf anchor, and a LaunchDaemon that loads
-it at boot); and `pmset -a sleep 0`. It runs the scripts from minitart's Homebrew folder,
-which your account can write to.
+it at boot); and `pmset -a sleep 0`. It runs the firewall script from minitart's Homebrew
+folder, which your account can write to.
 
 ### The gateway
 
@@ -96,8 +99,8 @@ the way a job VM boots and, from inside it, tries to connect to:
 - your router, on the ports routers answer on (must time out);
 - this Mac, at every address it has outside its VM networks, on common service ports (must
   time out);
-- this Mac at the VM's gateway, on the ports a Mac commonly serves and every port it listens
-  on (nothing may answer).
+- this Mac at the VM's gateway, on the ports a Mac commonly serves and every port your
+  programs listen on (nothing may accept the connection: it must be refused or time out).
 
 Except at the gateway, a connection that is _refused_ counts as a failure of the test: a
 refusal means the packet arrived. Run it after setting up, and again after changing how the
@@ -132,10 +135,12 @@ a step and no protection. What protects the key is that jobs do not run as you: 
 a VM.
 
 With the key, someone could register runners on the repos the App is installed on, read
-their workflow logs, and change their settings (Administration: write has no narrower form).
-A runner they register with minitart's labels can be handed those repos' jobs, and with them
-each job's secrets and checkout token. The App itself has no permission to read code or
-secrets; that is why the key never leaves the Mac or enters a VM.
+their workflow logs, and change their settings (Administration: write has no narrower form),
+which includes adding a deploy key or a collaborator, making a private repo public, or
+deleting it. A runner they register with minitart's labels can be handed those repos' jobs,
+and with them each job's secrets and checkout token. The App's tokens cannot read code or
+secrets directly, but those powers reach both; that is why the key never leaves the Mac or
+enters a VM.
 
 ## The dashboard
 
@@ -155,9 +160,10 @@ secrets; that is why the key never leaves the Mac or enters a VM.
   pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
 - **The menu bar app** talks only to the dashboard at `127.0.0.1`. It reads `/api/state` and
   posts `/api/drain`. Its other actions are commands you could type: start minitart's
-  service, or open Terminal on `minitart doctor --fix`, where you type the password. It
-  holds no key and listens on nothing. The `Origin` check stops web pages, not programs: a
-  process running as you can do anything the dashboard can, as it could already by reading
+  service, or open Terminal on `minitart doctor --fix`, `minitart upgrade`, or
+  `brew install zurfyx/tap/minitart && minitart doctor --fix`, where you type the password.
+  It holds no key and listens on nothing. The `Origin` check stops web pages, not programs:
+  a process running as you can do anything the dashboard can, as it could already by reading
   `~/.minitart`.
 - Job, workflow and repo names come from GitHub and are written to the page as text, never
   as HTML. The page loads nothing from anywhere else.

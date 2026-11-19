@@ -155,7 +155,9 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
         softnet === null
           ? 'brew install openai/tools/softnet'
           : !current
-            ? 'minitart upgrade'
+            ? // Pinned (D16), so a plain `brew upgrade` would refuse it; doctor --fix then
+              // gives the new binary its permission back.
+              'brew unpin softnet && brew upgrade openai/tools/softnet && brew pin softnet'
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,
