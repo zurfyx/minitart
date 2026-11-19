@@ -64,6 +64,29 @@ export class Home {
     }
   }
 
+  /** A VM's log as written, its last `maxBytes`; null when there is none. */
+  readLog(name: string, maxBytes: number): string | null {
+    try {
+      const text = readFileSync(this.path('logs', name), 'utf8');
+      return text.length > maxBytes ? text.slice(-maxBytes) : text;
+    } catch {
+      return null;
+    }
+  }
+
+  /** How many VM logs there are, and what they take. */
+  logsUsage(): { files: number; bytes: number } {
+    try {
+      const dir = this.path('logs');
+      const names = readdirSync(dir).filter((name) => name.endsWith('.log'));
+      let bytes = 0;
+      for (const name of names) bytes += statSync(join(dir, name)).size;
+      return { files: names.length, bytes };
+    } catch {
+      return { files: 0, bytes: 0 };
+    }
+  }
+
   /** Deletes all but the newest `keep` VM logs. The logs of live VMs (`skip`) always stay. */
   pruneLogs(keep: number, skip: ReadonlySet<string> = new Set()): void {
     try {

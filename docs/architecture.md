@@ -132,8 +132,12 @@ Everything else is rebuilt from GitHub and Tart on start.
 - `GET /api/resources`: the last hour of CPU and memory, a point every ten seconds, and the
   disk (`src/resources.ts`, [D23](decisions/D23-what-the-dashboard-leads-with.md)). Apart
   from the state, which is sent on every change.
-- `GET /api/vms/{name}/log`: what a VM printed. `GET /api/jobs/{id}/log`: a finished job's
-  log, fetched from GitHub, for jobs minitart ran.
+- `GET /api/vms/{name}/log`: what a VM printed, from memory while it runs and from
+  `~/.minitart/logs` after it ends (the newest 50 VMs). `GET /api/jobs/{id}/log`: a finished
+  job's log, fetched from GitHub, for jobs minitart ran.
+- `GET /api/jobs?page=&repo=&result=`: the history, 50 jobs a page, newest first
+  ([D24](decisions/D24-a-year-of-history-in-sqlite.md)).
+- `GET /api/storage`: what the history and the VM logs take, and how long jobs are kept.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.
 - `POST /api/drain`: start no new jobs and let the running ones finish, or resume.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.

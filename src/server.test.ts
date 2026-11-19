@@ -124,6 +124,25 @@ test('the page and its state are served, with a policy that allows no outside sc
   );
   // The tests beside the page are not part of it.
   assert.equal((await fetch(`${origin}/view.test.mjs`)).status, 404);
+  // The Jobs view's pages, checked before they reach the history.
+  const jobs = (await (await fetch(`${origin}/api/jobs?page=1&result=failure`)).json()) as {
+    total: number;
+    pages: number;
+    per: number;
+  };
+  assert.deepEqual([jobs.total, jobs.pages, jobs.per], [0, 1, 50]);
+  for (const bad of [
+    'page=0',
+    'page=1.5',
+    'page=x',
+    'repo=..%2Fx',
+    'repo=a',
+    'result=DROP%20TABLE',
+  ]) {
+    assert.equal((await fetch(`${origin}/api/jobs?${bad}`)).status, 400, bad);
+  }
+  const storage = (await (await fetch(`${origin}/api/storage`)).json()) as { keepDays: number };
+  assert.equal(storage.keepDays, 365);
   const resources = (await (await fetch(`${origin}/api/resources`)).json()) as {
     points: unknown[];
   };

@@ -97,6 +97,8 @@ const GLYPHS = Object.fromEntries(
 );
 
 let state = null;
+/** The newest finished job last drawn, to notice one more. */
+let lastDone = '';
 /** The last hour of CPU, memory and disk, read apart from the state (/api/resources). */
 let resources = null;
 /** The log on screen: a VM's own output, or a finished job's log from GitHub. */
@@ -179,7 +181,7 @@ function render() {
       ),
     ),
     ...done
-      .slice(0, 20)
+      .slice(0, 10)
       .map((job) =>
         row(
           status(job.conclusion),
@@ -192,6 +194,15 @@ function render() {
       ),
   ];
   $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
+
+  // A job that ends shows on the first page of the Jobs view, if that is what is open.
+  const newest = done[0]?.vm ?? '';
+  if (newest !== lastDone) {
+    lastDone = newest;
+    const open = route();
+    if (open.view === 'jobs' && open.page === 1) void loadJobs();
+    if (open.view === 'jobs' || open.view === 'mac') void loadStorage();
+  }
 
   $('repos').replaceChildren(
     ...(repos.length
@@ -362,6 +373,7 @@ function drawResources() {
     });
   }
 
+  drawStorage();
   const disk = resources.disk;
   if (!disk) {
     $('disk-free').textContent = '';
@@ -383,20 +395,6 @@ function drawResources() {
       ['other', `Used, ${size(used)}`],
       ['free', `Free, ${size(disk.freeBytes)}`],
     ]),
-    h('p', { class: 'disk-head' }, 'What Tart keeps'),
-    ...disk.tart.map((entry) =>
-      h(
-        'div',
-        { class: 'disk-row' },
-        h('span', {}, entry.name),
-        h('span', { class: 'num' }, size(entry.bytes)),
-      ),
-    ),
-    h(
-      'p',
-      { class: 'muted small' },
-      'A clone shares space with what it was cloned from, so these can add up to more than they take.',
-    ),
   );
 }
 
@@ -438,20 +436,39 @@ function showLog(target) {
   openLog = target;
   $('log-title').textContent = `Log · ${target.title}`;
   $('log').textContent = 'Loading…';
-  $('log-panel').hidden = false;
+  if (!logDialog.open) logDialog.showModal();
   clearInterval(logTimer);
   // A VM's log grows while it runs; a finished job's log does not.
   if (target.kind === 'vm') logTimer = setInterval(loadLog, 2000);
   void loadLog().then(() => {
     $('log').scrollTop = $('log').scrollHeight;
-    $('log-panel').scrollIntoView({ block: 'nearest' });
   });
 }
 
-$('log-close').addEventListener('click', () => {
+const logDialog = /** @type {HTMLDialogElement} */ ($('log-dialog'));
+$('log-close').addEventListener('click', () => logDialog.close());
+// Closed by its button, by Escape, or by a click outside it: one that starts and ends on
+// the backdrop, so that selecting the log's text and letting go outside it closes nothing.
+const outside = (event) => {
+  const box = logDialog.getBoundingClientRect();
+  return (
+    event.clientX < box.left ||
+    event.clientX > box.right ||
+    event.clientY < box.top ||
+    event.clientY > box.bottom
+  );
+};
+let pressedOutside = false;
+logDialog.addEventListener('pointerdown', (event) => {
+  pressedOutside = outside(event);
+});
+logDialog.addEventListener('click', (event) => {
+  if (pressedOutside && outside(event)) logDialog.close();
+  pressedOutside = false;
+});
+logDialog.addEventListener('close', () => {
   openLog = null;
   clearInterval(logTimer);
-  $('log-panel').hidden = true;
 });
 
 async function saveSettings(patch) {
@@ -541,6 +558,248 @@ $('drain').addEventListener('click', () => {
   if (state) void setDraining(!state.draining);
 });
 
+// Views: Now, Jobs and This Mac, one at a time, named in the address so that a link, the
+// back button and an installed app's reload all land where they were.
+
+/** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
+function route() {
+  const [name, query = ''] = location.hash.replace(/^#/, '').split('?');
+  const view = ['now', 'jobs', 'mac'].includes(name) ? name : 'now';
+  const params = new URLSearchParams(query);
+  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
+  return { view, page, repo: params.get('repo') ?? '', result: params.get('result') ?? '' };
+}
+
+function jobsHash({ page, repo, result }) {
+  const params = new URLSearchParams();
+  if (repo) params.set('repo', repo);
+  if (result) params.set('result', result);
+  if (page > 1) params.set('page', String(page));
+  const query = params.toString();
+  return `#jobs${query ? `?${query}` : ''}`;
+}
+
+function showView() {
+  const { view } = route();
+  for (const main of document.querySelectorAll('main[data-view]')) {
+    main.hidden = main.dataset.view !== view;
+  }
+  for (const link of document.querySelectorAll('nav.views a')) {
+    if (link.dataset.view === view) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  if (view === 'jobs') void loadJobs();
+  // Jobs says what the history takes, and This Mac lists it.
+  if (view === 'jobs' || view === 'mac') void loadStorage();
+  // Charts drawn while hidden have no width: draw them again now that they show.
+  if (view === 'now') {
+    timelineDrawn = '';
+    if (state) drawTimeline();
+    drawResources();
+  }
+}
+
+/** The page of the Jobs view on screen, and what was last asked for. */
+let jobPage = null;
+let jobsAsked = '';
+
+async function loadJobs() {
+  const wanted = route();
+  const params = new URLSearchParams({ page: String(wanted.page) });
+  if (wanted.repo) params.set('repo', wanted.repo);
+  if (wanted.result) params.set('result', wanted.result);
+  const asked = params.toString();
+  jobsAsked = asked;
+  try {
+    const response = await fetch(`/api/jobs?${asked}`);
+    // Each await is a moment for a newer ask to start: only the newest is drawn.
+    const body = response.ok ? await response.json() : await response.text();
+    if (jobsAsked !== asked) return;
+    if (!response.ok) {
+      $('history').replaceChildren(empty(`Could not read the jobs: ${body}`));
+      return;
+    }
+    // A page past the end (an old link, or jobs gone a year on) becomes the last one.
+    if (body.total > 0 && wanted.page > body.pages) {
+      location.replace(jobsHash({ ...wanted, page: body.pages }));
+      return;
+    }
+    jobPage = body;
+    drawJobs(wanted);
+  } catch {
+    if (jobsAsked === asked) $('history').replaceChildren(empty('Could not reach minitart.'));
+  }
+}
+
+function dateTime(at) {
+  return new Date(at).toLocaleString([], {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function drawJobs(wanted) {
+  const form = /** @type {HTMLFormElement} */ ($('job-filters'));
+  const repoSelect = /** @type {HTMLSelectElement} */ (form.elements.namedItem('repo'));
+  repoSelect.replaceChildren(
+    h('option', { value: '' }, 'Every repo'),
+    ...jobPage.repos.map((name) => h('option', { value: name }, name)),
+  );
+  repoSelect.value = wanted.repo;
+  /** @type {HTMLSelectElement} */ (form.elements.namedItem('result')).value = wanted.result;
+  const first = (jobPage.page - 1) * jobPage.per + 1;
+  const last = Math.min(jobPage.total, jobPage.page * jobPage.per);
+  $('jobs-count').textContent =
+    jobPage.total === 0 ? '' : `${first}–${last} of ${jobPage.total.toLocaleString()}`;
+
+  $('history').replaceChildren(
+    ...(jobPage.jobs.length
+      ? jobPage.jobs.map((job) => {
+          const waited =
+            job.jobAt !== undefined && job.queuedAt !== undefined
+              ? `waited ${duration(job.jobAt - job.queuedAt)}`
+              : null;
+          const took = `took ${duration(job.endedAt - (job.jobAt ?? job.startedAt))}`;
+          return row(
+            status(job.conclusion),
+            jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool),
+            h('span', { class: 'muted num times' }, [waited, took].filter(Boolean).join(' · ')),
+            h(
+              'time',
+              { class: 'muted num', datetime: new Date(job.endedAt).toISOString() },
+              dateTime(job.endedAt),
+            ),
+            job.job.id !== null
+              ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
+              : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
+          );
+        })
+      : [empty(wanted.repo || wanted.result ? 'No job matches.' : 'No job has run yet.')]),
+  );
+
+  const link = (page, text, rel) =>
+    page < 1 || page > jobPage.pages
+      ? h('span', { class: 'muted' }, text)
+      : h('a', { href: jobsHash({ ...wanted, page }), rel }, text);
+  $('pager').replaceChildren(
+    ...(jobPage.pages > 1
+      ? [
+          link(jobPage.page - 1, '← Newer', 'prev'),
+          h(
+            'span',
+            { class: 'muted num' },
+            `Page ${jobPage.page} of ${jobPage.pages.toLocaleString()}`,
+          ),
+          link(jobPage.page + 1, 'Older →', 'next'),
+        ]
+      : []),
+  );
+}
+
+$('job-filters').addEventListener('change', (event) => {
+  const form = /** @type {HTMLFormElement} */ (event.currentTarget);
+  location.hash = jobsHash({
+    page: 1,
+    repo: /** @type {HTMLSelectElement} */ (form.elements.namedItem('repo')).value,
+    result: /** @type {HTMLSelectElement} */ (form.elements.namedItem('result')).value,
+  });
+});
+
+/** The history's and the logs' size, from /api/storage. */
+let storage = null;
+
+async function loadStorage() {
+  try {
+    const response = await fetch('/api/storage');
+    if (!response.ok) return;
+    storage = await response.json();
+    drawStorage();
+  } catch {
+    // The state's own connection says when minitart cannot be reached.
+  }
+}
+
+/** Bytes as the page writes them: KB under a megabyte, MB under a gigabyte, then GB. */
+function bytes(value) {
+  if (value === 0) return 'none';
+  if (value < 1024 ** 2) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  if (value < GB) return `${(value / 1024 ** 2).toFixed(value < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+  return `${(value / GB).toFixed(value < 10 * GB ? 1 : 0)} GB`;
+}
+
+function drawStorage() {
+  const history = storage?.history ?? null;
+  const since = history?.oldestAt
+    ? ` since ${new Date(history.oldestAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : '';
+  const count = history
+    ? `${history.entries.toLocaleString()} ${history.entries === 1 ? 'job' : 'jobs'}${since}`
+    : '';
+  $('history-summary').textContent = history
+    ? `${count}${history.bytes === null ? '' : ` · ${bytes(history.bytes)} on disk`} · each kept ${storage.keepDays} days`
+    : '';
+
+  const disk = resources?.disk ?? null;
+  $('storage-free').textContent = disk
+    ? `${bytes(disk.freeBytes)} free of ${bytes(disk.totalBytes)}`
+    : '';
+  $('storage-disk').replaceChildren(
+    ...(disk
+      ? [
+          meter(
+            [
+              { value: disk.totalBytes - disk.freeBytes, color: 'other' },
+              { value: disk.freeBytes, color: 'free' },
+            ],
+            `${bytes(disk.totalBytes - disk.freeBytes)} used, ${bytes(disk.freeBytes)} free`,
+          ),
+        ]
+      : []),
+  );
+  const line = (name, detail, size) =>
+    row(
+      h('span', { class: 'main' }, name, h('span', { class: 'meta' }, detail)),
+      h('span', { class: 'num' }, size),
+    );
+  const lines = [];
+  if (history) {
+    lines.push(
+      line(
+        'Job history',
+        `${count}, each kept ${storage.keepDays} days · ~/.minitart/history.db`,
+        history.bytes === null ? 'in memory' : bytes(history.bytes),
+      ),
+    );
+  }
+  if (storage?.logs) {
+    lines.push(
+      line(
+        'VM logs',
+        storage.logs.files
+          ? `The newest ${storage.logs.files} VMs’ output, of at most ${storage.logs.kept} · ~/.minitart/logs`
+          : `None yet: the output of the newest ${storage.logs.kept} VMs · ~/.minitart/logs`,
+        bytes(storage.logs.bytes),
+      ),
+    );
+  }
+  for (const entry of disk?.tart ?? []) {
+    lines.push(
+      line(
+        entry.name,
+        entry.name === 'Downloaded images'
+          ? 'What Tart pulled to build the images from · ~/.tart/cache'
+          : 'An image job VMs are cloned from',
+        bytes(entry.bytes),
+      ),
+    );
+  }
+  $('storage').replaceChildren(...(lines.length ? lines : [empty('Not measured yet.')]));
+}
+
+window.addEventListener('hashchange', showView);
+
 function tick() {
   for (const time of document.querySelectorAll('time[data-since]')) {
     time.textContent = duration(Date.now() - Number(time.dataset.since));
@@ -562,5 +821,6 @@ function connect() {
   };
 }
 connect();
+showView();
 void loadResources();
 setInterval(() => void loadResources(), 10_000);

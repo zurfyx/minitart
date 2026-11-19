@@ -40,6 +40,14 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
   separation in both themes. Every chart has a legend and its numbers in text beside it,
   and a crosshair whose tooltip lists every series; the keyboard moves it too.
 - **Charts are not redrawn under the pointer**, so a tooltip stays where it is read.
+- **Three views, named in the address**: Now (`#now`), Jobs (`#jobs`, with its page and
+  filters: `#jobs?repo=octo/app&page=2`) and This Mac (`#mac`). A link, the back button and an
+  installed app's reload land where they were.
+- **The Jobs view is every job kept**, 50 a page, with how many there are, since when, and
+  what they take on disk. Nothing is cut for its size; This Mac's Storage says what each
+  thing minitart and Tart keep takes.
+- **A log opens in a dialog**, over whichever view it was opened from. Escape, the Close
+  button or a click outside closes it.
 - **Motion only on a change of state**. Nothing pulses or spins while a job runs. All of it
   is off under `prefers-reduced-motion`.
 - **Empty states are a sentence**, in `--muted`: "Nothing is running."
