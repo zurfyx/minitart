@@ -66,11 +66,13 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
 
 ## Icons
 
-The mark is a cup with a ball over it, in the accent. `favicon.svg` is the mark alone, for
-tabs and the page's header. The app icon, `dashboard/icons/app-icon.svg`, is the mark in
-white on the accent, edge to edge: as the maskable icon, a system cuts its own shape from it
-and the mark stays inside any of them. The PNGs are rendered from those two files by Chrome:
-192 and 512 pixels (square for maskable, rounded for any), 180 for Apple, which rounds it
+The mark is a Mac mini with a screen rising from it and a prompt, `>_`, on the screen, in
+the accent: one colour, with the prompt, the status light and the gap between screen and Mac
+cut out. `favicon.svg` is the mark alone, for tabs and the page's header, in the dark accent
+when the system is dark. The app icon, `dashboard/icons/app-icon.svg`, is the mark in white
+on the accent, edge to edge: as the maskable icon, a system cuts its own shape from it and
+the mark stays inside any of them. The PNGs are rendered from those two files by Chrome: 192
+and 512 pixels (square for maskable, rounded for any), 180 for Apple, which rounds it
 itself, and 16 and 32 for `favicon.ico` and browsers that do not draw SVG in a tab. The
 website has copies, and a test keeps them the same.
 
