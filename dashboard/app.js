@@ -97,7 +97,10 @@ function author(login) {
         'a',
         {
           class: 'author',
-          href: `https://github.com/${login.replace(/\[bot\]$/, '')}`,
+          // A bot's page is its app's; a person's is their own.
+          href: login.endsWith('[bot]')
+            ? `https://github.com/apps/${login.slice(0, -'[bot]'.length)}`
+            : `https://github.com/${login}`,
           target: '_blank',
           rel: 'noreferrer',
         },

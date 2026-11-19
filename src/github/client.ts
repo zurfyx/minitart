@@ -61,7 +61,7 @@ export class GitHubClient implements GitHub {
   readonly #auth: Auth;
   readonly #fetch: Fetch;
   readonly #cache = new Map<string, { etag: string; body: unknown }>();
-  /** Who triggered each run seen in the lists: the job lists do not say. */
+  /** Who triggered each run seen, or '' for one GitHub did not say: the job lists do not. */
   readonly #actors = new Map<number, string>();
 
   constructor(auth: Auth, fetchImpl: Fetch = fetch) {
@@ -121,7 +121,8 @@ export class GitHubClient implements GitHub {
       try {
         this.#noteActor((await this.#get(repo, `/repos/${repo}/actions/runs/${runId}`)) as RawRun);
       } catch {
-        // Shown without an author.
+        // Shown without an author, and not asked about again.
+        this.#actors.set(runId, '');
       }
     }
     return jobs.map((job) => ({
@@ -134,7 +135,7 @@ export class GitHubClient implements GitHub {
       status: STATUSES[job.status] ?? 'pending',
       conclusion: job.conclusion ?? null,
       runnerName: job.runner_name || null,
-      actor: this.#actors.get(job.run_id) ?? null,
+      actor: this.#actors.get(job.run_id) || null,
       url: job.html_url ?? '',
       createdAt: job.created_at,
       startedAt: job.started_at ?? null,
@@ -222,10 +223,10 @@ export class GitHubClient implements GitHub {
 
   #noteActor(run: RawRun): void {
     const login = run.triggering_actor?.login ?? run.actor?.login;
-    if (typeof login !== 'string' || login === '') return;
-    // Kept for the runs of the last while; like the cache, cleared now and then.
+    // Kept for the runs of the last while; like the cache, cleared now and then. A run with
+    // no login is remembered too, so that it is not asked about again every poll.
     if (this.#actors.size > 5000) this.#actors.clear();
-    this.#actors.set(run.id, login);
+    this.#actors.set(run.id, typeof login === 'string' ? login : '');
   }
 
   async #send(repo: string, method: string, path: string, body?: unknown): Promise<Response> {

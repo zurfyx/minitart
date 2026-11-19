@@ -247,10 +247,13 @@ test('a job says who it runs for: who triggered its run, or who re-ran it', asyn
   const before = calls.length;
   assert.equal((await client.jobs('octo/app', 11))[0]?.actor, 'octocat');
   assert.equal(calls.length - before, 2, 'its jobs, then the run');
-  // A run GitHub will not say who ran still has its jobs.
+  // A run GitHub will not say who ran still has its jobs, and is asked about once.
   const [unknown] = await client.jobs('octo/app', 12);
   assert.equal(unknown?.id, 4);
   assert.equal(unknown?.actor, null);
+  const asked = calls.length;
+  await client.jobs('octo/app', 12);
+  assert.equal(calls.length - asked, 1, 'its jobs only');
 });
 
 test('jobs are read into the shape the manager uses', async () => {
