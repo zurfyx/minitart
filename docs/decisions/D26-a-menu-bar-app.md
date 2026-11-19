@@ -10,11 +10,13 @@ one install sets up both; the formula alone stays the headless install it always
 
 The app is a window onto the minitart on the same Mac, and nothing more:
 
-- **The mark** in the menu bar is the cup and ball of minitart's icon, as a template image:
-  outlined when idle, filled when jobs run, with their number cut out of the cup (on by
-  default, can be turned off), an exclamation mark in the ball's place when the owner is needed (no job can
+- **The mark** in the menu bar is minitart's Mac mini with a screen rising from it, as a
+  template image. The screen says how things are: a prompt, `>_`, outlined when idle;
+  filled, with the number of jobs running cut out of it, when jobs run (the number on by
+  default, can be turned off); an exclamation mark when the owner is needed (no job can
   start, GitHub failing, a setup step missing, short of memory, a job waiting more than ten
-  minutes), a pause sign when draining, and faint when minitart is not there.
+  minutes); a pause sign when draining; and faint when minitart is not there. Its screen is
+  larger than the logo's, to hold two digits.
 - **The menu** says the dashboard's headline word for word (both are held to
   `test/headline-cases.json`), lists the jobs running with how long each has run, and what
   waits. Open Dashboard, Drain or Resume, Copy Tailnet Address, Settings (the count, open at

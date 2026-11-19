@@ -1,8 +1,8 @@
 // The mark in the menu bar, drawn in code as a template image so that macOS colours it like
-// every other menu bar icon: the cup and ball of minitart's icon. Filled when jobs run, with
-// their number cut out of the cup; outlined when idle; faint when minitart is not there. In
-// the ball's place, an exclamation mark when the owner is needed, and a pause sign when
-// draining (D26).
+// every other menu bar icon: minitart's Mac mini with a screen rising from it. The screen
+// says how things are: a prompt when idle, filled with the number of jobs cut out of it when
+// jobs run, an exclamation mark when the owner is needed, a pause sign when draining. Faint
+// when minitart is not there (D26).
 
 import AppKit
 import MinitartCore
@@ -14,62 +14,65 @@ enum MarkImage {
       let ink = NSColor.black.withAlphaComponent(alpha)
       ink.set()
 
-      // In points, the cup as large as the bar allows: its rim across the whole width, its
-      // body below, room above for the ball or a sign.
-      let rim = NSBezierPath(roundedRect: NSRect(x: 0.5, y: 5.6, width: 17, height: 2.2), xRadius: 1.1, yRadius: 1.1)
-      let cup = NSBezierPath()
-      cup.move(to: NSPoint(x: 1.6, y: 7.6))
-      cup.line(to: NSPoint(x: 16.4, y: 7.6))
-      cup.line(to: NSPoint(x: 14.6, y: 15.9))
-      cup.curve(to: NSPoint(x: 13.0, y: 17.4), controlPoint1: NSPoint(x: 14.4, y: 16.8), controlPoint2: NSPoint(x: 13.8, y: 17.4))
-      cup.line(to: NSPoint(x: 5.0, y: 17.4))
-      cup.curve(to: NSPoint(x: 3.4, y: 15.9), controlPoint1: NSPoint(x: 4.2, y: 17.4), controlPoint2: NSPoint(x: 3.6, y: 16.8))
-      cup.close()
-      let ball = NSBezierPath(ovalIn: NSRect(x: 6.9, y: 0.6, width: 4.2, height: 4.2))
-
-      let filled = mark == .busy || mark == .attention
-      if filled {
-        cup.fill()
-      } else {
-        cup.lineWidth = 1.4
-        cup.stroke()
-      }
-      rim.fill()
+      // In points: the screen as large as the bar allows, the Mac a slab under it, a gap
+      // between the two.
+      let screen = NSRect(x: 1.69, y: 0.45, width: 14.63, height: 10.35)
+      let base = NSBezierPath(roundedRect: NSRect(x: 0.56, y: 12.49, width: 16.88, height: 4.95), xRadius: 1.69, yRadius: 1.69)
+      let centre = NSPoint(x: 9, y: screen.midY + 0.05)
 
       switch mark {
-      case .attention:
-        NSBezierPath(roundedRect: NSRect(x: 8.05, y: 0, width: 1.9, height: 3.1), xRadius: 0.95, yRadius: 0.95).fill()
-        NSBezierPath(ovalIn: NSRect(x: 8.05, y: 3.5, width: 1.9, height: 1.9)).fill()
-      case .paused:
-        NSBezierPath(roundedRect: NSRect(x: 6.9, y: 0.5, width: 1.6, height: 4.3), xRadius: 0.6, yRadius: 0.6).fill()
-        NSBezierPath(roundedRect: NSRect(x: 9.5, y: 0.5, width: 1.6, height: 4.3), xRadius: 0.6, yRadius: 0.6).fill()
-      case .busy:
-        ball.fill()
-      case .idle, .off:
-        ball.lineWidth = 1.2
-        ball.stroke()
-      }
-
-      if let count, count > 0, mark != .off {
-        // The number inside the cup: cut out of a filled cup, drawn in ink in an outlined one.
-        let text = count > 99 ? "99" : String(count)
-        let size: CGFloat = text.count > 1 ? 7.6 : 8.6
-        let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .heavy)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink, .kern: text.count > 1 ? -0.5 : 0]
-        let string = NSAttributedString(string: text, attributes: attributes)
-        let bounds = string.size()
-        let origin = NSPoint(x: 9 - bounds.width / 2, y: 12.4 - bounds.height / 2)
-        if filled {
-          NSGraphicsContext.current?.compositingOperation = .destinationOut
+      case .busy, .attention:
+        NSBezierPath(roundedRect: screen, xRadius: 2.03, yRadius: 2.03).fill()
+        NSGraphicsContext.current?.compositingOperation = .destinationOut
+        if mark == .attention {
+          write("!", at: centre, size: 8.6, ink: ink)
+        } else if let count, count > 0 {
+          let text = count > 99 ? "99" : String(count)
+          write(text, at: centre, size: text.count > 1 ? 7.6 : 8.6, ink: ink)
+        } else {
+          prompt(at: centre)
         }
-        string.draw(at: origin)
         NSGraphicsContext.current?.compositingOperation = .sourceOver
+      case .idle, .paused, .off:
+        let frame = NSBezierPath(roundedRect: screen.insetBy(dx: 0.73, dy: 0.73), xRadius: 1.46, yRadius: 1.46)
+        frame.lineWidth = 1.46
+        frame.stroke()
+        if mark == .paused {
+          NSBezierPath(roundedRect: NSRect(x: 6.53, y: 2.93, width: 1.69, height: 5.4), xRadius: 0.68, yRadius: 0.68).fill()
+          NSBezierPath(roundedRect: NSRect(x: 9.79, y: 2.93, width: 1.69, height: 5.4), xRadius: 0.68, yRadius: 0.68).fill()
+        } else {
+          prompt(at: centre)
+        }
       }
+      base.fill()
       return true
     }
     image.isTemplate = true
     image.accessibilityDescription = description(mark, count: count)
     return image
+  }
+
+  /// `>_`, centred on a point, drawn with the current colour and compositing.
+  private static func prompt(at centre: NSPoint) {
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: centre.x - 2.32, y: centre.y - 1.48))
+    path.line(to: NSPoint(x: centre.x - 0.63, y: centre.y))
+    path.line(to: NSPoint(x: centre.x - 2.32, y: centre.y + 1.48))
+    path.move(to: NSPoint(x: centre.x + 0.42, y: centre.y + 1.48))
+    path.line(to: NSPoint(x: centre.x + 2.39, y: centre.y + 1.48))
+    path.lineWidth = 1.3
+    path.lineCapStyle = .round
+    path.lineJoinStyle = .round
+    path.stroke()
+  }
+
+  /// Text centred on a point, heavy, its digits all one width.
+  private static func write(_ text: String, at centre: NSPoint, size: CGFloat, ink: NSColor) {
+    let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .heavy)
+    let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink, .kern: text.count > 1 ? -0.5 : 0]
+    let string = NSAttributedString(string: text, attributes: attributes)
+    let bounds = string.size()
+    string.draw(at: NSPoint(x: centre.x - bounds.width / 2, y: centre.y - bounds.height / 2))
   }
 
   static func description(_ mark: Mark, count: Int?) -> String {
