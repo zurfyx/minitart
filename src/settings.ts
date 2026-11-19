@@ -2,8 +2,6 @@
 // machine, a repo is served once the App is on it and the owner turned it on (D03), and what the owner
 // changes in the dashboard is saved here.
 
-import { provider, PROVIDERS } from './pricing.ts';
-
 export type Pool = 'linux' | 'macos';
 export const POOLS: readonly Pool[] = ['linux', 'macos'];
 
@@ -32,8 +30,6 @@ export const LINUX_VM_LIMIT = FIREWALL_INTERFACES - MACOS_VM_LIMIT - SPARE_INTER
 
 /** How the Cost view prices the minutes run here, and what this Mac costs (D25). */
 export interface CostSettings {
-  /** The providers compared, in order, each with the runner its Linux and macOS jobs are priced at. */
-  compare: { provider: string; linux: string; macos: string }[];
   /** What the Mac cost, in US dollars, and the months it is written off over. Null: not given. */
   macUsd: number | null;
   lifeMonths: number;
@@ -100,12 +96,6 @@ export function defaultSettings(machine: Machine): Settings {
     allowPublicRepos: false,
     repos: [],
     cost: {
-      // Each provider at what a workflow gets by default there; the owner picks others.
-      compare: PROVIDERS.map((one) => ({
-        provider: one.id,
-        linux: one.linux[0]?.id ?? '',
-        macos: one.macos[0]?.id ?? '',
-      })),
       macUsd: null,
       lifeMonths: 36,
       watts: null,
@@ -124,11 +114,7 @@ export function mergeSettings(
   base: Settings,
   patch: unknown,
   machine: Machine,
-  /**
-   * Set for the saved file: a provider or runner the price list no longer has is dropped or
-   * reset to its default, since a price list that changes must not cost the owner their
-   * settings. What the dashboard sends is checked strictly.
-   */
+  /** Set for the saved file: what an earlier minitart saved and no longer means is let be. */
   options: { saved?: boolean } = {},
 ): Settings {
   const input = section(patch, 'settings', Object.keys(base));
@@ -219,45 +205,16 @@ function imageName(value: unknown, name: string): string {
 }
 
 function costSettings(value: unknown, base: CostSettings, saved: boolean): CostSettings {
-  const input = section(value, 'cost', ['compare', 'macUsd', 'lifeMonths', 'watts', 'kwhUsd']);
+  // `compare` held the providers chosen in minitart 0.1.15 and 0.1.16; every one is shown
+  // now, so a saved file's is let be, and a request's is refused.
+  const known = ['macUsd', 'lifeMonths', 'watts', 'kwhUsd', ...(saved ? ['compare'] : [])];
+  const input = section(value, 'cost', known);
   return {
-    compare: comparisons(given(input['compare'], base.compare), saved),
     macUsd: amount(given(input['macUsd'], base.macUsd), 'cost.macUsd', 100_000),
     lifeMonths: integer(given(input['lifeMonths'], base.lifeMonths), 'cost.lifeMonths', 1, 120),
     watts: amount(given(input['watts'], base.watts), 'cost.watts', 2000),
     kwhUsd: amount(given(input['kwhUsd'], base.kwhUsd), 'cost.kwhUsd', 10),
   };
-}
-
-/** Providers and runners that are in the price list, each provider once. */
-function comparisons(value: unknown, saved: boolean): CostSettings['compare'] {
-  if (!Array.isArray(value) || value.length > (saved ? 100 : PROVIDERS.length)) {
-    throw new SettingsError('cost.compare must be a list of providers');
-  }
-  const seen = new Set<string>();
-  return value.flatMap((entry, index) => {
-    const fields = section(entry, `cost.compare[${index}]`, ['provider', 'linux', 'macos']);
-    const known = provider(String(fields['provider']));
-    if (!known || seen.has(known.id)) {
-      // A provider since taken out of the price list is forgotten.
-      if (saved) return [];
-      throw new SettingsError(
-        `cost.compare[${index}].provider is not a provider, or is listed twice`,
-      );
-    }
-    seen.add(known.id);
-    let linux = known.linux.find((runner) => runner.id === fields['linux']);
-    let macos = known.macos.find((runner) => runner.id === fields['macos']);
-    if ((!linux || !macos) && saved) {
-      // A runner since renamed or taken out: the provider's default instead.
-      linux ??= known.linux[0];
-      macos ??= known.macos[0];
-    }
-    if (!linux || !macos) {
-      throw new SettingsError(`cost.compare[${index}] names a runner ${known.name} does not have`);
-    }
-    return [{ provider: known.id, linux: linux.id, macos: macos.id }];
-  });
 }
 
 /** A number from 0 to `max`, or null for not given. */
