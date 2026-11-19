@@ -52,8 +52,7 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
 - **Usage is minutes first; prices are a reference**
   ([D25](decisions/D25-usage-and-list-prices.md)). Other providers' list prices are shown as
   what they are, with what they leave out, and nothing is "saved" or "lost": no headline, no
-  payback, no comparison wording against anyone. A row of toggles above the table picks which providers it
-  has; a provider switched off is not in the table or its notes.
+  payback, no comparison wording against anyone. Every provider is a line of plain text: nothing to pick or switch.
 - **Linux and macOS are blue and raspberry** where the kinds are what tells series apart
   (`--viz-linux`, `--viz-macos`), checked as a pair for colour-blind separation.
 - **A log opens in a dialog**, over whichever view it was opened from. Escape, the Close

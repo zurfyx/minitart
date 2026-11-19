@@ -264,31 +264,6 @@ select {
   align-items: center;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 14px;
-}
-
-.chip {
-  padding: 3px 12px;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.chip[aria-pressed='true'],
-.chip[aria-pressed='true']:hover {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.chip:hover {
-  border-color: var(--ink);
-}
-
 .compare .provider {
   display: flex;
   align-items: center;
@@ -303,13 +278,8 @@ select {
 
 .compare .runners {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.compare .runners select {
-  width: 100%;
-  min-width: 0;
+  gap: 2px;
+  color: var(--body);
   font-size: 13px;
 }
 
@@ -1039,10 +1009,6 @@ h2 .legend {
   .compare .price {
     justify-items: start;
     text-align: left;
-  }
-
-  .compare .runners {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .usage-figures {

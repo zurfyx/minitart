@@ -116,56 +116,28 @@ test('untrusted input is refused, not coerced', () => {
   }
 });
 
-test('cost: every provider compared at its defaults, and only known providers and runners', () => {
+test('cost: the Mac’s price, life, draw and electricity, each a number or empty', () => {
   const machine = { cpus: 15, memoryBytes: 64 * GB };
   const base = defaultSettings(machine);
-  assert.deepEqual(base.cost.compare[0], {
-    provider: 'github',
-    linux: 'linux-2-x64',
-    macos: 'macos',
-  });
-  assert.deepEqual(
-    [base.cost.macUsd, base.cost.lifeMonths, base.cost.watts, base.cost.kwhUsd],
-    [null, 36, null, null],
-  );
+  assert.deepEqual(base.cost, { macUsd: null, lifeMonths: 36, watts: null, kwhUsd: null });
   const priced = mergeSettings(
     base,
     { cost: { macUsd: 1999.5, watts: 22.5, kwhUsd: 0.31 } },
     machine,
   );
-  assert.deepEqual(
-    [priced.cost.macUsd, priced.cost.watts, priced.cost.kwhUsd, priced.cost.compare.length],
-    [1999.5, 22.5, 0.31, base.cost.compare.length],
-    'a part changes, the rest stays',
-  );
+  assert.deepEqual(priced.cost, { macUsd: 1999.5, lifeMonths: 36, watts: 22.5, kwhUsd: 0.31 });
   assert.equal(
     mergeSettings(priced, { cost: { macUsd: null } }, machine).cost.macUsd,
     null,
     'emptied',
   );
-  const one = mergeSettings(
-    base,
-    { cost: { compare: [{ provider: 'depot', linux: 'linux-4-arm', macos: 'macos-8' }] } },
-    machine,
-  );
-  assert.deepEqual(one.cost.compare, [
-    { provider: 'depot', linux: 'linux-4-arm', macos: 'macos-8' },
-  ]);
   for (const bad of [
-    { compare: [{ provider: 'nobody', linux: 'linux-2-x64', macos: 'macos' }] },
-    { compare: [{ provider: 'github', linux: 'linux-2-x64', macos: 'macos-6' }] },
-    {
-      compare: [
-        { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
-        { provider: 'github', linux: 'linux-2-arm', macos: 'macos' },
-      ],
-    },
-    { compare: [{ provider: 'github', linux: 'linux-2-x64', macos: 'macos', extra: 1 }] },
     { macUsd: -1 },
     { watts: '20' },
     { lifeMonths: 0 },
     { kwhUsd: Number.POSITIVE_INFINITY },
     { currency: 'EUR' },
+    { compare: [] },
   ]) {
     assert.throws(
       () => mergeSettings(base, { cost: bad }, machine),
@@ -175,26 +147,14 @@ test('cost: every provider compared at its defaults, and only known providers an
   }
 });
 
-test('cost: a saved file naming providers or runners since gone keeps everything else', () => {
+test('cost: the providers an earlier minitart saved as chosen are let be, and nothing else lost', () => {
   const machine = { cpus: 15, memoryBytes: 64 * GB };
-  const base = defaultSettings(machine);
   const saved = {
     repos: ['octo/app'],
-    cost: {
-      macUsd: 1999,
-      compare: [
-        { provider: 'gone-provider', linux: 'x', macos: 'y' },
-        { provider: 'github', linux: 'linux-2-renamed', macos: 'macos' },
-        { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
-      ],
-    },
+    cost: { macUsd: 1999, compare: [{ provider: 'github', linux: 'linux-2-x64', macos: 'macos' }] },
   };
-  const loaded = mergeSettings(base, saved, machine, { saved: true });
-  assert.deepEqual(loaded.repos, ['octo/app'], 'the repos served are kept');
+  const loaded = mergeSettings(defaultSettings(machine), saved, machine, { saved: true });
+  assert.deepEqual(loaded.repos, ['octo/app']);
   assert.equal(loaded.cost.macUsd, 1999);
-  assert.deepEqual(loaded.cost.compare, [
-    { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
-  ]);
-  // What the dashboard sends is still held to the list.
-  assert.throws(() => mergeSettings(base, saved, machine), SettingsError);
+  assert.ok(!('compare' in loaded.cost));
 });

@@ -13,21 +13,8 @@ import {
 } from './cost.js';
 
 const providers = [
-  {
-    id: 'github',
-    name: 'GitHub-hosted',
-    linux: [
-      { id: 'linux-2-x64', usd: 0.006 },
-      { id: 'linux-4-arm', usd: 0.008 },
-    ],
-    macos: [{ id: 'macos', usd: 0.062 }],
-  },
-  {
-    id: 'blacksmith',
-    name: 'Blacksmith',
-    linux: [{ id: 'linux-2-x64', usd: 0.004 }],
-    macos: [{ id: 'macos-6', usd: 0.08 }],
-  },
+  { id: 'github', linux: { usd: 0.006 }, macos: { usd: 0.062 } },
+  { id: 'blacksmith', linux: { usd: 0.004 }, macos: { usd: 0.08 } },
 ];
 
 const usage = [
@@ -57,12 +44,8 @@ test('totals by kind', () => {
   });
 });
 
-test('each provider prices each kind at the runner chosen for it', () => {
-  const rows = compareProviders(totals(usage), providers, [
-    { provider: 'blacksmith', linux: 'linux-2-x64', macos: 'macos-6' },
-    { provider: 'github', linux: 'linux-4-arm', macos: 'macos' },
-    { provider: 'gone', linux: 'x', macos: 'y' },
-  ]);
+test('each provider prices each kind at its runner, in the price list’s order', () => {
+  const rows = compareProviders(totals(usage), providers);
   assert.deepEqual(
     rows.map((row) => [
       row.provider.id,
@@ -71,10 +54,9 @@ test('each provider prices each kind at the runner chosen for it', () => {
       row.usd.toFixed(3),
     ]),
     [
+      ['github', '0.900', '1.860', '2.760'],
       ['blacksmith', '0.600', '2.400', '3.000'],
-      ['github', '1.200', '1.860', '3.060'],
     ],
-    'in the order chosen, and a provider no longer listed left out',
   );
 });
 
