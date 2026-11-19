@@ -47,12 +47,19 @@ export function daysCounted(dates, oldestDay) {
     : dates.filter((day) => day >= oldestDay).length;
 }
 
-/** What the range's minutes are listed at by each provider, Linux and macOS apart. */
-export function compareProviders(sum, providers) {
-  return providers.map((provider) => {
-    const linuxUsd = sum.linux.minutes * provider.linux.usd;
-    const macosUsd = sum.macos.minutes * provider.macos.usd;
-    return { provider, linuxUsd, macosUsd, usd: linuxUsd + macosUsd };
+/**
+ * What the range's minutes would cost at each provider compared, at the runner chosen for
+ * each kind. Providers in `compare`'s order; one not in the price list is left out.
+ */
+export function compareProviders(sum, providers, compare) {
+  return compare.flatMap((chosen) => {
+    const provider = providers.find((one) => one.id === chosen.provider);
+    const linux = provider?.linux.find((runner) => runner.id === chosen.linux);
+    const macos = provider?.macos.find((runner) => runner.id === chosen.macos);
+    if (!provider || !linux || !macos) return [];
+    const linuxUsd = sum.linux.minutes * linux.usd;
+    const macosUsd = sum.macos.minutes * macos.usd;
+    return [{ provider, linux, macos, linuxUsd, macosUsd, usd: linuxUsd + macosUsd }];
   });
 }
 

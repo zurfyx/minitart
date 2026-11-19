@@ -863,6 +863,8 @@ const RANGES = [7, 30, 90, 365];
 let costData = null;
 /** Whether the view has been drawn with the state it needs: until then, the state draws it. */
 let costDrawn = false;
+/** Changes to the providers compared, saved one after another so none undoes another. */
+let costSaving = Promise.resolve();
 let costAsked = '';
 
 async function loadCost() {
@@ -906,7 +908,7 @@ function drawCost() {
     h('small', {}, ' h'),
   );
 
-  const rows = compareProviders(sum, prices.providers);
+  const rows = compareProviders(sum, prices.providers, cost.compare);
   const ownMonth = macCost(cost, MONTH_DAYS);
   $('cost-own').textContent = ownMonth.usd === null ? '–' : usd(ownMonth.usd);
   $('cost-own-split').textContent =
@@ -935,52 +937,130 @@ function drawCost() {
     });
   }
 
-  // Every provider, as a line of text: what its runners cost a minute, and what these
-  // minutes come to there.
-  $('compare').replaceChildren(
-    ...rows.map((row) => {
-      const { provider } = row;
-      return h(
-        'div',
-        { class: 'row' },
-        h(
-          'span',
-          { class: 'provider' },
-          h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
-        ),
-        h(
-          'span',
-          { class: 'runners' },
-          h('span', {}, `${provider.linux.name} · $${provider.linux.usd}/min`),
-          h('span', {}, `${provider.macos.name} · $${provider.macos.usd}/min`),
-        ),
-        h(
-          'span',
-          { class: 'num price' },
-          h('b', {}, usd(row.usd)),
-          h('span', { class: 'meta' }, `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`),
-        ),
-        h(
-          'span',
-          { class: 'num price' },
-          h('b', {}, `${usd(perMonth(row.usd, counted))} a month`),
-          h('span', { class: 'meta' }, 'at this range’s pace'),
-        ),
-      );
-    }),
-  );
-  $('compare-notes').replaceChildren(
-    h(
-      'p',
-      {},
-      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
-        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
-        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
-        'runner took it, rounded up to a whole minute.',
-    ),
+  // Which providers are shown: a toggle each, in the price list's order. Only the ones on are
+  // in the table and its notes.
+  const shown = new Map(cost.compare.map((entry) => [entry.provider, entry]));
+  // Drawn again after each change: the control that had the keyboard gets it back.
+  const focused = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.key;
+  /** Saves the providers shown and their runners, one change after another, each from what is saved. */
+  const saveCompare = (change) => {
+    // Whatever goes wrong is said, and the next change is still saved.
+    costSaving = costSaving
+      .then(() => saveSettings({ cost: { compare: change(state.settings.cost.compare) } }))
+      .then(drawCost)
+      .catch((error) => alert(error.message));
+  };
+  $('providers').replaceChildren(
     ...prices.providers.map((provider) =>
-      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chip',
+          'data-key': `chip ${provider.id}`,
+          'aria-pressed': shown.has(provider.id) ? 'true' : 'false',
+          onclick: () =>
+            saveCompare((current) =>
+              current.some((entry) => entry.provider === provider.id)
+                ? current.filter((entry) => entry.provider !== provider.id)
+                : [
+                    ...current,
+                    {
+                      provider: provider.id,
+                      linux: provider.linux[0].id,
+                      macos: provider.macos[0].id,
+                    },
+                  ],
+            ),
+        },
+        provider.name,
+      ),
     ),
+  );
+
+  const listed = prices.providers.filter((provider) => shown.has(provider.id));
+  $('compare').replaceChildren(
+    ...(listed.length
+      ? listed.map((provider) => {
+          const on = shown.get(provider.id);
+          const row = rows.find((one) => one.provider.id === provider.id);
+          const runner = (kind) => {
+            const select = h(
+              'select',
+              {
+                'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`,
+                'data-key': `runner ${provider.id} ${kind}`,
+              },
+              ...provider[kind].map((one) =>
+                h(
+                  'option',
+                  { value: one.id, selected: on[kind] === one.id },
+                  `${one.name} · $${one.usd}/min`,
+                ),
+              ),
+            );
+            select.addEventListener('change', () =>
+              saveCompare((current) =>
+                current.map((entry) =>
+                  entry.provider === provider.id ? { ...entry, [kind]: select.value } : entry,
+                ),
+              ),
+            );
+            return select;
+          };
+          const monthly = row ? perMonth(row.usd, counted) : null;
+          return h(
+            'div',
+            { class: 'row' },
+            h(
+              'span',
+              { class: 'provider' },
+              h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
+            ),
+            h('span', { class: 'runners' }, runner('linux'), runner('macos')),
+            h(
+              'span',
+              { class: 'num price' },
+              row ? h('b', {}, usd(row.usd)) : null,
+              row
+                ? h(
+                    'span',
+                    { class: 'meta' },
+                    `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
+                  )
+                : null,
+            ),
+            h(
+              'span',
+              { class: 'num price' },
+              row ? h('b', {}, `${usd(monthly)} a month`) : null,
+              row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
+            ),
+          );
+        })
+      : [empty('No provider is shown. Pick one above to see its list prices.')]),
+  );
+  if (focused) {
+    for (const element of document.querySelectorAll('#providers [data-key], #compare [data-key]')) {
+      if (/** @type {HTMLElement} */ (element).dataset.key === focused) {
+        /** @type {HTMLElement} */ (element).focus();
+      }
+    }
+  }
+  $('compare-notes').replaceChildren(
+    ...(listed.length
+      ? [
+          h(
+            'p',
+            {},
+            `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+              'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+              'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+              'runner took it, rounded up to a whole minute.',
+          ),
+          ...listed.map((provider) => h('p', {}, h('b', {}, `${provider.name}: `), provider.note)),
+        ]
+      : []),
   );
 
   const form = /** @type {HTMLFormElement} */ ($('own'));
