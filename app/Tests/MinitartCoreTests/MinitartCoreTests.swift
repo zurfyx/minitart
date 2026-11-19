@@ -67,17 +67,22 @@ final class LabelTests: XCTestCase {
     XCTAssertFalse(needsOwner(makeState(["queued": queued(3, "Every macOS slot is in use (2 of 2)")]), now: now))
     XCTAssertTrue(needsOwner(makeState(["queued": queued(15, "Every macOS slot is in use (2 of 2)")]), now: now))
     XCTAssertFalse(needsOwner(makeState(["queued": queued(30, NSNull())]), now: now), "a VM is on its way")
+    // Draining, a job waits on purpose: the mark is the pause sign, not the exclamation mark.
+    let drained = makeState(["draining": true, "queued": queued(30, "minitart is draining")])
+    XCTAssertFalse(needsOwner(drained, now: now))
+    XCTAssertEqual(barLabel(.running(drained), showCount: true, now: now).mark, .paused)
   }
 
   func testASetupStepMissingAsksForTheOwnerAndIsNamed() {
     let health: [[String: Any]] = [
-      ["id": "firewall", "ok": false, "title": "Firewall", "detail": "x"],
+      ["id": "firewall", "ok": false, "title": "Firewall", "detail": "x", "sudo": [["sh", "install.sh"]]],
+      ["id": "github", "ok": false, "title": "GitHub App", "detail": "x"],
       ["id": "login", "ok": false, "title": "Restart", "detail": "x", "optional": true],
       ["id": "tart", "ok": true, "title": "Tart", "detail": "x"],
     ]
     let state = makeState(["health": health])
     XCTAssertTrue(needsOwner(state))
-    XCTAssertEqual(missingSteps(state), ["Firewall"])
+    XCTAssertEqual(missingSteps(state), ["Firewall"], "only what doctor --fix can put right")
   }
 }
 
@@ -101,7 +106,8 @@ final class MenuTests: XCTestCase {
     let job = { (note: Any) -> [String: Any] in ["repo": "octo/app", "name": "t", "pool": "linux", "note": note, "createdAt": "2026-11-19T10:00:00Z"] }
     XCTAssertNil(waitingLine(makeState()))
     XCTAssertEqual(waitingLine(makeState(["queued": [job(NSNull())]])), "1 starting")
-    XCTAssertEqual(waitingLine(makeState(["queued": [job("Every Linux slot is in use (4 of 4)"), job(NSNull())]])), "2 waiting: every Linux slot is in use (4 of 4)")
+    // Counted as the headline counts: only the jobs with a reason.
+    XCTAssertEqual(waitingLine(makeState(["queued": [job("Every Linux slot is in use (4 of 4)"), job(NSNull())]])), "1 waiting: every Linux slot is in use (4 of 4)")
   }
 
   func testDurationsAreWrittenAsTheDashboardWritesThem() {

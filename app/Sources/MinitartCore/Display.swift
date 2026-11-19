@@ -55,6 +55,8 @@ public func barLabel(_ condition: Condition, showCount: Bool, now: Date = Date()
 public func needsOwner(_ state: State, now: Date = Date()) -> Bool {
   if state.blocked != nil || state.githubError != nil || state.shortOfMemory != nil { return true }
   if (state.health ?? []).contains(where: { !$0.ok && !($0.optional ?? false) }) { return true }
+  // While draining every queued job waits on purpose: the pause sign says so, not this.
+  if state.draining { return false }
   let formatter = ISO8601DateFormatter()
   formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
   let plain = ISO8601DateFormatter()
@@ -100,15 +102,11 @@ public func jobLines(_ state: State, limit: Int = 8) -> [JobLine] {
   }
 }
 
-/// A line on what waits, when anything does: how many, and what most of them wait for.
+/// A line on what waits, as the headline counts it: the jobs with a reason and the reason most
+/// share; or, when none has one, how many are starting.
 public func waitingLine(_ state: State) -> String? {
-  guard !state.queued.isEmpty else { return nil }
-  let notes = state.queued.compactMap(\.note)
-  let count = state.queued.count
-  if notes.isEmpty { return "\(count) starting" }
-  var reason = notes[0]
-  if reason.hasSuffix(".") { reason.removeLast() }
-  return "\(count) waiting: \(reason.prefix(1).lowercased() + reason.dropFirst())"
+  if let waiting = waiting(state) { return "\(waiting.count) waiting: \(waiting.reason)" }
+  return state.queued.isEmpty ? nil : "\(state.queued.count) starting"
 }
 
 /// Seconds as the dashboard writes them: 38s, 4m 12s, 1h 05m.
@@ -120,7 +118,8 @@ public func duration(_ seconds: Double) -> String {
   return "\(minutes / 60)h \(String(format: "%02d", minutes % 60))m"
 }
 
-/// The setup steps `doctor` says are missing, by title.
+/// The setup steps missing that `minitart doctor --fix` can put right, by title. The others
+/// (the GitHub App, a full disk) are the dashboard's to explain.
 public func missingSteps(_ state: State) -> [String] {
-  (state.health ?? []).filter { !$0.ok && !($0.optional ?? false) }.map(\.title)
+  (state.health ?? []).filter { !$0.ok && !($0.optional ?? false) && $0.fixable }.map(\.title)
 }

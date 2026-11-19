@@ -62,6 +62,11 @@ public struct State: Decodable, Sendable {
     public var title: String
     public var detail: String
     public var optional: Bool?
+    /// Present when `minitart doctor --fix` can put it right: commands, some with the password.
+    public var sudo: [[String]]?
+    public var commands: [Present]?
+
+    public var fixable: Bool { sudo != nil || commands != nil }
   }
 
   public static func decode(_ data: Data) throws -> State {

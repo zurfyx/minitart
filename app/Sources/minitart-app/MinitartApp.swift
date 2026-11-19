@@ -61,7 +61,13 @@ struct MenuContent: View {
 
   @ViewBuilder
   private func running(_ state: MinitartCore.State) -> some View {
-    Text(headline(state).sentence)
+    if state.app == nil && state.repos.isEmpty {
+      // The dashboard's "below" is the dashboard's: here it is a button.
+      Text("Not connected to GitHub yet.")
+      Button("Create the GitHub App in the Dashboard…") { model.openDashboard() }
+    } else {
+      Text(headline(state).sentence)
+    }
     let missing = missingSteps(state)
     if !missing.isEmpty {
       Button("Finish setup in Terminal (\(missing.joined(separator: ", ")))…") { model.finishSetup() }

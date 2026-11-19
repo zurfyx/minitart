@@ -9,9 +9,9 @@ cask "minitart-app" do
   homepage "https://minitart.rovira.sh/"
 
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
   # One install sets up both: the app watches the minitart on this Mac.
   depends_on formula: "zurfyx/tap/minitart"
+  depends_on macos: :sonoma
 
   app "minitart.app"
 

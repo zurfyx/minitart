@@ -9,9 +9,14 @@
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "Idle.", "point": null }
+    "headline": {
+      "lead": "Idle.",
+      "point": null
+    }
   },
   {
     "case": "idle, some today",
@@ -23,9 +28,14 @@
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 12 }
+      "today": {
+        "finished": 12
+      }
     },
-    "headline": { "lead": "Idle.", "point": "12 jobs today." }
+    "headline": {
+      "lead": "Idle.",
+      "point": "12 jobs today."
+    }
   },
   {
     "case": "one job today",
@@ -37,54 +47,156 @@
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 1 }
+      "today": {
+        "finished": 1
+      }
     },
-    "headline": { "lead": "Idle.", "point": "1 job today." }
+    "headline": {
+      "lead": "Idle.",
+      "point": "1 job today."
+    }
   },
   {
     "case": "running, nothing waiting",
     "state": {
       "app": {},
       "repos": [{}],
-      "vms": [{ "status": "running" }, { "status": "running" }],
+      "vms": [
+        {
+          "status": "running"
+        },
+        {
+          "status": "running"
+        }
+      ],
       "queued": [],
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 3 }
+      "today": {
+        "finished": 3
+      }
     },
-    "headline": { "lead": "2 running.", "point": null }
+    "headline": {
+      "lead": "2 running.",
+      "point": null
+    }
   },
   {
     "case": "running and starting",
     "state": {
       "app": {},
       "repos": [{}],
-      "vms": [{ "status": "running" }, { "status": "booting" }],
-      "queued": [{ "note": null }],
+      "vms": [
+        {
+          "status": "running"
+        },
+        {
+          "status": "booting"
+        }
+      ],
+      "queued": [
+        {
+          "note": null
+        }
+      ],
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "1 running, 1 starting.", "point": null }
+    "headline": {
+      "lead": "1 running, 1 starting.",
+      "point": null
+    }
   },
   {
     "case": "waiting for a slot",
     "state": {
       "app": {},
       "repos": [{}],
-      "vms": [{ "status": "running" }],
+      "vms": [
+        {
+          "status": "running"
+        }
+      ],
       "queued": [
-        { "note": "Every macOS slot is in use (2 of 2)" },
-        { "note": "Every macOS slot is in use (2 of 2)" }
+        {
+          "note": "Every macOS slot is in use (2 of 2)"
+        },
+        {
+          "note": "Every macOS slot is in use (2 of 2)"
+        }
       ],
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "1 running.", "point": "2 waiting: every macOS slot is in use (2 of 2)." }
+    "headline": {
+      "lead": "1 running.",
+      "point": "2 waiting: every macOS slot is in use (2 of 2)."
+    }
+  },
+  {
+    "case": "a tie goes to the reason seen first",
+    "state": {
+      "app": {},
+      "repos": [{}],
+      "draining": false,
+      "blocked": null,
+      "githubError": null,
+      "today": {
+        "finished": 0
+      },
+      "vms": [],
+      "queued": [
+        {
+          "note": "Every Linux slot is in use (4 of 4)"
+        },
+        {
+          "note": "Every macOS slot is in use (2 of 2)"
+        }
+      ]
+    },
+    "headline": {
+      "lead": "Nothing running.",
+      "point": "2 waiting: every Linux slot is in use (4 of 4)."
+    }
+  },
+  {
+    "case": "only the jobs with a reason are waiting",
+    "state": {
+      "app": {},
+      "repos": [{}],
+      "draining": false,
+      "blocked": null,
+      "githubError": null,
+      "today": {
+        "finished": 0
+      },
+      "vms": [
+        {
+          "status": "running"
+        }
+      ],
+      "queued": [
+        {
+          "note": null
+        },
+        {
+          "note": "Every macOS slot is in use (2 of 2)"
+        }
+      ]
+    },
+    "headline": {
+      "lead": "1 running.",
+      "point": "1 waiting: every macOS slot is in use (2 of 2)."
+    }
   },
   {
     "case": "waiting, nothing running",
@@ -92,11 +204,17 @@
       "app": {},
       "repos": [{}],
       "vms": [],
-      "queued": [{ "note": "No linux image yet: minitart image build linux" }],
+      "queued": [
+        {
+          "note": "No linux image yet: minitart image build linux"
+        }
+      ],
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
     "headline": {
       "lead": "Nothing running.",
@@ -108,14 +226,27 @@
     "state": {
       "app": {},
       "repos": [{}],
-      "vms": [{ "status": "running" }],
-      "queued": [{ "note": "x" }],
+      "vms": [
+        {
+          "status": "running"
+        }
+      ],
+      "queued": [
+        {
+          "note": "x"
+        }
+      ],
       "draining": true,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "Draining.", "point": "1 running job finishes; no new one starts." }
+    "headline": {
+      "lead": "Draining.",
+      "point": "1 running job finishes; no new one starts."
+    }
   },
   {
     "case": "draining, empty",
@@ -127,9 +258,14 @@
       "draining": true,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "Draining.", "point": "Nothing is running: it is safe to restart." }
+    "headline": {
+      "lead": "Draining.",
+      "point": "Nothing is running: it is safe to restart."
+    }
   },
   {
     "case": "GitHub failing beats draining",
@@ -141,23 +277,37 @@
       "draining": true,
       "blocked": null,
       "githubError": "Bad credentials",
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "minitart cannot read GitHub.", "point": "Bad credentials" }
+    "headline": {
+      "lead": "minitart cannot read GitHub.",
+      "point": "Bad credentials"
+    }
   },
   {
     "case": "blocked beats everything",
     "state": {
       "app": {},
       "repos": [{}],
-      "vms": [{ "status": "running" }],
+      "vms": [
+        {
+          "status": "running"
+        }
+      ],
       "queued": [],
       "draining": true,
       "blocked": "The firewall rule is not installed",
       "githubError": "x",
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "No job can start.", "point": "The firewall rule is not installed" }
+    "headline": {
+      "lead": "No job can start.",
+      "point": "The firewall rule is not installed"
+    }
   },
   {
     "case": "not connected yet",
@@ -169,8 +319,13 @@
       "draining": false,
       "blocked": null,
       "githubError": null,
-      "today": { "finished": 0 }
+      "today": {
+        "finished": 0
+      }
     },
-    "headline": { "lead": "Not connected to GitHub yet.", "point": "Create the GitHub App below." }
+    "headline": {
+      "lead": "Not connected to GitHub yet.",
+      "point": "Create the GitHub App below."
+    }
   }
 ]

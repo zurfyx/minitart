@@ -23,6 +23,9 @@ final class Model: ObservableObject {
 
   @Published private(set) var condition: Condition = .unreachable
   private var timer: Timer?
+  /// Each look is numbered: an answer older than the newest one shown is dropped.
+  private var asked = 0
+  private var shown = 0
 
   init() {
     refresh()
@@ -32,19 +35,29 @@ final class Model: ObservableObject {
   }
 
   func refresh() {
+    asked += 1
+    let look = asked
     var request = URLRequest(url: Self.dashboard.appendingPathComponent("api/state"))
     request.timeoutInterval = 2.5
     URLSession.shared.dataTask(with: request) { data, response, _ in
       let ok = (response as? HTTPURLResponse)?.statusCode == 200
       let state = ok ? data.flatMap { try? State.decode($0) } : nil
-      Task { @MainActor in
-        if let state {
-          self.condition = isAtLeast(state.version) ? .running(state) : .tooOld(version: state.version ?? "an older version")
-        } else {
-          self.condition = Installation.minitart() == nil ? .notInstalled : (Installation.serviceLoaded() ? .unreachable : .notRunning)
-        }
+      // When the dashboard does not answer, what is installed and loaded is asked here, off
+      // the main thread: `launchctl` is a process to wait for.
+      let condition: Condition
+      if let state {
+        condition = isAtLeast(state.version) ? .running(state) : .tooOld(version: state.version ?? "an older version")
+      } else {
+        condition = Installation.minitart() == nil ? .notInstalled : (Installation.serviceLoaded() ? .unreachable : .notRunning)
       }
+      Task { @MainActor in self.show(condition, look: look) }
     }.resume()
+  }
+
+  private func show(_ condition: Condition, look: Int) {
+    guard look > shown else { return }
+    shown = look
+    self.condition = condition
   }
 
   // Actions
@@ -63,14 +76,26 @@ final class Model: ObservableObject {
     let origin = "\(Self.dashboard.scheme ?? "http")://\(Self.dashboard.host ?? "127.0.0.1"):\(Self.dashboard.port ?? 4141)"
     request.setValue(origin, forHTTPHeaderField: "Origin")
     request.httpBody = try? JSONSerialization.data(withJSONObject: ["draining": draining])
-    URLSession.shared.dataTask(with: request) { _, _, _ in
-      Task { @MainActor in self.refresh() }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      let status = (response as? HTTPURLResponse)?.statusCode
+      let said = data.flatMap { String(data: $0, encoding: .utf8) } ?? error?.localizedDescription ?? "no answer"
+      Task { @MainActor in
+        if status != 200 { Alert.show("minitart did not \(draining ? "drain" : "resume")", said) }
+        self.refresh()
+      }
     }.resume()
   }
 
+  /// Starts minitart's own service if it has one (`minitart service install`), with the
+  /// flags it was installed with; otherwise Homebrew's.
   func startService() {
-    Installation.run(Installation.brew(), ["services", "start", "zurfyx/tap/minitart"]) {
-      Task { @MainActor in self.refresh() }
+    let own = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/LaunchAgents/sh.rovira.minitart.plist").path
+    let done: @Sendable () -> Void = { Task { @MainActor in self.refresh() } }
+    if FileManager.default.fileExists(atPath: own) {
+      Installation.run("/bin/launchctl", ["bootstrap", "gui/\(getuid())", own], then: done)
+    } else {
+      Installation.run(Installation.brew(), ["services", "start", "zurfyx/tap/minitart"], then: done)
     }
   }
 
@@ -89,7 +114,16 @@ final class Model: ObservableObject {
   var opensAtLogin: Bool {
     get { SMAppService.mainApp.status == .enabled }
     set {
-      try? newValue ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+      do {
+        if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+      } catch {
+        // macOS can ask the owner to allow it first, in System Settings.
+        if SMAppService.mainApp.status == .requiresApproval {
+          SMAppService.openSystemSettingsLoginItems()
+        } else {
+          Alert.show("minitart could not change Open at Login", error.localizedDescription)
+        }
+      }
       objectWillChange.send()
     }
   }
@@ -127,6 +161,16 @@ enum Installation {
     process.arguments = arguments
     process.terminationHandler = { _ in done() }
     try? process.run()
+  }
+}
+
+enum Alert {
+  static func show(_ title: String, _ detail: String) {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = detail
+    NSApp.activate(ignoringOtherApps: true)
+    alert.runModal()
   }
 }
 
