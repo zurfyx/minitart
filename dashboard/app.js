@@ -863,6 +863,8 @@ const RANGES = [7, 30, 90, 365];
 let costData = null;
 /** Whether the view has been drawn with the state it needs: until then, the state draws it. */
 let costDrawn = false;
+/** Changes to the providers compared, saved one after another so none undoes another. */
+let costSaving = Promise.resolve();
 let costAsked = '';
 
 async function loadCost() {
@@ -906,7 +908,10 @@ function drawCost() {
     h('small', {}, ' h'),
   );
 
-  const rows = compareProviders(sum, prices.providers);
+  // The providers shown are the ones in `compare`, each at the runners picked for it.
+  const entryOf = (provider) => cost.compare.find((entry) => entry.provider === provider.id);
+  const shown = prices.providers.filter((provider) => entryOf(provider));
+  const rows = compareProviders(sum, prices.providers, cost.compare);
   const ownMonth = macCost(cost, MONTH_DAYS);
   $('cost-own').textContent = ownMonth.usd === null ? '–' : usd(ownMonth.usd);
   $('cost-own-split').textContent =
@@ -935,11 +940,82 @@ function drawCost() {
     });
   }
 
-  // Every provider, as a line of text: what its runners cost a minute, and what these
-  // minutes come to there.
+  // Drawn again after each change: the menu that had the keyboard gets it back.
+  const focused = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.key;
+  /** Saves the runners picked, one change after another, each from what is saved. */
+  const saveCompare = (change) => {
+    // Whatever goes wrong is said, the page goes back to what is saved, and the next change
+    // is still saved.
+    costSaving = costSaving
+      .then(() => saveSettings({ cost: { compare: change(state.settings.cost.compare) } }))
+      .then(drawCost, (error) => {
+        alert(error.message);
+        drawCost();
+      })
+      .catch((error) => alert(error.message));
+  };
+
+  // The Providers menu: a box each, in the price list's order. Unticked, a provider is not in
+  // the table or its notes.
+  $('provider-count').textContent = `${shown.length} of ${prices.providers.length}`;
+  $('provider-list').replaceChildren(
+    ...prices.providers.map((provider) => {
+      const box = h('input', {
+        type: 'checkbox',
+        checked: Boolean(entryOf(provider)),
+        'data-key': `show ${provider.id}`,
+      });
+      // What the box shows is what is asked for, whatever was saved before.
+      box.addEventListener('change', () => {
+        const wanted = box.checked;
+        saveCompare((current) => {
+          const others = current.filter((entry) => entry.provider !== provider.id);
+          const kept = current.find((entry) => entry.provider === provider.id);
+          if (!wanted) return others;
+          return [
+            ...others,
+            kept ?? {
+              provider: provider.id,
+              linux: provider.linux[0].id,
+              macos: provider.macos[0].id,
+            },
+          ];
+        });
+      });
+      return h('label', {}, box, provider.name);
+    }),
+  );
+
   $('compare').replaceChildren(
-    ...rows.map((row) => {
-      const { provider } = row;
+    ...(shown.length ? [] : [empty('No provider is shown. Pick some under Providers.')]),
+    ...shown.map((provider) => {
+      const on = entryOf(provider);
+      const row = rows.find((one) => one.provider.id === provider.id);
+      const runner = (kind) => {
+        const select = h(
+          'select',
+          {
+            'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`,
+            'data-key': `runner ${provider.id} ${kind}`,
+          },
+          ...provider[kind].map((one) =>
+            h(
+              'option',
+              { value: one.id, selected: on[kind] === one.id },
+              `${one.name} · $${one.usd}/min`,
+            ),
+          ),
+        );
+        select.addEventListener('change', () =>
+          saveCompare((current) =>
+            current.map((entry) =>
+              entry.provider === provider.id ? { ...entry, [kind]: select.value } : entry,
+            ),
+          ),
+        );
+        return select;
+      };
+      const monthly = row ? perMonth(row.usd, counted) : null;
       return h(
         'div',
         { class: 'row' },
@@ -948,39 +1024,51 @@ function drawCost() {
           { class: 'provider' },
           h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
         ),
+        h('span', { class: 'runners' }, runner('linux'), runner('macos')),
         h(
           'span',
-          { class: 'runners' },
-          h('span', {}, `${provider.linux.name} · $${provider.linux.usd}/min`),
-          h('span', {}, `${provider.macos.name} · $${provider.macos.usd}/min`),
+          { class: 'num price' },
+          row ? h('b', {}, usd(row.usd)) : null,
+          row
+            ? h(
+                'span',
+                { class: 'meta' },
+                `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
+              )
+            : null,
         ),
         h(
           'span',
           { class: 'num price' },
-          h('b', {}, usd(row.usd)),
-          h('span', { class: 'meta' }, `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`),
-        ),
-        h(
-          'span',
-          { class: 'num price' },
-          h('b', {}, `${usd(perMonth(row.usd, counted))} a month`),
-          h('span', { class: 'meta' }, 'at this range’s pace'),
+          row ? h('b', {}, `${usd(monthly)} a month`) : null,
+          row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
         ),
       );
     }),
   );
+  if (focused) {
+    for (const element of document.querySelectorAll(
+      '#compare [data-key], #provider-list [data-key]',
+    )) {
+      if (/** @type {HTMLElement} */ (element).dataset.key === focused) {
+        /** @type {HTMLElement} */ (element).focus();
+      }
+    }
+  }
   $('compare-notes').replaceChildren(
-    h(
-      'p',
-      {},
-      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
-        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
-        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
-        'runner took it, rounded up to a whole minute.',
-    ),
-    ...prices.providers.map((provider) =>
-      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
-    ),
+    ...(shown.length
+      ? [
+          h(
+            'p',
+            {},
+            `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+              'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+              'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+              'runner took it, rounded up to a whole minute.',
+          ),
+          ...shown.map((provider) => h('p', {}, h('b', {}, `${provider.name}: `), provider.note)),
+        ]
+      : []),
   );
 
   const form = /** @type {HTMLFormElement} */ ($('own'));
@@ -990,6 +1078,25 @@ function drawCost() {
     }
   }
 }
+
+// The Providers menu closes as a menu does: Escape, or a click anywhere else.
+const providerMenu = /** @type {HTMLDetailsElement} */ ($('provider-menu'));
+document.addEventListener('click', (event) => {
+  if (providerMenu.open && !providerMenu.contains(/** @type {Node} */ (event.target))) {
+    providerMenu.open = false;
+  }
+});
+providerMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && providerMenu.open) {
+    providerMenu.open = false;
+    providerMenu.querySelector('summary')?.focus();
+  }
+});
+// And when the keyboard leaves it.
+providerMenu.addEventListener('focusout', (event) => {
+  const next = /** @type {Node | null} */ (event.relatedTarget);
+  if (providerMenu.open && next && !providerMenu.contains(next)) providerMenu.open = false;
+});
 
 const ownForm = /** @type {HTMLFormElement} */ ($('own'));
 ownForm.addEventListener('input', () => {

@@ -160,7 +160,18 @@
       </section>
 
       <section aria-labelledby="compare-title">
-        <h2 id="compare-title">For reference: these minutes at list price elsewhere</h2>
+        <div class="section-head">
+          <h2 id="compare-title">For reference: these minutes at list price elsewhere</h2>
+          <details id="provider-menu" class="menu">
+            <summary>Providers <span id="provider-count" class="muted num"></span></summary>
+            <div
+              id="provider-list"
+              class="menu-panel"
+              role="group"
+              aria-label="Providers shown"
+            ></div>
+          </details>
+        </div>
         <div id="compare" class="rows compare"></div>
         <div id="compare-notes" class="muted small notes"></div>
       </section>
