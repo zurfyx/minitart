@@ -10,3 +10,6 @@ coverage/
 
 AGENTS.local.md
 CLAUDE.local.md
+
+app/.build/
+app/build/

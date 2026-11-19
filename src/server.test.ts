@@ -159,6 +159,8 @@ test('the page and its state are served, with a policy that allows no outside sc
   assert.equal(resources.points.length, 1);
   const state = (await (await fetch(`${origin}/api/state`)).json()) as Record<string, unknown>;
   assert.equal(state['app'], null);
+  assert.equal(typeof state['version'], 'string', 'which minitart this is, for the menu bar app');
+  assert.deepEqual(state['tailnet'], []);
   assert.equal((await fetch(`${origin}/../../etc/passwd`)).status, 404);
 });
 

@@ -481,7 +481,13 @@ async function main(): Promise<number> {
     } else {
       console.log('No minitart is answering, so there is nothing to wait for.');
     }
-    const steps = upgradeSteps(install, { node: process.execPath, service, serviceArgs: flags });
+    const steps = upgradeSteps(install, {
+      node: process.execPath,
+      service,
+      serviceArgs: flags,
+      // The menu bar app is in Homebrew's Caskroom when it was installed with it (D26).
+      app: install.kind === 'brew' && existsSync(`${install.prefix}/Caskroom/minitart-app`),
+    });
     for (const step of steps) {
       console.log(`${step.what}: ${step.command.join(' ')}`);
       const status = runAttached(step.command);

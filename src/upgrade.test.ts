@@ -104,6 +104,18 @@ test('where main.ts lives says how minitart was installed', () => {
 test('an upgrade changes the software, puts right what needs the password, and restarts', () => {
   const options = { node: '/opt/homebrew/bin/node', service: 'brew' as const, serviceArgs: [] };
   const brew = upgradeSteps({ kind: 'brew', prefix: '/opt/homebrew' }, options);
+  // The menu bar app, only where it is installed, before doctor and the restart.
+  const withApp = upgradeSteps(
+    { kind: 'brew', prefix: '/opt/homebrew' },
+    { ...options, app: true },
+  );
+  const appStep = withApp.findIndex((step) => step.command.includes('zurfyx/tap/minitart-app'));
+  assert.ok(appStep > 0 && withApp[appStep]?.optional, 'upgraded, and never stops the upgrade');
+  assert.ok(appStep < withApp.findIndex((step) => step.command.includes('doctor')));
+  assert.ok(
+    !brew.some((step) => step.command.includes('zurfyx/tap/minitart-app')),
+    'not where it is not installed',
+  );
   assert.deepEqual(
     brew.map((step) => `${step.optional ? '(may fail) ' : ''}${step.command.join(' ')}`),
     [

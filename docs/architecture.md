@@ -77,6 +77,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/resources.ts`                | CPU, memory and disk over the last hour, for the charts                                       |
 | `src/pricing.ts`                  | Other providers' list prices, with their sources and the date read                            |
 | `src/history.ts`                  | The jobs that ran, a year of them, in SQLite                                                  |
+| `app/`                            | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                            |
 | `dashboard/`                      | The page: plain HTML, CSS and three scripts, no build                                         |
 | `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
 | `site/`                           | minitart.rovira.sh                                                                            |

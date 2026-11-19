@@ -33,6 +33,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   the Mac's CPU, memory and disk, and every job with its log. On the Mac itself, or on your
   Tailscale tailnet if you want it there, and as an app in the Dock or on a phone. A Usage
   view counts the minutes run, with other providers' list prices beside them for reference.
+- **In the menu bar, if you want it.** `brew install --cask zurfyx/tap/minitart-app` adds a
+  menu bar app that shows whether minitart is busy or needs you, and installs minitart with it.
 - **Small enough to read.** TypeScript that Node runs as it is; no build, no runtime
   dependencies.
 

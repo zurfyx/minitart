@@ -63,6 +63,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
+  app:
+    # The menu bar app (D26): its tests, and a build of minitart.app signed for the machine
+    # only. Signing for distribution and notarizing happen in release-app.yml alone.
+    name: app
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: swift test
+        working-directory: app
+      - run: scripts/app.sh 0.0.0
+
   zizmor:
     # Static analysis of the workflows and dependabot.yml (template injection, unpinned
     # actions, excessive permissions, credential persistence). Findings fail the job and

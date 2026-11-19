@@ -165,3 +165,15 @@ test('time labels thin out on a narrow chart', () => {
     ['60 min ago', '30 min ago', 'now'],
   );
 });
+
+// The menu bar app says the same sentence (D26): both are held to these cases.
+test('the headline, as the dashboard and the menu bar app both say it', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { URL } = await import('node:url');
+  const cases = JSON.parse(
+    await readFile(new URL('../test/headline-cases.json', import.meta.url), 'utf8'),
+  );
+  for (const one of cases) {
+    assert.deepEqual(headline({ now: NOW, done: [], ...one.state }), one.headline, one.case);
+  }
+});
