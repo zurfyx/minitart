@@ -31,7 +31,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   hold and change in the dashboard, which saves them as plain JSON you can back up.
 - **A dashboard**: one line that says what needs you, a timeline of the last hour's VMs,
   the Mac's CPU, memory and disk, and every job with its log. On the Mac itself, or on your
-  Tailscale tailnet if you want it there, and as an app in the Dock or on a phone.
+  Tailscale tailnet if you want it there, and as an app in the Dock or on a phone. A Usage
+  view counts the minutes run, with other providers' list prices beside them for reference.
 - **Small enough to read.** TypeScript that Node runs as it is; no build, no runtime
   dependencies.
 

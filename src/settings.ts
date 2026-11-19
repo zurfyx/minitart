@@ -2,6 +2,8 @@
 // machine, a repo is served once the App is on it and the owner turned it on (D03), and what the owner
 // changes in the dashboard is saved here.
 
+import { provider, PROVIDERS } from './pricing.ts';
+
 export type Pool = 'linux' | 'macos';
 export const POOLS: readonly Pool[] = ['linux', 'macos'];
 
@@ -28,6 +30,18 @@ export const SPARE_INTERFACES = 4;
  */
 export const LINUX_VM_LIMIT = FIREWALL_INTERFACES - MACOS_VM_LIMIT - SPARE_INTERFACES;
 
+/** How the Cost view prices the minutes run here, and what this Mac costs (D25). */
+export interface CostSettings {
+  /** The providers compared, in order, each with the runner its Linux and macOS jobs are priced at. */
+  compare: { provider: string; linux: string; macos: string }[];
+  /** What the Mac cost, in US dollars, and the months it is written off over. Null: not given. */
+  macUsd: number | null;
+  lifeMonths: number;
+  /** The Mac's average draw in watts, and what a kWh costs in US dollars. Null: not given. */
+  watts: number | null;
+  kwhUsd: number | null;
+}
+
 export interface Machine {
   cpus: number;
   memoryBytes: number;
@@ -51,6 +65,7 @@ export interface Settings {
    * serves nothing by itself.
    */
   repos: string[];
+  cost: CostSettings;
 }
 
 const GB = 1024 ** 3;
@@ -84,6 +99,18 @@ export function defaultSettings(machine: Machine): Settings {
     idleSeconds: 180,
     allowPublicRepos: false,
     repos: [],
+    cost: {
+      // Each provider at what a workflow gets by default there; the owner picks others.
+      compare: PROVIDERS.map((one) => ({
+        provider: one.id,
+        linux: one.linux[0]?.id ?? '',
+        macos: one.macos[0]?.id ?? '',
+      })),
+      macUsd: null,
+      lifeMonths: 36,
+      watts: null,
+      kwhUsd: null,
+    },
   };
 }
 
@@ -119,6 +146,7 @@ export function mergeSettings(base: Settings, patch: unknown, machine: Machine):
       'allowPublicRepos',
     ),
     repos: repoNames(given(input['repos'], base.repos), 'repos'),
+    cost: input['cost'] === undefined ? base.cost : costSettings(input['cost'], base.cost),
   };
   // Each value can be in range while the whole is not: the VMs run at the same time.
   const vms = next.linux.max + next.macos.max;
@@ -173,6 +201,50 @@ function boolean(value: unknown, name: string): boolean {
 function imageName(value: unknown, name: string): string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(value)) {
     throw new SettingsError(`${name} must be a Tart image name`);
+  }
+  return value;
+}
+
+function costSettings(value: unknown, base: CostSettings): CostSettings {
+  const input = section(value, 'cost', ['compare', 'macUsd', 'lifeMonths', 'watts', 'kwhUsd']);
+  return {
+    compare: comparisons(given(input['compare'], base.compare)),
+    macUsd: amount(given(input['macUsd'], base.macUsd), 'cost.macUsd', 100_000),
+    lifeMonths: integer(given(input['lifeMonths'], base.lifeMonths), 'cost.lifeMonths', 1, 120),
+    watts: amount(given(input['watts'], base.watts), 'cost.watts', 2000),
+    kwhUsd: amount(given(input['kwhUsd'], base.kwhUsd), 'cost.kwhUsd', 10),
+  };
+}
+
+/** Providers and runners that are in the price list, each provider once. */
+function comparisons(value: unknown): CostSettings['compare'] {
+  if (!Array.isArray(value) || value.length > PROVIDERS.length) {
+    throw new SettingsError('cost.compare must be a list of providers');
+  }
+  const seen = new Set<string>();
+  return value.map((entry, index) => {
+    const fields = section(entry, `cost.compare[${index}]`, ['provider', 'linux', 'macos']);
+    const known = provider(String(fields['provider']));
+    if (!known || seen.has(known.id)) {
+      throw new SettingsError(
+        `cost.compare[${index}].provider is not a provider, or is listed twice`,
+      );
+    }
+    seen.add(known.id);
+    const linux = known.linux.find((runner) => runner.id === fields['linux']);
+    const macos = known.macos.find((runner) => runner.id === fields['macos']);
+    if (!linux || !macos) {
+      throw new SettingsError(`cost.compare[${index}] names a runner ${known.name} does not have`);
+    }
+    return { provider: known.id, linux: linux.id, macos: macos.id };
+  });
+}
+
+/** A number from 0 to `max`, or null for not given. */
+function amount(value: unknown, name: string, max: number): number | null {
+  if (value === null) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > max) {
+    throw new SettingsError(`${name} must be a number from 0 to ${max}, or empty`);
   }
   return value;
 }

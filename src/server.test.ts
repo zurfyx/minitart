@@ -141,6 +141,16 @@ test('the page and its state are served, with a policy that allows no outside sc
   ]) {
     assert.equal((await fetch(`${origin}/api/jobs?${bad}`)).status, 400, bad);
   }
+  const usage = (await (await fetch(`${origin}/api/usage?days=7`)).json()) as {
+    days: number;
+    usage: unknown[];
+    prices: { checked: string; providers: unknown[] };
+  };
+  assert.equal(usage.days, 7);
+  assert.ok(usage.prices.providers.length > 1, 'the price list goes with the minutes');
+  for (const bad of ['days=0', 'days=367', 'days=7.5', 'days=x']) {
+    assert.equal((await fetch(`${origin}/api/usage?${bad}`)).status, 400, bad);
+  }
   const storage = (await (await fetch(`${origin}/api/storage`)).json()) as { keepDays: number };
   assert.equal(storage.keepDays, 365);
   const resources = (await (await fetch(`${origin}/api/resources`)).json()) as {

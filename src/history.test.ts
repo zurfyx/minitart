@@ -124,6 +124,37 @@ for (const [kind, make] of [
     assert.equal(stats.oldestAt, NOW - 99 * MIN);
   });
 
+  test(`${kind}: each day's minutes by kind, each job rounded up as GitHub bills it`, () => {
+    const history = make();
+    const at = (day: number, hour: number) => new Date(2026, 10, day, hour).getTime();
+    const run = (n: number, pool: 'linux' | 'macos', day: number, hour: number, ms: number) =>
+      history.add(
+        job(n, 0, {
+          pool,
+          startedAt: at(day, hour) - ms - 30_000,
+          jobAt: at(day, hour) - ms,
+          endedAt: at(day, hour),
+        }),
+      );
+    run(1, 'linux', 17, 10, 61_000); // 2 minutes
+    run(2, 'linux', 17, 23, 1_000); // 1 minute
+    run(3, 'macos', 17, 12, 120_000); // 2 minutes, exactly
+    run(4, 'linux', 18, 1, 59_000); // 1 minute, the next day
+    run(5, 'linux', 16, 9, 600_000); // before the range
+    assert.deepEqual(
+      history
+        .usage(new Date(2026, 10, 17).getTime())
+        .map((row) => [row.day, row.pool, row.jobs, row.minutes]),
+      [
+        ['2026-11-17', 'linux', 2, 3],
+        ['2026-11-17', 'macos', 1, 2],
+        ['2026-11-18', 'linux', 1, 1],
+      ],
+    );
+    // The VMs' own time includes their 30 s of starting.
+    assert.equal(history.usage(new Date(2026, 10, 17).getTime())[1]?.vmMinutes, 3);
+  });
+
   test(`${kind}: only a job minitart ran has a repo, and pruning forgets it`, () => {
     const history = make();
     history.add(job(1, 400 * 24 * 60));

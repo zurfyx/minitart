@@ -326,3 +326,117 @@ export function meter(parts, label) {
     ),
   );
 }
+
+/**
+ * Stacked columns, one a day: each series a block, 2px apart, the top one's end rounded. A
+ * column is the pointer's and the keyboard's target; its tooltip lists every series.
+ * `days`: [{ label, values: { [key]: number } }]; `series`, bottom up: { key, name, color }.
+ */
+export function columns(root, { days, series, format, height, label }) {
+  sized(root, (width) => {
+    const m = { top: 8, right: 8, bottom: 22, left: 44 };
+    const w = width - m.left - m.right;
+    const ht = height - m.top - m.bottom;
+    const totals = days.map((day) =>
+      series.reduce((sum, one) => sum + (day.values[one.key] ?? 0), 0),
+    );
+    const max = niceMax(Math.max(1, ...totals));
+    const y = (v) => m.top + ht - (v / max) * ht;
+    const slot = w / Math.max(1, days.length);
+    const bar = Math.max(1, Math.min(24, slot - 2));
+    const svg = s('svg', {
+      width,
+      height,
+      viewBox: `0 0 ${width} ${height}`,
+      role: 'group',
+      'aria-label': label,
+    });
+    for (const tick of [0, max / 2, max]) {
+      svg.append(
+        s('line', { x1: m.left, x2: width - m.right, y1: y(tick), y2: y(tick), class: 'grid' }),
+        s(
+          'text',
+          { x: m.left - 8, y: y(tick) + 4, class: 'tick', 'text-anchor': 'end' },
+          format(tick),
+        ),
+      );
+    }
+    // A label every so many days, so that they never crowd.
+    const every = Math.max(1, Math.ceil(days.length / Math.max(1, Math.floor(w / 70))));
+    const tip = h('div', { class: 'tip', hidden: true });
+    days.forEach((day, index) => {
+      const x = m.left + index * slot + (slot - bar) / 2;
+      if (index % every === 0 || index === days.length - 1) {
+        svg.append(
+          s(
+            'text',
+            { x: x + bar / 2, y: height - 4, class: 'tick', 'text-anchor': 'middle' },
+            day.label,
+          ),
+        );
+      }
+      const group = s('g', { class: 'column', tabindex: '0', role: 'img' });
+      group.setAttribute(
+        'aria-label',
+        `${day.label}: ${series.map((one) => `${one.name} ${format(day.values[one.key] ?? 0)}`).join(', ')}`,
+      );
+      group.append(
+        s('rect', { x: m.left + index * slot, y: m.top, width: slot, height: ht, class: 'hit' }),
+      );
+      let below = 0;
+      const drawn = series.filter((one) => (day.values[one.key] ?? 0) > 0);
+      drawn.forEach((one, k) => {
+        const value = day.values[one.key] ?? 0;
+        const top = y(below + value);
+        // 2px of surface between blocks; the top block's end is rounded, the baseline square.
+        const gap = k > 0 ? 2 : 0;
+        const blockHeight = Math.max(1, y(below) - top - gap);
+        const last = k === drawn.length - 1;
+        group.append(
+          s('path', {
+            d: columnPath(x, top, bar, blockHeight, last ? Math.min(4, bar / 2, blockHeight) : 0),
+            class: `block ${one.color}`,
+          }),
+        );
+        below += value;
+      });
+      const show = () => {
+        tip.replaceChildren(
+          h('div', { class: 'tip-time' }, day.label),
+          ...[...series]
+            .reverse()
+            .map((one) =>
+              h(
+                'div',
+                { class: 'tip-row' },
+                h('span', { class: `key ${one.color}` }),
+                h('strong', { class: 'num' }, format(day.values[one.key] ?? 0)),
+                h('span', { class: 'muted' }, one.name),
+              ),
+            ),
+        );
+        tip.style.top = `${m.top}px`;
+        placeTip(tip, x + bar, width);
+      };
+      group.addEventListener('pointerenter', show);
+      group.addEventListener('focus', show);
+      group.addEventListener('pointerleave', () => (tip.hidden = true));
+      group.addEventListener('blur', () => (tip.hidden = true));
+      svg.append(group);
+    });
+    root.replaceChildren(svg, tip);
+  });
+}
+
+/** A rectangle from the baseline up, its top corners rounded by `r`. */
+function columnPath(x, top, width, height, r) {
+  const bottom = top + height;
+  return `M${x},${bottom}V${top + r}Q${x},${top} ${x + r},${top}H${x + width - r}Q${x + width},${top} ${x + width},${top + r}V${bottom}Z`;
+}
+
+/** A round top for an axis: 1, 2 or 5 times a power of ten, at or above `value`. */
+function niceMax(value) {
+  const power = 10 ** Math.floor(Math.log10(value));
+  for (const step of [1, 2, 5, 10]) if (step * power >= value) return step * power;
+  return 10 * power;
+}

@@ -55,6 +55,7 @@ How expensive is this to get wrong?
 | [D20](D20-the-dashboard-on-a-tailnet.md)    | The dashboard on the tailnet, through Tailscale Serve, with the same access as at the Mac | MED    | `DECIDED`  |
 | [D23](D23-what-the-dashboard-leads-with.md) | The dashboard leads with what needs the owner, then shows the Mac's last hour             | LOW    | `DECIDED`  |
 | [D24](D24-a-year-of-history-in-sqlite.md)   | The jobs that ran are kept a year, in SQLite that Node has built in                       | LOW    | `DECIDED`  |
+| [D25](D25-usage-and-list-prices.md)         | A Usage view: minutes run here, and other providers’ list prices as a reference           | LOW    | `DECIDED`  |
 | [D16](D16-how-minitart-is-installed.md)     | Installed with Homebrew, released from every green main, upgraded by `minitart upgrade`   | MED    | `DECIDED`  |
 
 ## Tier 3: how the repo is worked on

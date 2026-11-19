@@ -75,6 +75,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/testing/`                    | A GitHub and a Tart in memory, for the tests and `--demo`                                     |
 | `firewall/`                       | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                |
 | `src/resources.ts`                | CPU, memory and disk over the last hour, for the charts                                       |
+| `src/pricing.ts`                  | Other providers' list prices, with their sources and the date read                            |
 | `src/history.ts`                  | The jobs that ran, a year of them, in SQLite                                                  |
 | `dashboard/`                      | The page: plain HTML, CSS and three scripts, no build                                         |
 | `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
@@ -137,6 +138,8 @@ Everything else is rebuilt from GitHub and Tart on start.
   job's log, fetched from GitHub, for jobs minitart ran.
 - `GET /api/jobs?page=&repo=&result=`: the history, 50 jobs a page, newest first
   ([D24](decisions/D24-a-year-of-history-in-sqlite.md)).
+- `GET /api/usage?days=`: each day's minutes by kind, and the price list
+  ([D25](decisions/D25-usage-and-list-prices.md)).
 - `GET /api/storage`: what the history, the VM logs and minitart's own log take, and how
   long jobs are kept.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.

@@ -77,6 +77,16 @@ function loadSettings(home: Home, warn: (text: string) => void = console.warn): 
   }
 }
 
+/** The demo's settings: its repos served, and a Mac with a price, for the Cost view. */
+function demoSettings(): Settings {
+  const defaults = defaultSettings(machine);
+  return {
+    ...defaults,
+    repos: ['octo/app', 'octo/api', 'octo/site'],
+    cost: { ...defaults.cost, macUsd: 1999, lifeMonths: 36, watts: 25, kwhUsd: 0.3 },
+  };
+}
+
 function loadApp(home: Home): AppCredentials | null {
   return parseAppCredentials(home.readJson('app.json'));
 }
@@ -213,9 +223,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     github: () => github,
     tart,
     network: flags.network,
-    settings: home
-      ? loadSettings(home, (text) => early.push(text))
-      : { ...defaultSettings(machine), repos: ['octo/app', 'octo/api', 'octo/site'] },
+    settings: home ? loadSettings(home, (text) => early.push(text)) : demoSettings(),
     saveSettings: (settings) => {
       home?.writeJson('settings.json', settings);
       // The health line follows a settings change without waiting a minute.

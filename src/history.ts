@@ -32,8 +32,33 @@ export interface HistoryStats {
   bytes: number | null;
 }
 
+/** One kind of VM's work on one day, by the Mac's calendar (D25). */
+export interface UsageDay {
+  /** `YYYY-MM-DD`, the Mac's local date the jobs ended on. */
+  day: string;
+  pool: 'linux' | 'macos';
+  jobs: number;
+  /** As GitHub bills: each job from when its runner took it, rounded up to a whole minute. */
+  minutes: number;
+  /** What the VMs were up, cloning and booting included, in minutes. */
+  vmMinutes: number;
+}
+
+/** A job's billed minutes: whole minutes, rounded up. A job from before 0.1.8 counts its VM. */
+export function billedMinutes(entry: DoneView): number {
+  return Math.ceil(Math.max(0, entry.endedAt - (entry.jobAt ?? entry.startedAt)) / 60_000);
+}
+
+function localDay(at: number): string {
+  const date = new Date(at);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export interface History {
   add(entry: DoneView): void;
+  /** Each day's work since `since`, by kind, oldest first. Days with none are left out. */
+  usage(since: number): UsageDay[];
   page(query: JobQuery): { total: number; jobs: DoneView[] };
   /** Every repo with a job kept, by name. */
   repos(): string[];
@@ -93,6 +118,23 @@ export class MemoryHistory implements History {
 
   today(since: number): Today {
     return summarise(this.#entries.filter((entry) => entry.endedAt >= since));
+  }
+
+  usage(since: number): UsageDay[] {
+    const days = new Map<string, UsageDay>();
+    for (const entry of this.#entries) {
+      if (entry.endedAt < since) continue;
+      const day = localDay(entry.endedAt);
+      const key = `${day} ${entry.pool}`;
+      const row = days.get(key) ?? { day, pool: entry.pool, jobs: 0, minutes: 0, vmMinutes: 0 };
+      row.jobs++;
+      row.minutes += billedMinutes(entry);
+      row.vmMinutes += Math.max(0, entry.endedAt - entry.startedAt) / 60_000;
+      days.set(key, row);
+    }
+    return [...days.values()]
+      .map((row) => ({ ...row, vmMinutes: Math.round(row.vmMinutes) }))
+      .sort((a, b) => a.day.localeCompare(b.day) || a.pool.localeCompare(b.pool));
   }
 
   page(query: JobQuery): { total: number; jobs: DoneView[] } {
@@ -270,6 +312,25 @@ export class SqliteHistory implements History {
 
   today(since: number): Today {
     return summarise((this.#since.all(since) as unknown as Row[]).map(fromRow));
+  }
+
+  usage(since: number): UsageDay[] {
+    // The Mac's own calendar, as SQLite's 'localtime' reads it: the same zone as minitart's.
+    const rows = this.#db
+      .prepare(
+        `SELECT date(ended_at / 1000, 'unixepoch', 'localtime') AS day, pool, count(*) AS jobs,
+           sum((max(0, ended_at - coalesce(job_at, started_at)) + 59999) / 60000) AS minutes,
+           sum(max(0, ended_at - started_at)) AS vm_ms
+         FROM jobs WHERE ended_at >= ? GROUP BY day, pool ORDER BY day, pool`,
+      )
+      .all(since) as { day: string; pool: string; jobs: number; minutes: number; vm_ms: number }[];
+    return rows.map((row) => ({
+      day: row.day,
+      pool: row.pool === 'macos' ? 'macos' : 'linux',
+      jobs: Number(row.jobs),
+      minutes: Number(row.minutes),
+      vmMinutes: Math.round(Number(row.vm_ms) / 60_000),
+    }));
   }
 
   page(query: JobQuery): { total: number; jobs: DoneView[] } {

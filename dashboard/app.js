@@ -2,7 +2,17 @@
 // of its own beyond which log is open. Everything from GitHub (job, workflow and repo names)
 // is text someone else wrote, so it only ever reaches the page as text nodes.
 
-import { areaChart, h, legend, meter, timeline } from './charts.js';
+import { areaChart, columns, h, legend, meter, timeline } from './charts.js';
+import {
+  compareProviders,
+  daysCounted,
+  everyDay,
+  macCost,
+  MONTH_DAYS,
+  perMonth,
+  totals,
+  usd,
+} from './cost.js';
 import { GB, headline, lanes, stats } from './view.js';
 
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -228,6 +238,7 @@ function render() {
     const open = route();
     if (open.view === 'jobs' && open.page === 1) void loadJobs();
     if (open.view === 'jobs' || open.view === 'mac') void loadStorage();
+    if (open.view === 'usage') void loadCost();
   }
 
   $('repos').replaceChildren(
@@ -590,10 +601,17 @@ $('drain').addEventListener('click', () => {
 /** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
 function route() {
   const [name, query = ''] = location.hash.replace(/^#/, '').split('?');
-  const view = ['now', 'jobs', 'mac'].includes(name) ? name : 'now';
+  const view = ['now', 'jobs', 'usage', 'mac'].includes(name) ? name : 'now';
   const params = new URLSearchParams(query);
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
-  return { view, page, repo: params.get('repo') ?? '', result: params.get('result') ?? '' };
+  const days = Number(params.get('days'));
+  return {
+    view,
+    page,
+    repo: params.get('repo') ?? '',
+    result: params.get('result') ?? '',
+    days: RANGES.includes(days) ? days : 30,
+  };
 }
 
 function jobsHash({ page, repo, result }) {
@@ -617,6 +635,7 @@ function showView() {
   if (view === 'jobs') void loadJobs();
   // Jobs says what the history takes, and This Mac lists it.
   if (view === 'jobs' || view === 'mac') void loadStorage();
+  if (view === 'usage') void loadCost();
   // Charts drawn while hidden have no width: draw them again now that they show.
   if (view === 'now') {
     timelineDrawn = '';
@@ -832,6 +851,215 @@ function drawStorage() {
   }
   $('storage').replaceChildren(...(lines.length ? lines : [empty('Not measured yet.')]));
 }
+
+// The Usage view (D25): the minutes run here, and for reference what they are listed at
+// elsewhere, and what this Mac costs.
+
+const RANGES = [7, 30, 90, 365];
+/** The days, usage and prices on screen, and what was last asked for. */
+let costData = null;
+let costAsked = '';
+
+async function loadCost() {
+  const { days } = route();
+  const asked = String(days);
+  costAsked = asked;
+  try {
+    const response = await fetch(`/api/usage?days=${days}`);
+    const body = response.ok ? await response.json() : null;
+    if (costAsked !== asked || body === null) return;
+    costData = body;
+    drawCost();
+  } catch {
+    // The state's own connection says when minitart cannot be reached.
+  }
+}
+
+function drawCost() {
+  if (!costData || !state) return;
+  const { days, since, usage, oldestAt, prices } = costData;
+  const cost = state.settings.cost;
+  for (const link of document.querySelectorAll('#cost-range a')) {
+    if (Number(link.dataset.days) === days) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  const counted = daysCounted(since, days, oldestAt, Date.now());
+  const sum = totals(usage);
+  const minutes = sum.linux.minutes + sum.macos.minutes;
+  $('cost-summary').textContent =
+    counted < days
+      ? `The last ${days} days; minitart has its history for ${counted} of them, and a month is worked out from those.`
+      : `The last ${days} days.`;
+  $('cost-minutes').textContent = minutes.toLocaleString();
+  $('cost-split').textContent =
+    `${sum.linux.minutes.toLocaleString()} Linux · ${sum.macos.minutes.toLocaleString()} macOS`;
+  $('cost-jobs').textContent = (sum.linux.jobs + sum.macos.jobs).toLocaleString();
+  const vmHours = (sum.linux.vmMinutes + sum.macos.vmMinutes) / 60;
+  $('cost-vm').replaceChildren(
+    vmHours < 10 ? vmHours.toFixed(1) : Math.round(vmHours).toLocaleString(),
+    h('small', {}, ' h'),
+  );
+
+  const rows = compareProviders(sum, prices.providers, cost.compare);
+  const ownMonth = macCost(cost, MONTH_DAYS);
+  $('cost-own').textContent = ownMonth.usd === null ? '–' : usd(ownMonth.usd);
+  $('cost-own-split').textContent =
+    ownMonth.usd === null
+      ? 'Its price and power, below'
+      : [
+          ownMonth.mac === null ? null : `${usd(ownMonth.mac)} the Mac`,
+          ownMonth.power === null ? null : `${usd(ownMonth.power)} power`,
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
+  const label = (day) =>
+    new Date(day.at).toLocaleDateString([], { day: 'numeric', month: 'short' });
+  if (!inUse($('minutes-chart'))) {
+    columns($('minutes-chart'), {
+      days: everyDay(usage, since, days).map((day) => ({
+        label: label(day),
+        values: { linux: day.linux, macos: day.macos },
+      })),
+      series: [
+        { key: 'linux', name: 'Linux', color: 'linux' },
+        { key: 'macos', name: 'macOS', color: 'macos' },
+      ],
+      format: (value) => `${Math.round(value).toLocaleString()} min`,
+      height: 180,
+      label: `Minutes run a day over the last ${days} days`,
+    });
+  }
+
+  // Every provider in the price list: the ones compared first, in their order, then the rest.
+  const chosen = new Map(cost.compare.map((entry) => [entry.provider, entry]));
+  const ordered = [
+    ...cost.compare
+      .map((entry) => prices.providers.find((one) => one.id === entry.provider))
+      .filter(Boolean),
+    ...prices.providers.filter((one) => !chosen.has(one.id)),
+  ];
+  $('compare').replaceChildren(
+    ...ordered.map((provider) => {
+      const on = chosen.get(provider.id);
+      const row = rows.find((one) => one.provider.id === provider.id);
+      const runner = (kind) =>
+        h(
+          'select',
+          { 'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`, disabled: !on },
+          ...provider[kind].map((one) =>
+            h(
+              'option',
+              { value: one.id, selected: on?.[kind] === one.id },
+              `${one.name} · $${one.usd}/min`,
+            ),
+          ),
+        );
+      const linuxSelect = runner('linux');
+      const macosSelect = runner('macos');
+      const check = h('input', {
+        type: 'checkbox',
+        checked: Boolean(on),
+        'aria-label': `Compare ${provider.name}`,
+      });
+      const save = () => {
+        const next = cost.compare.filter((entry) => entry.provider !== provider.id);
+        if (check.checked) {
+          const entry = {
+            provider: provider.id,
+            linux: linuxSelect.value,
+            macos: macosSelect.value,
+          };
+          const at = cost.compare.findIndex((one) => one.provider === provider.id);
+          next.splice(at < 0 ? next.length : at, 0, entry);
+        }
+        saveSettings({ cost: { compare: next } }).then(drawCost, (error) => alert(error.message));
+      };
+      check.addEventListener('change', save);
+      linuxSelect.addEventListener('change', save);
+      macosSelect.addEventListener('change', save);
+      const monthly = row ? perMonth(row.usd, counted) : null;
+      return h(
+        'div',
+        { class: on ? 'row' : 'row off' },
+        h(
+          'label',
+          { class: 'provider' },
+          check,
+          h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
+        ),
+        h('span', { class: 'runners' }, linuxSelect, macosSelect),
+        h(
+          'span',
+          { class: 'num price' },
+          row ? h('b', {}, usd(row.usd)) : h('span', { class: 'muted' }, 'Not shown'),
+          row
+            ? h(
+                'span',
+                { class: 'meta' },
+                `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
+              )
+            : null,
+        ),
+        h(
+          'span',
+          { class: 'num price' },
+          row ? h('b', {}, `${usd(monthly)} a month`) : null,
+          row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
+        ),
+      );
+    }),
+  );
+  $('compare-notes').replaceChildren(
+    h(
+      'p',
+      {},
+      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+        'runner took it, rounded up to a whole minute.',
+    ),
+    ...prices.providers.map((provider) =>
+      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
+    ),
+  );
+
+  const form = /** @type {HTMLFormElement} */ ($('own'));
+  if (!form.contains(document.activeElement) && !form.dataset.dirty) {
+    for (const name of ['macUsd', 'lifeMonths', 'watts', 'kwhUsd']) {
+      form.elements.namedItem(name).value = cost[name] === null ? '' : String(cost[name]);
+    }
+  }
+}
+
+const ownForm = /** @type {HTMLFormElement} */ ($('own'));
+ownForm.addEventListener('input', () => {
+  ownForm.dataset.dirty = 'yes';
+  $('own-note').textContent = '';
+});
+ownForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const value = (name) => {
+    const text = ownForm.elements.namedItem(name).value.trim();
+    return text === '' ? null : Number(text);
+  };
+  const patch = {
+    macUsd: value('macUsd'),
+    lifeMonths: value('lifeMonths') ?? 36,
+    watts: value('watts'),
+    kwhUsd: value('kwhUsd'),
+  };
+  saveSettings({ cost: patch }).then(
+    () => {
+      delete ownForm.dataset.dirty;
+      $('own-note').textContent = 'Saved.';
+      drawCost();
+    },
+    (error) => {
+      $('own-note').textContent = error.message;
+    },
+  );
+});
 
 window.addEventListener('hashchange', showView);
 

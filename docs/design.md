@@ -43,12 +43,18 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
   separation in both themes. Every chart has a legend and its numbers in text beside it,
   and a crosshair whose tooltip lists every series; the keyboard moves it too.
 - **Charts are not redrawn under the pointer**, so a tooltip stays where it is read.
-- **Three views, named in the address**: Now (`#now`), Jobs (`#jobs`, with its page and
-  filters: `#jobs?repo=octo/app&page=2`) and This Mac (`#mac`). A link, the back button and an
+- **Four views, named in the address**: Now (`#now`), Jobs (`#jobs`, with its page and
+  filters: `#jobs?repo=octo/app&page=2`), Usage (`#usage?days=30`) and This Mac (`#mac`). A link, the back button and an
   installed app's reload land where they were.
 - **The Jobs view is every job kept**, 50 a page, with how many there are, since when, and
   what they take on disk. Nothing is cut for its size; This Mac's Storage says what each
   thing minitart and Tart keep takes.
+- **Usage is minutes first; prices are a reference**
+  ([D25](decisions/D25-usage-and-list-prices.md)). Other providers' list prices are shown as
+  what they are, with what they leave out, and nothing is "saved" or "lost": no headline, no
+  payback, no comparison wording against anyone.
+- **Linux and macOS are blue and raspberry** where the kinds are what tells series apart
+  (`--viz-linux`, `--viz-macos`), checked as a pair for colour-blind separation.
 - **A log opens in a dialog**, over whichever view it was opened from. Escape, the Close
   button or a click outside closes it.
 - **Motion only on a change of state**. Nothing pulses or spins while a job runs. All of it

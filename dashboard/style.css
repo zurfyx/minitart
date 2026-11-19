@@ -187,6 +187,161 @@ select {
   text-decoration: none;
 }
 
+/* The Cost view (D25) */
+
+.range {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--hover);
+}
+
+.range a {
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.range a[aria-current='page'] {
+  background: var(--bg);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--rule);
+}
+
+.usage-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.stat .sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.swatch.linux,
+.key.linux,
+.block.linux {
+  background: var(--viz-linux);
+  fill: var(--viz-linux);
+}
+
+.swatch.macos,
+.key.macos,
+.block.macos {
+  background: var(--viz-macos);
+  fill: var(--viz-macos);
+}
+
+.column {
+  outline: none;
+}
+
+.column .hit {
+  fill: transparent;
+}
+
+.column:hover .block,
+.column:focus-visible .block {
+  filter: brightness(1.12);
+}
+
+.column:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.compare .row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 180px 130px;
+  align-items: center;
+}
+
+.compare .row.off {
+  color: var(--muted);
+}
+
+.compare .provider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.compare .provider input {
+  accent-color: var(--accent);
+}
+
+.compare .provider a {
+  text-decoration: none;
+}
+
+.compare .runners {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.compare .runners select {
+  width: 100%;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.compare .price {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+
+.compare .price b {
+  color: var(--ink);
+}
+
+.compare .price .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notes p {
+  max-width: 80ch;
+  margin: 6px 0 0;
+}
+
+.own {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.own label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.own input {
+  width: 10em;
+  padding: 5px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The log: a dialog over whichever view it was opened from */
 
 #log-dialog {
@@ -857,6 +1012,28 @@ h2 .legend {
     order: 3;
     flex-basis: 100%;
     margin-left: -10px;
+  }
+
+  .compare .row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .compare .price {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .compare .runners {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .usage-figures {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .range {
+    margin-left: 0;
   }
 
   .history .times,

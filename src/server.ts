@@ -14,6 +14,7 @@ import type { Fetch } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import type { Manager } from './manager.ts';
 import { KEEP_MS, type History } from './history.ts';
+import { PRICES_CHECKED, PROVIDERS } from './pricing.ts';
 import type { ResourcesView } from './resources.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
@@ -54,6 +55,7 @@ const STATIC: Record<string, [file: string, type: string]> = {
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/charts.js': ['charts.js', 'text/javascript; charset=utf-8'],
   '/view.js': ['view.js', 'text/javascript; charset=utf-8'],
+  '/cost.js': ['cost.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/tokens.css': ['tokens.css', 'text/css; charset=utf-8'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
@@ -131,6 +133,23 @@ export function createDashboardServer(deps: ServerDeps): Server {
       // Apart from the state: an hour of points is more than every change needs to carry.
       if (path === '/api/resources') return json(response, 200, deps.resources?.() ?? null);
       if (path === '/api/jobs') return jobsPage(response, url.searchParams);
+      if (path === '/api/usage') {
+        // The last `days` days by the Mac's calendar, today included (D25).
+        const days = Number(url.searchParams.get('days') ?? '30');
+        if (!Number.isInteger(days) || days < 1 || days > 366) {
+          return send(response, 400, 'days must be a whole number from 1 to 366');
+        }
+        const since = new Date();
+        since.setHours(0, 0, 0, 0);
+        since.setDate(since.getDate() - (days - 1));
+        return json(response, 200, {
+          days,
+          since: since.getTime(),
+          usage: deps.history?.usage(since.getTime()) ?? [],
+          oldestAt: deps.history?.stats().oldestAt ?? null,
+          prices: { checked: PRICES_CHECKED, providers: PROVIDERS },
+        });
+      }
       if (path === '/api/storage') {
         return json(response, 200, {
           history: deps.history?.stats() ?? null,

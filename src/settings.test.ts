@@ -115,3 +115,62 @@ test('untrusted input is refused, not coerced', () => {
     assert.throws(() => mergeSettings(base, patch, mini), SettingsError, JSON.stringify(patch));
   }
 });
+
+test('cost: every provider compared at its defaults, and only known providers and runners', () => {
+  const machine = { cpus: 15, memoryBytes: 64 * GB };
+  const base = defaultSettings(machine);
+  assert.deepEqual(base.cost.compare[0], {
+    provider: 'github',
+    linux: 'linux-2-x64',
+    macos: 'macos',
+  });
+  assert.deepEqual(
+    [base.cost.macUsd, base.cost.lifeMonths, base.cost.watts, base.cost.kwhUsd],
+    [null, 36, null, null],
+  );
+  const priced = mergeSettings(
+    base,
+    { cost: { macUsd: 1999.5, watts: 22.5, kwhUsd: 0.31 } },
+    machine,
+  );
+  assert.deepEqual(
+    [priced.cost.macUsd, priced.cost.watts, priced.cost.kwhUsd, priced.cost.compare.length],
+    [1999.5, 22.5, 0.31, base.cost.compare.length],
+    'a part changes, the rest stays',
+  );
+  assert.equal(
+    mergeSettings(priced, { cost: { macUsd: null } }, machine).cost.macUsd,
+    null,
+    'emptied',
+  );
+  const one = mergeSettings(
+    base,
+    { cost: { compare: [{ provider: 'depot', linux: 'linux-4-arm', macos: 'macos-8' }] } },
+    machine,
+  );
+  assert.deepEqual(one.cost.compare, [
+    { provider: 'depot', linux: 'linux-4-arm', macos: 'macos-8' },
+  ]);
+  for (const bad of [
+    { compare: [{ provider: 'nobody', linux: 'linux-2-x64', macos: 'macos' }] },
+    { compare: [{ provider: 'github', linux: 'linux-2-x64', macos: 'macos-6' }] },
+    {
+      compare: [
+        { provider: 'github', linux: 'linux-2-x64', macos: 'macos' },
+        { provider: 'github', linux: 'linux-2-arm', macos: 'macos' },
+      ],
+    },
+    { compare: [{ provider: 'github', linux: 'linux-2-x64', macos: 'macos', extra: 1 }] },
+    { macUsd: -1 },
+    { watts: '20' },
+    { lifeMonths: 0 },
+    { kwhUsd: Number.POSITIVE_INFINITY },
+    { currency: 'EUR' },
+  ]) {
+    assert.throws(
+      () => mergeSettings(base, { cost: bad }, machine),
+      SettingsError,
+      JSON.stringify(bad),
+    );
+  }
+});
