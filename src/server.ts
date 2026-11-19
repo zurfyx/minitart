@@ -48,6 +48,15 @@ const STATIC: Record<string, [file: string, type: string]> = {
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/tokens.css': ['tokens.css', 'text/css; charset=utf-8'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  '/favicon.ico': ['favicon.ico', 'image/x-icon'],
+  // What makes the page an app that can be installed: its manifest and its icons.
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
+  '/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
+  '/icons/favicon-32.png': ['icons/favicon-32.png', 'image/png'],
+  '/icons/icon-192.png': ['icons/icon-192.png', 'image/png'],
+  '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
+  '/icons/icon-maskable-192.png': ['icons/icon-maskable-192.png', 'image/png'],
+  '/icons/icon-maskable-512.png': ['icons/icon-maskable-512.png', 'image/png'],
 };
 
 const SECURITY_HEADERS = {
