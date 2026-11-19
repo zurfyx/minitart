@@ -937,105 +937,118 @@ function drawCost() {
     });
   }
 
-  // Every provider in the price list: the ones compared first, in their order, then the rest.
-  const chosen = new Map(cost.compare.map((entry) => [entry.provider, entry]));
-  const ordered = [
-    ...cost.compare
-      .map((entry) => prices.providers.find((one) => one.id === entry.provider))
-      .filter(Boolean),
-    ...prices.providers.filter((one) => !chosen.has(one.id)),
-  ];
-  $('compare').replaceChildren(
-    ...ordered.map((provider) => {
-      const on = chosen.get(provider.id);
-      const row = rows.find((one) => one.provider.id === provider.id);
-      const runner = (kind) =>
-        h(
-          'select',
-          { 'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`, disabled: !on },
-          ...provider[kind].map((one) =>
-            h(
-              'option',
-              { value: one.id, selected: on?.[kind] === one.id },
-              `${one.name} · $${one.usd}/min`,
+  // Which providers are shown: a toggle each, in the price list's order. Only the ones on are
+  // in the table and its notes.
+  const shown = new Map(cost.compare.map((entry) => [entry.provider, entry]));
+  /** Saves the providers shown and their runners, one change after another, each from what is saved. */
+  const saveCompare = (change) => {
+    costSaving = costSaving.then(() =>
+      saveSettings({ cost: { compare: change(state.settings.cost.compare) } }).then(
+        drawCost,
+        (error) => alert(error.message),
+      ),
+    );
+  };
+  $('providers').replaceChildren(
+    ...prices.providers.map((provider) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'chip',
+          'aria-pressed': shown.has(provider.id) ? 'true' : 'false',
+          onclick: () =>
+            saveCompare((current) =>
+              current.some((entry) => entry.provider === provider.id)
+                ? current.filter((entry) => entry.provider !== provider.id)
+                : [
+                    ...current,
+                    {
+                      provider: provider.id,
+                      linux: provider.linux[0].id,
+                      macos: provider.macos[0].id,
+                    },
+                  ],
             ),
-          ),
-        );
-      const linuxSelect = runner('linux');
-      const macosSelect = runner('macos');
-      const check = h('input', {
-        type: 'checkbox',
-        checked: Boolean(on),
-        'aria-label': `Compare ${provider.name}`,
-      });
-      const save = () => {
-        costSaving = costSaving.then(() => saveCompare());
-      };
-      const saveCompare = () => {
-        // What is saved now, not what was when the row was drawn: an earlier change may
-        // have been saved since.
-        const current = state.settings.cost.compare;
-        const next = current.filter((entry) => entry.provider !== provider.id);
-        if (check.checked) {
-          const entry = {
-            provider: provider.id,
-            linux: linuxSelect.value,
-            macos: macosSelect.value,
+        },
+        provider.name,
+      ),
+    ),
+  );
+
+  const listed = prices.providers.filter((provider) => shown.has(provider.id));
+  $('compare').replaceChildren(
+    ...(listed.length
+      ? listed.map((provider) => {
+          const on = shown.get(provider.id);
+          const row = rows.find((one) => one.provider.id === provider.id);
+          const runner = (kind) => {
+            const select = h(
+              'select',
+              { 'aria-label': `${provider.name} runner for ${POOL[kind]} jobs` },
+              ...provider[kind].map((one) =>
+                h(
+                  'option',
+                  { value: one.id, selected: on[kind] === one.id },
+                  `${one.name} · $${one.usd}/min`,
+                ),
+              ),
+            );
+            select.addEventListener('change', () =>
+              saveCompare((current) =>
+                current.map((entry) =>
+                  entry.provider === provider.id ? { ...entry, [kind]: select.value } : entry,
+                ),
+              ),
+            );
+            return select;
           };
-          const at = current.findIndex((one) => one.provider === provider.id);
-          next.splice(at < 0 ? next.length : at, 0, entry);
-        }
-        return saveSettings({ cost: { compare: next } }).then(drawCost, (error) =>
-          alert(error.message),
-        );
-      };
-      check.addEventListener('change', save);
-      linuxSelect.addEventListener('change', save);
-      macosSelect.addEventListener('change', save);
-      const monthly = row ? perMonth(row.usd, counted) : null;
-      return h(
-        'div',
-        { class: on ? 'row' : 'row off' },
-        h(
-          'label',
-          { class: 'provider' },
-          check,
-          h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
-        ),
-        h('span', { class: 'runners' }, linuxSelect, macosSelect),
-        h(
-          'span',
-          { class: 'num price' },
-          row ? h('b', {}, usd(row.usd)) : h('span', { class: 'muted' }, 'Not shown'),
-          row
-            ? h(
-                'span',
-                { class: 'meta' },
-                `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
-              )
-            : null,
-        ),
-        h(
-          'span',
-          { class: 'num price' },
-          row ? h('b', {}, `${usd(monthly)} a month`) : null,
-          row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
-        ),
-      );
-    }),
+          const monthly = row ? perMonth(row.usd, counted) : null;
+          return h(
+            'div',
+            { class: 'row' },
+            h(
+              'span',
+              { class: 'provider' },
+              h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
+            ),
+            h('span', { class: 'runners' }, runner('linux'), runner('macos')),
+            h(
+              'span',
+              { class: 'num price' },
+              row ? h('b', {}, usd(row.usd)) : null,
+              row
+                ? h(
+                    'span',
+                    { class: 'meta' },
+                    `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
+                  )
+                : null,
+            ),
+            h(
+              'span',
+              { class: 'num price' },
+              row ? h('b', {}, `${usd(monthly)} a month`) : null,
+              row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
+            ),
+          );
+        })
+      : [empty('No provider is shown. Pick one above to see its list prices.')]),
   );
   $('compare-notes').replaceChildren(
-    h(
-      'p',
-      {},
-      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
-        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
-        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
-        'runner took it, rounded up to a whole minute.',
-    ),
-    ...prices.providers.map((provider) =>
-      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
-    ),
+    ...(listed.length
+      ? [
+          h(
+            'p',
+            {},
+            `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+              'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+              'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+              'runner took it, rounded up to a whole minute.',
+          ),
+          ...listed.map((provider) => h('p', {}, h('b', {}, `${provider.name}: `), provider.note)),
+        ]
+      : []),
   );
 
   const form = /** @type {HTMLFormElement} */ ($('own'));
