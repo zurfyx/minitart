@@ -75,6 +75,7 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/testing/`                    | A GitHub and a Tart in memory, for the tests and `--demo`                                     |
 | `firewall/`                       | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                |
 | `src/resources.ts`                | CPU, memory and disk over the last hour, for the charts                                       |
+| `src/history.ts`                  | The jobs that ran, a year of them, in SQLite                                                  |
 | `dashboard/`                      | The page: plain HTML, CSS and three scripts, no build                                         |
 | `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
 | `site/`                           | minitart.rovira.sh                                                                            |
@@ -116,7 +117,7 @@ The App subscribes to no events and its webhook is inactive.
 | `app.json`      | The App's id and private key. The one secret.                          |
 | `settings.json` | The repos that are served, and what the owner changed in the dashboard |
 | `images.json`   | The runner version each image was built with, and when                 |
-| `history.json`  | The last 200 finished jobs                                             |
+| `history.db`    | Every job that ran, a year of them, in SQLite (D24)                    |
 | `logs/`         | The manager's log and each VM's output                                 |
 
 Everything else is rebuilt from GitHub and Tart on start.

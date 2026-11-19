@@ -12,6 +12,7 @@ import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { plist } from './service.ts';
 import { BREW_SERVICE_LABELS, installKind, Running, serviceArgs, upgradeSteps } from './upgrade.ts';
 import { DEVELOPMENT, readVersion } from './version.ts';
+import { MemoryHistory } from './history.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
 const settle = async () => {
@@ -31,8 +32,7 @@ function world() {
     network: 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED },
     saveSettings: () => {},
-    history: [],
-    saveHistory: () => {},
+    history: new MemoryHistory(),
     now: () => now,
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
   });

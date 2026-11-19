@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { GitHubError, type GitHub, type Job, type Repo } from './github/types.ts';
 import { LABELS, plan, route, type Waiting } from './schedule.ts';
+import type { History, Today } from './history.ts';
 import type { Memory } from './memory.ts';
 import { POOLS, type Pool, type Settings } from './settings.ts';
 import type { Network, Tart } from './tart.ts';
@@ -102,7 +103,10 @@ export interface Snapshot {
   network: Network;
   queued: QueuedView[];
   vms: VmView[];
+  /** Newest first: every job that ended in the last hour, and at least the last 20. */
   done: DoneView[];
+  /** Jobs that ended today, by the Mac's clock. */
+  today: Today;
   repos: RepoView[];
   settings: Settings;
   /** Which kinds have an image to clone. */
@@ -143,8 +147,8 @@ export interface ManagerDeps {
   network: Network;
   settings: Settings;
   saveSettings: (settings: Settings) => void;
-  history: DoneView[];
-  saveHistory: (history: DoneView[]) => void;
+  /** The jobs that ran (D24). */
+  history: History;
   /** Receives every line a VM prints, for the log files. */
   vmLog?: (vm: string, line: string) => void;
   log?: (line: LogLine) => void;
@@ -159,7 +163,9 @@ export interface ManagerDeps {
   blocked?: () => string | null;
 }
 
-const HISTORY_LIMIT = 200;
+/** The finished jobs the page is sent: every one of the last hour, and at least this many. */
+const RECENT_JOBS = 20;
+const HOUR_MS = 60 * 60_000;
 const LOG_LIMIT = 300;
 const VM_LOG_LIMIT = 2000;
 /** How many finished VMs keep their output for the dashboard: two rounds of a full Mac. */
@@ -201,7 +207,8 @@ export class Manager {
   readonly #repoErrors = new Map<string, string>();
   readonly #log: LogLine[] = [];
   #settings: Settings;
-  #history: DoneView[];
+  /** What the page is sent of the history, read again after a job ends or a few seconds on. */
+  #recent: { at: number; done: DoneView[]; today: Today } | null = null;
   #repos: Repo[] = [];
   #reposAt = 0;
   #images: Record<Pool, boolean> = { linux: false, macos: false };
@@ -234,7 +241,6 @@ export class Manager {
     this.#now = deps.now ?? Date.now;
     this.#sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.#settings = deps.settings;
-    this.#history = deps.history.slice(-HISTORY_LIMIT);
   }
 
   onChange(listener: () => void): () => void {
@@ -482,7 +488,7 @@ export class Manager {
       network: this.#deps.network,
       queued,
       vms: [...this.#vms.values()].map(view).sort((a, b) => a.createdAt - b.createdAt),
-      done: [...this.#history].reverse(),
+      ...this.#done(),
       repos: this.#repos.map((repo) => ({
         fullName: repo.fullName,
         private: repo.private,
@@ -504,10 +510,25 @@ export class Manager {
     return this.#vms.get(name)?.log ?? this.#pastLogs.get(name) ?? null;
   }
 
+  /** The finished jobs the page shows, and today's figures, by the Mac's clock. */
+  #done(): { done: DoneView[]; today: Today } {
+    const now = this.#now();
+    if (this.#recent === null || now - this.#recent.at > 5000) {
+      const midnight = new Date(now);
+      midnight.setHours(0, 0, 0, 0);
+      this.#recent = {
+        at: now,
+        done: this.#deps.history.recent(now - HOUR_MS, RECENT_JOBS),
+        today: this.#deps.history.today(midnight.getTime()),
+      };
+    }
+    return { done: this.#recent.done, today: this.#recent.today };
+  }
+
   /** The repo of a job minitart ran, if `jobId` is one. Guards the job log endpoint. */
   repoOfJob(jobId: number): string | null {
     for (const vm of this.#vms.values()) if (vm.job?.id === jobId) return vm.repo;
-    return this.#history.find((done) => done.job.id === jobId)?.repo ?? null;
+    return this.#deps.history.repoOfJob(jobId);
   }
 
   /** Says something in the activity list that the manager itself did not find out. */
@@ -808,7 +829,7 @@ export class Manager {
       // GitHub's word for how the job ended; the runner's own only until GitHub has one.
       const conclusion = job?.conclusion ?? vm.result ?? 'lost';
       const queuedAt = job ? Date.parse(job.createdAt) : Number.NaN;
-      this.#history.push({
+      const entry: DoneView = {
         vm: vm.name,
         repo: vm.repo,
         pool: vm.pool,
@@ -818,10 +839,10 @@ export class Manager {
         ...(vm.jobAt === null ? {} : { jobAt: vm.jobAt }),
         ...(Number.isFinite(queuedAt) ? { queuedAt } : {}),
         endedAt: this.#now(),
-      });
-      this.#history = this.#history.slice(-HISTORY_LIMIT);
+      };
       try {
-        this.#deps.saveHistory(this.#history);
+        this.#deps.history.add(entry);
+        this.#recent = null;
       } catch (error) {
         this.#say('warn', `Could not save the history: ${message(error)}`);
       }

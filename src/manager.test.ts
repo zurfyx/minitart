@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isJobVm, Manager, RUN_SCRIPT, type DoneView } from './manager.ts';
+import { isJobVm, Manager, RUN_SCRIPT } from './manager.ts';
 import { defaultSettings, type Settings } from './settings.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
 import type { Network } from './tart.ts';
+import { MemoryHistory } from './history.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
 
@@ -15,15 +16,15 @@ function setup(options: { settings?: Partial<Settings>; network?: Network } = {}
   const tart = new FakeTart();
   tart.addImage('minitart-base-linux');
   tart.addImage('minitart-base-macos');
-  const saved: { history: DoneView[]; settings: Settings | null } = { history: [], settings: null };
+  const saved: { settings: Settings | null } = { settings: null };
+  const history = new MemoryHistory();
   const manager = new Manager({
     github: () => github,
     tart,
     network: options.network ?? 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED, ...options.settings },
     saveSettings: (settings) => (saved.settings = settings),
-    history: [],
-    saveHistory: (history) => (saved.history = history),
+    history,
     now: () => now,
     // A real turn of the event loop, so a VM waiting to boot does not starve the test.
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
@@ -33,6 +34,7 @@ function setup(options: { settings?: Partial<Settings>; network?: Network } = {}
     tart,
     manager,
     saved,
+    history,
     advance: (ms: number) => (now += ms),
     /** Lets the VM lifecycles run as far as they can. */
     settle: async () => {
@@ -44,7 +46,7 @@ function setup(options: { settings?: Partial<Settings>; network?: Network } = {}
 const jobVms = (tart: FakeTart) => [...tart.vms.keys()].filter(isJobVm);
 
 test('a queued job gets a VM, and the VM is deleted when the job ends', async () => {
-  const { github, tart, manager, saved, settle } = setup();
+  const { github, tart, manager, history, settle } = setup();
   const job = github.queue('octo/app', ['minitart-linux'], 'test');
 
   await manager.tick();
@@ -81,10 +83,32 @@ test('a queued job gets a VM, and the VM is deleted when the job ends', async ()
   assert.equal(done?.conclusion, 'success');
   assert.equal(done?.job.id, job.id);
   assert.equal(done?.job.url, job.url);
-  assert.equal(saved.history.length, 1);
+  assert.equal(history.recent(0, 100).length, 1, 'and saved');
   assert.deepEqual(github.removed, [], 'a runner that ran is not removed twice');
   assert.equal(manager.repoOfJob(job.id), 'octo/app');
   assert.ok(manager.vmLog(name)?.some((line) => line.includes('Running job: test')));
+});
+
+test('the page is sent the last hour of jobs and today’s figures, not the whole history', async () => {
+  const { manager, history } = setup();
+  const now = Date.parse('2026-11-18T10:00:00Z');
+  for (let n = 0; n < 50; n++) {
+    history.add({
+      vm: `minitart-linux-${String(n).padStart(6, '0')}`,
+      repo: 'octo/app',
+      pool: 'linux',
+      job: { id: n, name: `job ${n}`, workflow: 'CI', url: '' },
+      conclusion: n === 49 ? 'failure' : 'success',
+      startedAt: now - (60 - n) * 60_000,
+      endedAt: now - (50 - n) * 60_000, // one a minute, the newest a minute ago
+    });
+  }
+  const snapshot = manager.snapshot();
+  assert.equal(snapshot.done.length, 50 - 0, 'every one of the last hour');
+  assert.equal(snapshot.done[0]?.job.name, 'job 49');
+  // 10:00 UTC is today on any clock this runs on; the jobs began at 09:10.
+  assert.equal(snapshot.today.finished + snapshot.today.passed > 0, true);
+  assert.equal(snapshot.today.passed, snapshot.today.finished - 1);
 });
 
 test('a job that ends between two polls is still found', async () => {
@@ -517,8 +541,7 @@ test('no VM is started on a Mac that is not set up to isolate one; the jobs wait
     network: 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED },
     saveSettings: () => {},
-    history: [],
-    saveHistory: () => {},
+    history: new MemoryHistory(),
     now: () => now,
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
     blocked: () => blocked,
@@ -573,8 +596,7 @@ test('a VM is started only when the Mac has the memory for it; otherwise the job
     network: 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED, vm: { cpu: 4, memoryMb: 12 * 1024 } },
     saveSettings: () => {},
-    history: [],
-    saveHistory: () => {},
+    history: new MemoryHistory(),
     now: () => now,
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
     memory: () => memory,

@@ -1,4 +1,4 @@
-// ~/.minitart: the App's key, the saved settings, the job history and the logs. Everything
+// ~/.minitart: the App's key, the saved settings, the job history (history.ts) and the logs. Everything
 // in it is written for the owner only (0600), the key above all.
 
 import {

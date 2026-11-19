@@ -14,7 +14,8 @@ import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
 import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
-import { Manager, type DoneView, type LogLine } from './manager.ts';
+import { Manager, type LogLine } from './manager.ts';
+import { KEEP_MS, MemoryHistory, openHistory, type History } from './history.ts';
 import { readMemory, type Memory } from './memory.ts';
 import { liveResources, STEP_MS } from './resources.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
@@ -184,6 +185,18 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   let health: Check[] = [];
 
   const stamp = (at: number) => new Date(at).toISOString();
+  // The jobs that ran, a year of them (D24). The demo's are made up, and kept in memory.
+  const history: History = home
+    ? openHistory(home.dir, (text) => early.push(text))
+    : new MemoryHistory(demo?.history ?? []);
+  const pruneHistory = () => {
+    try {
+      history.prune(Date.now() - KEEP_MS);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  pruneHistory();
   const manager = new Manager({
     // The demo has no Mac to isolate anything from.
     blocked: () => (demo ? null : blockedBy(health, flags.network)),
@@ -199,10 +212,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
       // The health line follows a settings change without waiting a minute.
       check().catch((error: unknown) => console.error(error));
     },
-    history: home
-      ? ((home.readJson('history.json') as DoneView[] | undefined) ?? [])
-      : (demo?.history ?? []),
-    saveHistory: (history) => home?.writeJson('history.json', history),
+    history,
     vmLog: (vm, line) => home?.appendLog(`${vm}.log`, line),
     log: (line: LogLine) =>
       console.log(`${stamp(line.at)} ${line.level === 'warn' ? 'WARN ' : ''}${line.text}`),
@@ -282,6 +292,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     // A check that throws is tried again in a minute; it must not stop the manager.
     check().catch((error: unknown) => console.error(error));
     prune();
+    pruneHistory();
   }, 60_000);
 
   const server = createDashboardServer({
