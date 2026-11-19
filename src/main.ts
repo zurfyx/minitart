@@ -16,6 +16,7 @@ import { Home } from './home.ts';
 import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
 import { Manager, type DoneView, type LogLine } from './manager.ts';
 import { readMemory, type Memory } from './memory.ts';
+import { liveResources, STEP_MS } from './resources.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
 import { installService, LABEL, plistPath, uninstallService } from './service.ts';
@@ -152,7 +153,7 @@ function printChecks(checks: readonly Check[]): boolean {
 }
 
 async function start(flags: { port: number; network: Network; demo: boolean }): Promise<void> {
-  const demo = flags.demo ? demoWorld() : null;
+  const demo = flags.demo ? demoWorld(machine) : null;
   const home = demo ? null : new Home();
   const tart: Tart = demo?.tart ?? new TartCli();
   let app = home ? loadApp(home) : null;
@@ -261,6 +262,18 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   };
   await readFree();
   const everyFewSeconds = setInterval(() => void readFree(), 5000);
+  // The charts' points: CPU, memory and disk, every ten seconds (D23).
+  const resources = demo
+    ? demo.resources(() => manager.snapshot().vms)
+    : liveResources({
+        cores: machine.cpus,
+        memoryBytes: machine.memoryBytes,
+        availableMb: () => memory?.availableMb ?? null,
+        images: () => [manager.settings.linux.image, manager.settings.macos.image],
+      });
+  const sampleResources = () => resources.sample().catch((error: unknown) => console.error(error));
+  void sampleResources();
+  const everyTenSeconds = setInterval(() => void sampleResources(), STEP_MS);
   await check();
   const prune = () =>
     home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
@@ -282,6 +295,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
       check().catch((error: unknown) => console.error(error));
     },
     health: () => health,
+    resources: () => resources.view(),
     tailnet: () => tailnet,
     machine,
     ...(demo ? { machineName: 'mac-mini.local' } : {}),
@@ -307,6 +321,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     clearInterval(everyMinute);
     clearInterval(everyHalfMinute);
     clearInterval(everyFewSeconds);
+    clearInterval(everyTenSeconds);
     demo?.stop();
     server.close();
     server.closeAllConnections();

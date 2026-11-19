@@ -1,18 +1,39 @@
 // `minitart start --demo`: the dashboard with a made-up GitHub and made-up VMs, for looking
 // at it without a GitHub App or a VM. Nothing here touches the network or Tart.
 
-import type { DoneView } from './manager.ts';
+import type { DoneView, VmView } from './manager.ts';
+import { POINTS, STEP_MS, type ResourcePoint, type ResourcesView } from './resources.ts';
+import type { Machine } from './settings.ts';
+import type { Job } from './github/types.ts';
 import { FakeGitHub, FakeTart } from './testing/fakes.ts';
 
 const REPOS = ['octo/app', 'octo/api', 'octo/site'];
 const WORK: [repo: string, label: string, workflow: string, job: string, seconds: number][] = [
-  ['octo/app', 'minitart-macos', 'CI', 'test (iOS 26)', 34],
-  ['octo/api', 'minitart-linux', 'CI', 'test', 14],
-  ['octo/api', 'minitart-linux', 'CI', 'e2e (postgres)', 26],
-  ['octo/app', 'minitart-macos', 'TestFlight', 'archive and upload', 48],
-  ['octo/site', 'minitart-linux', 'CI', 'static', 9],
-  ['octo/app', 'minitart-linux', 'CI', 'lint', 8],
-  ['octo/api', 'minitart-linux', 'Release', 'build image', 22],
+  ['octo/app', 'minitart-macos', 'CI', 'test (iOS 26)', 340],
+  ['octo/api', 'minitart-linux', 'CI', 'test', 140],
+  ['octo/api', 'minitart-linux', 'CI', 'e2e (postgres)', 260],
+  ['octo/app', 'minitart-macos', 'TestFlight', 'archive and upload', 480],
+  ['octo/site', 'minitart-linux', 'CI', 'static', 90],
+  ['octo/app', 'minitart-linux', 'CI', 'lint', 80],
+  ['octo/api', 'minitart-linux', 'Release', 'build image', 220],
+];
+
+/**
+ * The hour before the demo started: three pushes, each a burst of jobs. Minutes ago that
+ * the VM was cloned, took its job and ended.
+ */
+const PAST: [work: number, cloned: number, took: number, ended: number][] = [
+  [0, 58, 56.6, 47],
+  [1, 58, 57.4, 54.8],
+  [2, 58, 57.3, 52.9],
+  [5, 57.5, 56.9, 55.4],
+  [3, 46.5, 45.1, 37],
+  [1, 34, 33.4, 31],
+  [2, 34, 33.3, 29.4],
+  [6, 33.8, 33.2, 29.9],
+  [0, 33.5, 32.1, 24.2],
+  [4, 21, 20.4, 18.9],
+  [5, 12, 11.4, 10.1],
 ];
 const STEPS = [
   'Set up job',
@@ -24,10 +45,17 @@ const STEPS = [
   'Complete job',
 ];
 
-export function demoWorld(): {
+export interface DemoResources {
+  view(): ResourcesView;
+  /** Adds a point for the VMs running now. */
+  sample(): Promise<void>;
+}
+
+export function demoWorld(machine: Machine): {
   github: FakeGitHub;
   tart: FakeTart;
   history: DoneView[];
+  resources: (vms: () => VmView[]) => DemoResources;
   stop: () => void;
 } {
   const github = new FakeGitHub();
@@ -73,37 +101,110 @@ export function demoWorld(): {
   };
 
   let next = 0;
+  let queued: Job[] = [];
   const queueOne = () => {
     const work = WORK[next++ % WORK.length];
-    if (work) github.queue(work[0], [work[1]], work[3], work[2]);
+    if (work) queued.push(github.queue(work[0], [work[1]], work[3], work[2]));
   };
-  for (let i = 0; i < 5; i++) queueOne();
+  for (let i = 0; i < 7; i++) queueOne();
+  // Pushes keep coming, but never more than a few jobs wait: a demo left open stays legible.
   const loop = () => {
-    queueOne();
-    if (Math.random() < 0.5) queueOne();
-    later(7000 + Math.random() * 9000, loop);
+    queued = queued.filter((job) => job.status === 'queued');
+    if (queued.length < 3) {
+      queueOne();
+      if (Math.random() < 0.5) queueOne();
+    }
+    later(15_000 + Math.random() * 20_000, loop);
   };
   later(6000, loop);
 
   const now = Date.now();
-  const history: DoneView[] = WORK.map((work, index) => {
-    const endedAt = now - (WORK.length - index) * 9 * 60_000;
+  const at = (minutes: number) => Math.round(now - minutes * 60_000);
+  const history: DoneView[] = PAST.flatMap(([index, cloned, took, ended], n) => {
+    const work = WORK[index];
+    if (!work) return [];
     const pool = work[1] === 'minitart-macos' ? ('macos' as const) : ('linux' as const);
-    return {
-      vm: `minitart-${pool}-${(0xa1b2c0 + index * 4099).toString(16)}`,
-      repo: work[0],
-      pool,
-      job: { id: null, name: work[3], workflow: work[2], url: '' },
-      conclusion: index === 2 ? 'failure' : index === 5 ? 'cancelled' : 'success',
-      startedAt: endedAt - (work[4] + 9) * 1000,
-      endedAt,
-    };
+    return [
+      {
+        vm: `minitart-${pool}-${(0xa1b2c0 + n * 4099).toString(16)}`,
+        repo: work[0],
+        pool,
+        job: { id: null, name: work[3], workflow: work[2], url: '' },
+        conclusion: n === 2 ? 'failure' : n === 7 ? 'cancelled' : 'success',
+        startedAt: at(cloned),
+        jobAt: at(took),
+        queuedAt: at(cloned + (n % 3) * 0.4 + 0.1),
+        endedAt: at(ended),
+      },
+    ];
   });
+  // Oldest first, as the manager keeps it.
+  history.sort((a, b) => a.endedAt - b.endedAt);
+
+  // Made-up CPU and memory: what each VM of the past hour, and each one running now, would
+  // have used. The rest of the Mac idles around 8% and 16 GB.
+  const cores = machine.cpus;
+  const totalGb = machine.memoryBytes / 1024 ** 3;
+  const points: ResourcePoint[] = [];
+  let wobble = 0;
+  const point = (time: number, vms: { createdAt: number; jobAt: number | null }[]) => {
+    let busyCores = 0;
+    let gb = 0;
+    for (const vm of vms) {
+      if (vm.jobAt === null || time < vm.jobAt) {
+        busyCores += 1.8;
+        gb += 1.2;
+      } else {
+        const minutes = (time - vm.jobAt) / 60_000;
+        busyCores += 2.6 + Math.sin(time / 47_000 + vm.createdAt) * 0.8;
+        gb += Math.min(7.6, 1.6 + minutes * 1.3);
+      }
+    }
+    wobble = Math.max(-1, Math.min(1, wobble + (Math.random() - 0.5) * 0.4));
+    const other = 8 + wobble * 3;
+    return {
+      at: time,
+      // The whole Mac is 100%: the VMs get what the rest leaves.
+      cpuVms: Math.round(Math.min(100 - other, (busyCores / cores) * 100) * 10) / 10,
+      cpuOther: Math.round(other * 10) / 10,
+      memVms: Math.round(gb * 1024),
+      memOther: Math.round(Math.min(totalGb - gb, 16 + wobble) * 1024),
+    };
+  };
+  for (let time = now - (POINTS - 1) * STEP_MS; time <= now; time += STEP_MS) {
+    const vms = history
+      .filter((entry) => entry.startedAt <= time && entry.endedAt > time)
+      .map((entry) => ({ createdAt: entry.startedAt, jobAt: entry.jobAt ?? null }));
+    points.push(point(time, vms));
+  }
+  const disk = {
+    totalBytes: 994 * 1024 ** 3,
+    freeBytes: 702 * 1024 ** 3,
+    tart: [
+      { name: 'minitart-base-linux', bytes: 4.8 * 1024 ** 3 },
+      { name: 'minitart-base-macos', bytes: 77 * 1024 ** 3 },
+      { name: 'Downloaded images', bytes: 81 * 1024 ** 3 },
+    ],
+    at: now,
+  };
 
   return {
     github,
     tart,
     history,
+    resources: (vms) => ({
+      view: () => ({
+        stepMs: STEP_MS,
+        cores,
+        memoryBytes: machine.memoryBytes,
+        points: [...points],
+        disk,
+      }),
+      sample: async () => {
+        points.push(point(Date.now(), vms()));
+        if (points.length > POINTS) points.splice(0, points.length - POINTS);
+      },
+    }),
     stop: () => {
       for (const timer of timers) clearTimeout(timer);
     },

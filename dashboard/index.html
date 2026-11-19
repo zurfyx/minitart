@@ -14,6 +14,7 @@
       <h1><img src="/favicon.svg" alt="" width="20" height="20" /> minitart</h1>
       <p id="machine" class="muted"></p>
       <p id="live" class="status" role="status"></p>
+      <button type="button" id="drain">Drain</button>
     </header>
 
     <main>
@@ -31,21 +32,54 @@
         </form>
       </section>
 
-      <section id="slots" aria-label="Slots"></section>
-
-      <section>
-        <h2>Running <span id="running-count" class="count"></span></h2>
-        <div id="running" class="rows"></div>
+      <section class="hero" aria-label="Now">
+        <p id="headline" class="headline" role="status"></p>
+        <p class="stat"><span>Running</span><b class="num" id="stat-running"></b></p>
+        <p class="stat"><span>Queued</span><b class="num" id="stat-queued"></b></p>
+        <p class="stat"><span>Passed today</span><b class="num" id="stat-passed"></b></p>
+        <p class="stat">
+          <span>Waited for a VM, median today</span><b class="num" id="stat-wait"></b>
+        </p>
       </section>
 
-      <section>
-        <h2>Queued <span id="queued-count" class="count"></span></h2>
-        <div id="queued" class="rows"></div>
+      <section aria-labelledby="timeline-title">
+        <h2 id="timeline-title">
+          VMs, the last hour
+          <span class="legend">
+            <span class="legend-item"><span class="swatch start"></span>Starting</span>
+            <span class="legend-item"><span class="swatch vm"></span>Running a job</span>
+            <span class="muted">✓ passed · ✕ failed · – cancelled</span>
+          </span>
+        </h2>
+        <div id="timeline" class="timeline"></div>
       </section>
 
-      <section>
-        <h2>Done <span id="done-count" class="count"></span></h2>
-        <div id="done" class="rows"></div>
+      <section class="pair" aria-label="CPU and memory">
+        <div>
+          <h2>CPU <span class="aside num" id="cpu-now"></span></h2>
+          <div id="cpu" class="chart"></div>
+        </div>
+        <div>
+          <h2>Memory <span class="aside num" id="memory-now"></span></h2>
+          <div id="memory" class="chart"></div>
+        </div>
+        <div class="pair-legend">
+          <span class="legend">
+            <span class="legend-item"><span class="swatch vm"></span>minitart VMs</span>
+            <span class="legend-item"><span class="swatch other"></span>Everything else</span>
+          </span>
+        </div>
+      </section>
+
+      <section class="split">
+        <div>
+          <h2>Jobs</h2>
+          <div id="jobs" class="rows"></div>
+        </div>
+        <div>
+          <h2>Disk <span class="aside num" id="disk-free"></span></h2>
+          <div id="disk"></div>
+        </div>
       </section>
 
       <section id="log-panel" hidden>

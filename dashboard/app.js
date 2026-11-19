@@ -2,20 +2,10 @@
 // of its own beyond which log is open. Everything from GitHub (job, workflow and repo names)
 // is text someone else wrote, so it only ever reaches the page as text nodes.
 
-const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
+import { areaChart, h, legend, meter, timeline } from './charts.js';
+import { GB, headline, lanes, stats } from './view.js';
 
-/** Builds an element: `h('a', { href }, 'text', child)`. Strings become text nodes. */
-function h(tag, attrs = {}, ...children) {
-  const element = document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) {
-    if (value === null || value === undefined || value === false) continue;
-    if (name === 'class') element.className = value;
-    else if (name === 'onclick') element.addEventListener('click', value);
-    else element.setAttribute(name, value === true ? '' : value);
-  }
-  element.append(...children.filter((child) => child !== null && child !== undefined));
-  return element;
-}
+const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 
 const POOL = { linux: 'Linux', macos: 'macOS' };
 
@@ -84,11 +74,31 @@ function row(...cells) {
   return h('div', { class: 'row' }, ...cells);
 }
 
+/** A job's name, and under it where it comes from and why it waits, if it does. */
+function jobCell(name, repo, workflow, pool, note) {
+  return h(
+    'span',
+    { class: 'main' },
+    name,
+    h('span', { class: 'meta' }, [repo, workflow, POOL[pool]].filter(Boolean).join(' · ')),
+    note ? h('span', { class: 'note' }, note) : null,
+  );
+}
+
 function empty(text) {
   return h('p', { class: 'empty' }, text);
 }
 
+const HOUR = 60 * 60_000;
+
+/** The glyph a finished VM's bar ends in: the same as its state's. */
+const GLYPHS = Object.fromEntries(
+  ['success', 'failure', 'cancelled', 'lost'].map((key) => [key, [STATES[key][0], STATES[key][1]]]),
+);
+
 let state = null;
+/** The last hour of CPU, memory and disk, read apart from the state (/api/resources). */
+let resources = null;
 /** The log on screen: a VM's own output, or a finished job's log from GitHub. */
 let openLog = null;
 let logTimer = null;
@@ -98,118 +108,90 @@ function render() {
   const { vms, queued, done, repos, settings, health } = state;
 
   $('machine').textContent =
-    `${state.machine.name} · ${state.machine.cpus} CPUs · ${Math.round(state.machine.memoryBytes / 1024 ** 3)} GB`;
+    `${state.machine.name} · ${state.machine.cpus} cores · ${Math.round(state.machine.memoryBytes / GB)} GB`;
 
-  // What needs the owner's attention, said once, at the top.
+  $('setup').hidden = state.app !== null || state.repos.length > 0;
+  $('drain').textContent = state.draining ? 'Resume' : 'Drain';
+
+  const said = headline(state);
+  // The headline says the most important thing; whatever else needs the owner is said here.
+  const words = `${said.lead} ${said.point ?? ''}`.toLowerCase();
   const alerts = [];
   if (state.network === 'shared') {
     alerts.push('Started with --unsafe-shared-network: jobs can reach your LAN.');
   }
-  if (state.githubError) alerts.push(`GitHub: ${state.githubError}`);
-  if (state.blocked) alerts.push(`No VM is started until this is put right. ${state.blocked}`);
-  if (state.shortOfMemory) alerts.push(`${state.shortOfMemory}: jobs wait until there is room.`);
-  const notices = alerts.map((text) => h('p', { class: 'alert' }, status('fix', text)));
-  if (state.draining) {
-    notices.push(
-      h(
-        'p',
-        { class: 'alert' },
-        status('note', 'Draining: the jobs that are running finish, and no new one starts.'),
-        ' ',
-        h('button', { type: 'button', onclick: () => setDraining(false) }, 'Resume'),
-      ),
-    );
+  if (state.blocked && !words.includes(state.blocked.toLowerCase())) {
+    alerts.push(`No VM is started until this is put right. ${state.blocked}`);
   }
-  $('alerts').replaceChildren(...notices);
+  if (state.githubError && !words.includes(state.githubError.toLowerCase())) {
+    alerts.push(`GitHub: ${state.githubError}`);
+  }
+  if (state.draining && said.lead !== 'Draining.') {
+    alerts.push('Draining: the jobs that are running finish, and no new one starts.');
+  }
+  if (state.shortOfMemory && !words.includes(state.shortOfMemory.toLowerCase())) {
+    alerts.push(`${state.shortOfMemory}: jobs wait until there is room.`);
+  }
+  $('alerts').replaceChildren(
+    ...alerts.map((text) => h('p', { class: 'alert' }, status('fix', text))),
+  );
 
-  $('setup').hidden = state.app !== null || state.repos.length > 0;
+  $('headline').replaceChildren(
+    said.lead,
+    said.point ? ' ' : '',
+    said.point ? h('em', {}, said.point) : '',
+  );
+  const figures = stats(state);
+  $('stat-running').replaceChildren(
+    String(figures.running),
+    figures.running ? h('small', {}, ` · ${figures.linux} Linux, ${figures.macos} macOS`) : '',
+  );
+  $('stat-queued').textContent = String(figures.queued);
+  $('stat-passed').replaceChildren(
+    String(figures.passed),
+    h('small', {}, ` of ${figures.finished}`),
+  );
+  $('stat-wait').replaceChildren(
+    figures.medianWaitMs === null ? '–' : duration(figures.medianWaitMs),
+  );
 
-  $('slots').replaceChildren(
-    ...['macos', 'linux'].map((pool) => {
-      const used = vms.filter((vm) => vm.pool === pool).length;
-      const max = settings[pool].max;
-      const pips = Array.from({ length: Math.max(max, used) }, (_, index) =>
-        h('span', { class: index < used ? 'pip on' : 'pip' }),
-      );
-      return h(
-        'div',
-        { class: 'slot' },
-        h('span', { class: 'slot-name' }, POOL[pool]),
-        h('span', { class: 'pips', 'aria-hidden': 'true' }, ...pips),
-        h(
-          'span',
-          { class: 'muted num' },
-          !state.images[pool] ? 'no image yet' : max === 0 ? 'off' : `${used} of ${max} in use`,
+  drawTimeline();
+
+  const jobs = [
+    ...vms.map((vm) =>
+      row(
+        status(vm.status),
+        jobCell(
+          jobName(vm.job, vm.status === 'running' ? 'A job' : `For ${vm.repo}`),
+          vm.repo,
+          vm.job?.workflow,
+          vm.pool,
         ),
-      );
-    }),
-  );
-
-  $('running-count').textContent = vms.length ? String(vms.length) : '';
-  $('running').replaceChildren(
-    ...(vms.length
-      ? vms.map((vm) =>
-          row(
-            status(vm.status),
-            h(
-              'span',
-              { class: 'main' },
-              jobName(vm.job, vm.status === 'running' ? 'A job' : `For ${vm.repo}`),
-              h('span', { class: 'muted' }, ` ${vm.job ? vm.repo : ''} ${vm.job?.workflow ?? ''}`),
-            ),
-            h('span', { class: 'muted' }, POOL[vm.pool]),
-            h('code', {}, vm.name),
-            clock(vm.createdAt),
-            logButton({ kind: 'vm', name: vm.name, title: vm.name }),
-          ),
-        )
-      : [empty('Nothing is running.')]),
-  );
-
-  $('queued-count').textContent = queued.length ? String(queued.length) : '';
-  $('queued').replaceChildren(
-    ...(queued.length
-      ? queued.map((job) =>
-          row(
-            status('queued'),
-            h(
-              'span',
-              { class: 'main' },
-              jobName(job),
-              h('span', { class: 'muted' }, ` ${job.repo} ${job.workflow}`),
-              job.note ? h('span', { class: 'note' }, status('fix', job.note)) : null,
-            ),
-            h('span', { class: 'muted' }, job.pool ? POOL[job.pool] : ''),
-            clock(Date.parse(job.createdAt)),
-          ),
-        )
-      : [empty('Nothing is waiting.')]),
-  );
-
-  $('done-count').textContent = done.length ? String(done.length) : '';
-  $('done').replaceChildren(
-    ...(done.length
-      ? done
-          .slice(0, 30)
-          .map((job) =>
-            row(
-              status(job.conclusion),
-              h(
-                'span',
-                { class: 'main' },
-                jobName(job.job),
-                h('span', { class: 'muted' }, ` ${job.repo} ${job.job.workflow}`),
-              ),
-              h('span', { class: 'muted' }, POOL[job.pool]),
-              h('span', { class: 'muted num' }, duration(job.endedAt - job.startedAt)),
-              h('span', { class: 'muted num' }, ago(state.now - job.endedAt)),
-              job.job.id !== null
-                ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
-                : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
-            ),
-          )
-      : [empty('No job has run yet.')]),
-  );
+        clock(vm.jobAt ?? vm.createdAt),
+        logButton({ kind: 'vm', name: vm.name, title: vm.name }),
+      ),
+    ),
+    ...queued.map((job) =>
+      row(
+        status('queued'),
+        jobCell(jobName(job), job.repo, job.workflow, job.pool, job.note),
+        clock(Date.parse(job.createdAt)),
+      ),
+    ),
+    ...done
+      .slice(0, 20)
+      .map((job) =>
+        row(
+          status(job.conclusion),
+          jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool),
+          h('span', { class: 'muted num' }, ago(state.now - job.endedAt)),
+          job.job.id !== null
+            ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
+            : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
+        ),
+      ),
+  ];
+  $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
 
   $('repos').replaceChildren(
     ...(repos.length
@@ -287,6 +269,146 @@ function render() {
           )
       : [empty('Nothing has happened yet.')]),
   );
+}
+
+/** Whether the pointer or the keyboard is on `root`: then it is not redrawn under them. */
+function inUse(root) {
+  return root.matches(':hover') || root.contains(document.activeElement);
+}
+
+let timelineDrawn = '';
+let timelineAt = 0;
+
+function drawTimeline() {
+  const root = $('timeline');
+  const to = state.now;
+  const from = to - HOUR;
+  const laneList = lanes(state, from);
+  // Redrawn when a VM comes, goes or takes its job, and every ten seconds as time moves.
+  const drawn = JSON.stringify(
+    laneList.map((lane) => lane.items.map((item) => [item.key, item.state, item.jobAt])),
+  );
+  if (drawn === timelineDrawn && to - timelineAt < 10_000) return;
+  if (inUse(root)) return;
+  timelineDrawn = drawn;
+  timelineAt = to;
+  timeline(root, {
+    lanes: laneList,
+    from,
+    to,
+    glyphs: GLYPHS,
+    describe: (item) => [
+      `${item.repo}${item.workflow ? ` · ${item.workflow}` : ''}`,
+      item.name ?? (item.jobAt === null ? 'Waiting for its job' : 'A job'),
+      `Starting: ${duration((item.jobAt ?? item.endAt ?? to) - item.startAt)}`,
+      ...(item.jobAt !== null ? [`Job: ${duration((item.endAt ?? to) - item.jobAt)}`] : []),
+      STATES[item.state]?.[2] ?? item.state,
+    ],
+    onPick: (item) => showLog({ ...item.log, title: `${item.name ?? item.key} · ${item.repo}` }),
+  });
+}
+
+/** Gigabytes from megabytes, as the charts write them. */
+function gb(mb) {
+  const value = mb / 1024;
+  return `${value >= 10 || value === 0 ? Math.round(value) : value.toFixed(1)} GB`;
+}
+
+function drawResources() {
+  if (!resources) return;
+  const points = resources.points;
+  const times = points.map((point) => point.at);
+  // The hour up to the newest point, as the timeline shows it, however few points there are.
+  const to = points.at(-1)?.at ?? Date.now();
+  const span = { from: to - HOUR, to };
+  const last = points.at(-1);
+  const memoryGb = Math.round(resources.memoryBytes / GB);
+  $('cpu-now').textContent = last ? `${Math.round(last.cpuVms + last.cpuOther)}% now` : '';
+  $('memory-now').textContent = last
+    ? `${gb(last.memVms + last.memOther)} of ${memoryGb} GB now`
+    : '';
+  const series = (vms, other) => [
+    { name: 'Everything else', values: points.map(other), color: 'other' },
+    { name: 'minitart VMs', values: points.map(vms), color: 'vm' },
+  ];
+  if (!inUse($('cpu'))) {
+    areaChart($('cpu'), {
+      ...span,
+      times,
+      series: series(
+        (point) => point.cpuVms,
+        (point) => point.cpuOther,
+      ),
+      max: 100,
+      ticks: [0, 50, 100],
+      format: (value) => `${Math.round(value)}%`,
+      height: 150,
+      label: `CPU over the last hour${last ? `, ${Math.round(last.cpuVms + last.cpuOther)}% now` : ''}`,
+    });
+  }
+  if (!inUse($('memory'))) {
+    areaChart($('memory'), {
+      ...span,
+      times,
+      series: series(
+        (point) => point.memVms,
+        (point) => point.memOther,
+      ),
+      max: memoryGb * 1024,
+      ticks: [0, (memoryGb / 2) * 1024, memoryGb * 1024],
+      format: gb,
+      height: 150,
+      label: `Memory over the last hour${last ? `, ${gb(last.memVms + last.memOther)} now` : ''}`,
+    });
+  }
+
+  const disk = resources.disk;
+  if (!disk) {
+    $('disk-free').textContent = '';
+    $('disk').replaceChildren(empty('Not measured yet.'));
+    return;
+  }
+  const used = disk.totalBytes - disk.freeBytes;
+  const size = (bytes) => `${Math.round(bytes / GB)} GB`;
+  $('disk-free').textContent = `${size(disk.freeBytes)} free of ${size(disk.totalBytes)}`;
+  $('disk').replaceChildren(
+    meter(
+      [
+        { value: used, color: 'other' },
+        { value: disk.freeBytes, color: 'free' },
+      ],
+      `${size(used)} used, ${size(disk.freeBytes)} free`,
+    ),
+    legend([
+      ['other', `Used, ${size(used)}`],
+      ['free', `Free, ${size(disk.freeBytes)}`],
+    ]),
+    h('p', { class: 'disk-head' }, 'What Tart keeps'),
+    ...disk.tart.map((entry) =>
+      h(
+        'div',
+        { class: 'disk-row' },
+        h('span', {}, entry.name),
+        h('span', { class: 'num' }, size(entry.bytes)),
+      ),
+    ),
+    h(
+      'p',
+      { class: 'muted small' },
+      'A clone shares space with what it was cloned from, so these can add up to more than they take.',
+    ),
+  );
+}
+
+async function loadResources() {
+  try {
+    const response = await fetch('/api/resources');
+    if (!response.ok) return;
+    resources = await response.json();
+    drawResources();
+  } catch {
+    // The state's own connection says when minitart cannot be reached.
+  }
 }
 
 function logButton(target) {
@@ -415,6 +537,10 @@ $('create-app').addEventListener('submit', async (event) => {
   form.submit();
 });
 
+$('drain').addEventListener('click', () => {
+  if (state) void setDraining(!state.draining);
+});
+
 function tick() {
   for (const time of document.querySelectorAll('time[data-since]')) {
     time.textContent = duration(Date.now() - Number(time.dataset.since));
@@ -436,3 +562,5 @@ function connect() {
   };
 }
 connect();
+void loadResources();
+setInterval(() => void loadResources(), 10_000);

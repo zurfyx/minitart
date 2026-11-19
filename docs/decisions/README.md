@@ -53,6 +53,7 @@ How expensive is this to get wrong?
 | [D22](D22-a-vm-needs-its-memory-first.md)   | A VM is started only when the Mac has the memory for it                                   | LOW    | `PROPOSED` |
 | [D15](D15-a-static-site-on-vercel.md)       | minitart.rovira.sh is one static page, on Vercel                                          | LOW    | `DECIDED`  |
 | [D20](D20-the-dashboard-on-a-tailnet.md)    | The dashboard on the tailnet, through Tailscale Serve, with the same access as at the Mac | MED    | `DECIDED`  |
+| [D23](D23-what-the-dashboard-leads-with.md) | The dashboard leads with what needs the owner, then shows the Mac's last hour             | LOW    | `DECIDED`  |
 | [D16](D16-how-minitart-is-installed.md)     | Installed with Homebrew, released from every green main, upgraded by `minitart upgrade`   | MED    | `DECIDED`  |
 
 ## Tier 3: how the repo is worked on
