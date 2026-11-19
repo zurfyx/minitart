@@ -944,10 +944,14 @@ function drawCost() {
   const focused = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.key;
   /** Saves the runners picked, one change after another, each from what is saved. */
   const saveCompare = (change) => {
-    // Whatever goes wrong is said, and the next change is still saved.
+    // Whatever goes wrong is said, the page goes back to what is saved, and the next change
+    // is still saved.
     costSaving = costSaving
       .then(() => saveSettings({ cost: { compare: change(state.settings.cost.compare) } }))
-      .then(drawCost)
+      .then(drawCost, (error) => {
+        alert(error.message);
+        drawCost();
+      })
       .catch((error) => alert(error.message));
   };
 
@@ -961,16 +965,23 @@ function drawCost() {
         checked: Boolean(entryOf(provider)),
         'data-key': `show ${provider.id}`,
       });
-      box.addEventListener('change', () =>
-        saveCompare((current) =>
-          current.some((entry) => entry.provider === provider.id)
-            ? current.filter((entry) => entry.provider !== provider.id)
-            : [
-                ...current,
-                { provider: provider.id, linux: provider.linux[0].id, macos: provider.macos[0].id },
-              ],
-        ),
-      );
+      // What the box shows is what is asked for, whatever was saved before.
+      box.addEventListener('change', () => {
+        const wanted = box.checked;
+        saveCompare((current) => {
+          const others = current.filter((entry) => entry.provider !== provider.id);
+          const kept = current.find((entry) => entry.provider === provider.id);
+          if (!wanted) return others;
+          return [
+            ...others,
+            kept ?? {
+              provider: provider.id,
+              linux: provider.linux[0].id,
+              macos: provider.macos[0].id,
+            },
+          ];
+        });
+      });
       return h('label', {}, box, provider.name);
     }),
   );
@@ -1080,6 +1091,11 @@ providerMenu.addEventListener('keydown', (event) => {
     providerMenu.open = false;
     providerMenu.querySelector('summary')?.focus();
   }
+});
+// And when the keyboard leaves it.
+providerMenu.addEventListener('focusout', (event) => {
+  const next = /** @type {Node | null} */ (event.relatedTarget);
+  if (providerMenu.open && next && !providerMenu.contains(next)) providerMenu.open = false;
 });
 
 const ownForm = /** @type {HTMLFormElement} */ ($('own'));
