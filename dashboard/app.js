@@ -201,7 +201,7 @@ function render() {
     lastDone = newest;
     const open = route();
     if (open.view === 'jobs' && open.page === 1) void loadJobs();
-    if (open.view === 'mac') void loadStorage();
+    if (open.view === 'jobs' || open.view === 'mac') void loadStorage();
   }
 
   $('repos').replaceChildren(
@@ -447,9 +447,24 @@ function showLog(target) {
 
 const logDialog = /** @type {HTMLDialogElement} */ ($('log-dialog'));
 $('log-close').addEventListener('click', () => logDialog.close());
-// Closed by its button, by Escape, or by a click outside it.
+// Closed by its button, by Escape, or by a click outside it: one that starts and ends on
+// the backdrop, so that selecting the log's text and letting go outside it closes nothing.
+const outside = (event) => {
+  const box = logDialog.getBoundingClientRect();
+  return (
+    event.clientX < box.left ||
+    event.clientX > box.right ||
+    event.clientY < box.top ||
+    event.clientY > box.bottom
+  );
+};
+let pressedOutside = false;
+logDialog.addEventListener('pointerdown', (event) => {
+  pressedOutside = outside(event);
+});
 logDialog.addEventListener('click', (event) => {
-  if (event.target === logDialog) logDialog.close();
+  if (pressedOutside && outside(event)) logDialog.close();
+  pressedOutside = false;
 });
 logDialog.addEventListener('close', () => {
   openLog = null;
@@ -574,7 +589,8 @@ function showView() {
     else link.removeAttribute('aria-current');
   }
   if (view === 'jobs') void loadJobs();
-  if (view === 'mac') void loadStorage();
+  // Jobs says what the history takes, and This Mac lists it.
+  if (view === 'jobs' || view === 'mac') void loadStorage();
   // Charts drawn while hidden have no width: draw them again now that they show.
   if (view === 'now') {
     timelineDrawn = '';
@@ -596,12 +612,19 @@ async function loadJobs() {
   jobsAsked = asked;
   try {
     const response = await fetch(`/api/jobs?${asked}`);
+    // Each await is a moment for a newer ask to start: only the newest is drawn.
+    const body = response.ok ? await response.json() : await response.text();
     if (jobsAsked !== asked) return;
     if (!response.ok) {
-      $('history').replaceChildren(empty(`Could not read the jobs: ${await response.text()}`));
+      $('history').replaceChildren(empty(`Could not read the jobs: ${body}`));
       return;
     }
-    jobPage = await response.json();
+    // A page past the end (an old link, or jobs gone a year on) becomes the last one.
+    if (body.total > 0 && wanted.page > body.pages) {
+      location.replace(jobsHash({ ...wanted, page: body.pages }));
+      return;
+    }
+    jobPage = body;
     drawJobs(wanted);
   } catch {
     if (jobsAsked === asked) $('history').replaceChildren(empty('Could not reach minitart.'));
@@ -799,6 +822,5 @@ function connect() {
 }
 connect();
 showView();
-void loadStorage();
 void loadResources();
 setInterval(() => void loadResources(), 10_000);
