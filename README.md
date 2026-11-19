@@ -13,8 +13,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
 </picture>
 
-> Built for one Mac and a handful of private repos, and it runs its author's CI on a Mac mini.
-> Read [the security model](docs/security.md), and the code, before you trust it with yours.
+> minitart runs its author's CI on a Mac mini. Read [the security
+> model](docs/security.md), and the code, before you trust it with yours.
 
 ## What you get
 
@@ -62,7 +62,7 @@ short version is below; [docs/setup.md](docs/setup.md) is the full one, step by 
 how to tell each step worked and which three need you in person.
 
 ```bash
-brew install zurfyx/tap/minitart   # or the menu bar app, below, which installs it too
+brew install zurfyx/tap/minitart
 minitart doctor --fix        # installs Tart and Softnet, and does what needs your password
 
 minitart image build linux   # under a minute
@@ -103,9 +103,9 @@ brew install --cask zurfyx/tap/minitart-app
 
 The app's mark says how things are: a prompt when idle, the number of jobs running, an
 exclamation mark when minitart needs you. Its menu says what the dashboard's headline says,
-lists the jobs running, and opens the dashboard. When minitart is not running it starts it;
-when a setup step is missing it runs `minitart doctor --fix` in Terminal for you.
-`minitart upgrade` upgrades both.
+lists the jobs running, and opens the dashboard. When minitart is not running, its menu
+offers to start it; when a setup step is missing, it offers to run `minitart doctor --fix`
+in Terminal. `minitart upgrade` upgrades both.
 
 <img src="site/menu-bar.png" width="437" alt="minitart's menu bar app open: the mark with 6 on its screen, the headline, six jobs running and four waiting, Open Dashboard, Drain, Settings and Quit" />
 
