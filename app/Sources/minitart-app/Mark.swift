@@ -45,6 +45,10 @@ enum MarkImage {
         }
       }
       base.fill()
+      // The Mac's status light, cut out of it: what makes the slab a Mac mini.
+      NSGraphicsContext.current?.compositingOperation = .destinationOut
+      NSBezierPath(roundedRect: NSRect(x: 11.9, y: 14.42, width: 2.9, height: 1.1), xRadius: 0.55, yRadius: 0.55).fill()
+      NSGraphicsContext.current?.compositingOperation = .sourceOver
       return true
     }
     image.isTemplate = true
