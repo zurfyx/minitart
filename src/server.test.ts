@@ -46,6 +46,13 @@ async function setup(
     app: () => app,
     saveApp: (created) => (app = created),
     health: () => [],
+    resources: () => ({
+      stepMs: 10_000,
+      cores: 8,
+      memoryBytes: 16 * 1024 ** 3,
+      points: [{ at: 1, cpuVms: 20, cpuOther: 5, memVms: 4096, memOther: 2048 }],
+      disk: null,
+    }),
     machine,
     port,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
@@ -88,9 +95,22 @@ test('the page and its state are served, with a policy that allows no outside sc
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-security-policy') ?? '', /default-src 'self'/);
   assert.match(await page.text(), /<title>minitart<\/title>/);
-  for (const path of ['/app.js', '/style.css', '/tokens.css', '/favicon.svg']) {
+  for (const path of [
+    '/app.js',
+    '/charts.js',
+    '/view.js',
+    '/style.css',
+    '/tokens.css',
+    '/favicon.svg',
+  ]) {
     assert.equal((await fetch(`${origin}${path}`)).status, 200, path);
   }
+  // The tests beside the page are not part of it.
+  assert.equal((await fetch(`${origin}/view.test.mjs`)).status, 404);
+  const resources = (await (await fetch(`${origin}/api/resources`)).json()) as {
+    points: unknown[];
+  };
+  assert.equal(resources.points.length, 1);
   const state = (await (await fetch(`${origin}/api/state`)).json()) as Record<string, unknown>;
   assert.equal(state['app'], null);
   assert.equal((await fetch(`${origin}/../../etc/passwd`)).status, 404);

@@ -18,7 +18,7 @@ html {
 
 body {
   margin: 0 auto;
-  max-width: 1040px;
+  max-width: 1200px;
   padding: 28px 24px 96px;
 }
 
@@ -83,6 +83,10 @@ code {
 
 .top #live {
   margin-left: auto;
+}
+
+.top button {
+  align-self: center;
 }
 
 /* Sections */
@@ -150,8 +154,11 @@ section > p {
   font-weight: 500;
 }
 
+.row .meta,
 .row .note {
   display: block;
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -224,55 +231,6 @@ section > p {
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
 }
-
-/* Slots: how many VMs of each kind are in use, as pips */
-
-#slots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 48px;
-  margin-top: 8px;
-  padding: 14px 0;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-
-.slot {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.slot-name {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-/* Many pips wrap onto more rows; the words either side of them stay whole. */
-.slot > :not(.pips) {
-  flex: none;
-}
-
-.pips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.pip {
-  width: 22px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--rule-strong);
-  transition: background-color 0.2s;
-}
-
-.pip.on {
-  background: var(--accent);
-}
-
-/* Controls */
 
 button {
   padding: 5px 12px;
@@ -353,6 +311,345 @@ button.quiet:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Now: one sentence that says what needs the owner, and four figures (docs/design.md) */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  align-items: end;
+  margin-top: 12px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.headline {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.headline em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.stat {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.stat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stat b {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stat small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Charts (D23): minitart's VMs in the accent, everything else in one gray */
+
+h2 .aside {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+h2 .legend {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+#timeline-title {
+  flex-wrap: wrap;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 40px;
+}
+
+.pair-legend {
+  grid-column: 1 / -1;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 40px;
+}
+
+.chart,
+.timeline {
+  position: relative;
+  margin-top: 8px;
+}
+
+.chart svg,
+.timeline svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  margin: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.tick {
+  fill: var(--muted);
+  font: 11px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+.area.vm {
+  fill: var(--viz-vm);
+  fill-opacity: 0.16;
+}
+.area.other {
+  fill: var(--viz-other);
+  fill-opacity: 0.18;
+}
+
+.line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.line.vm {
+  stroke: var(--viz-vm);
+}
+.line.other {
+  stroke: var(--viz-other);
+}
+
+.dot {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.dot.vm {
+  fill: var(--viz-vm);
+}
+.dot.other {
+  fill: var(--viz-other);
+}
+
+.cross {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+
+.chart svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* The tooltip: values first, then names, a short line keying each series */
+
+.tip {
+  position: absolute;
+  z-index: 2;
+  min-width: 168px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.tip[hidden] {
+  display: none;
+}
+
+.tip-time {
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.tip-row.total {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--rule);
+}
+
+.key {
+  flex: none;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+}
+.key.vm {
+  background: var(--viz-vm);
+}
+.key.other {
+  background: var(--viz-other);
+}
+
+.legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  color: var(--body);
+  font-size: 12px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.swatch.vm {
+  background: var(--viz-vm);
+}
+.swatch.start {
+  background: color-mix(in oklab, var(--viz-vm) 32%, var(--bg));
+}
+.swatch.other {
+  background: var(--viz-other);
+}
+.swatch.free {
+  background: var(--viz-free);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+}
+
+/* The timeline: a lane per slot, a bar per VM */
+
+.lane-name {
+  fill: var(--muted);
+  font: 12px var(--font);
+}
+
+.lane-rule {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.vm-bar {
+  cursor: pointer;
+  outline: none;
+}
+
+.vm-bar .hit {
+  fill: transparent;
+}
+
+.phase-start {
+  fill: color-mix(in oklab, var(--viz-vm) 32%, var(--bg));
+}
+
+.phase-job {
+  fill: var(--viz-vm);
+}
+
+.vm-bar:hover .phase-job,
+.vm-bar:hover .phase-start,
+.vm-bar:focus-visible .phase-job,
+.vm-bar:focus-visible .phase-start {
+  filter: brightness(1.12);
+}
+
+.vm-bar:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.end-mark {
+  font: 600 12px var(--font);
+}
+.end-mark.ok {
+  fill: var(--ok);
+}
+.end-mark.bad {
+  fill: var(--bad);
+}
+.end-mark.muted {
+  fill: var(--muted);
+}
+
+/* Disk: used against free, then what Tart keeps */
+
+.meter {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 12px 0 8px;
+}
+
+.meter-part {
+  min-width: 3px;
+  border-radius: 4px;
+}
+.meter-part.other {
+  background: var(--viz-other);
+}
+.meter-part.free {
+  background: var(--viz-free);
+}
+
+.disk-head {
+  margin: 16px 0 4px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.disk-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+}
+
+.disk-row .num {
+  color: var(--ink);
+}
+
+.small {
+  font-size: 12px;
+}
+
 /* The log */
 
 #log {
@@ -367,6 +664,23 @@ button.quiet:hover {
   overflow-wrap: anywhere;
   scrollbar-color: var(--rule-strong) transparent;
   scrollbar-width: thin;
+}
+
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .headline {
+    grid-column: 1 / -1;
+    font-size: 21px;
+  }
+
+  .pair,
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
 }
 
 @media (max-width: 700px) {

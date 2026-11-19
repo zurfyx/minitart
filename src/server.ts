@@ -13,6 +13,7 @@ import { appManifest, convertManifestCode, type AppCredentials } from './github/
 import type { Fetch } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import type { Manager } from './manager.ts';
+import type { ResourcesView } from './resources.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
 
@@ -22,6 +23,8 @@ export interface ServerDeps {
   app: () => AppCredentials | null;
   saveApp: (app: AppCredentials) => void;
   health: () => Check[];
+  /** The Mac's CPU, memory and disk over the last hour, for the charts (D23). */
+  resources?: () => ResourcesView | null;
   machine: Machine;
   port: number;
   /**
@@ -40,6 +43,8 @@ export interface ServerDeps {
 const STATIC: Record<string, [file: string, type: string]> = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/charts.js': ['charts.js', 'text/javascript; charset=utf-8'],
+  '/view.js': ['view.js', 'text/javascript; charset=utf-8'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/tokens.css': ['tokens.css', 'text/css; charset=utf-8'],
   '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
@@ -103,6 +108,8 @@ export function createDashboardServer(deps: ServerDeps): Server {
       }
       if (path === '/api/state') return json(response, 200, state());
       if (path === '/api/events') return events(request, response);
+      // Apart from the state: an hour of points is more than every change needs to carry.
+      if (path === '/api/resources') return json(response, 200, deps.resources?.() ?? null);
 
       const vmLog = /^\/api\/vms\/(minitart-(?:linux|macos)-[0-9a-f]{6})\/log$/.exec(path);
       if (vmLog?.[1] !== undefined) {

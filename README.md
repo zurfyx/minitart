@@ -8,7 +8,10 @@ It is a very small manager, with a dashboard, on top of three things other peopl
 Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It is for one person
 with one Mac and a handful of private repos. [minitart.rovira.sh](https://minitart.rovira.sh)
 
-![The minitart dashboard](site/dashboard-light.png)
+<picture>
+  <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
+  <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
+</picture>
 
 > **Early.** Built for one Mac mini. Read [the security model](docs/security.md), and the
 > code, before you trust it with yours.
@@ -26,8 +29,9 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   the App on your whole account by mistake serves nothing. Public repos are skipped.
 - **Nothing to configure by hand.** No file to write. VM counts start from what the Mac can
   hold and change in the dashboard, which saves them as plain JSON you can back up.
-- **A dashboard**: what is queued, running and done, with logs. On the Mac itself, or on
-  your Tailscale tailnet if you want it there.
+- **A dashboard**: one line that says what needs you, a timeline of the last hour's VMs,
+  the Mac's CPU, memory and disk, and every job with its log. On the Mac itself, or on your
+  Tailscale tailnet if you want it there.
 - **Small enough to read.** TypeScript that Node runs as it is; no build, no runtime
   dependencies.
 

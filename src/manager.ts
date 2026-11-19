@@ -50,6 +50,8 @@ export interface VmView {
   createdAt: number;
   /** When the status last changed. */
   since: number;
+  /** When its runner took its job. */
+  jobAt: number | null;
   job: JobRef | null;
 }
 
@@ -72,7 +74,12 @@ export interface DoneView {
   job: JobRef;
   /** `success`, `failure`, `cancelled`, or `lost` when the VM ended before its job did. */
   conclusion: string;
+  /** When the VM was cloned. */
   startedAt: number;
+  /** When its runner took the job. Absent from entries older than minitart 0.1.8. */
+  jobAt?: number;
+  /** When GitHub queued the job, when GitHub said. */
+  queuedAt?: number;
   endedAt: number;
 }
 
@@ -445,9 +452,9 @@ export class Manager {
       });
     }
     queued.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
-    if (this.#short !== null) {
-      // Only the jobs that are waiting for memory say so: not one whose VM is on its way,
-      // and not one whose kind has no slot left anyway.
+    {
+      // Why a job no VM is on its way for waits: memory, or every slot of its kind in use.
+      // Only those say so: not one whose VM is on its way.
       const slots = this.#slots();
       const spare = new Map<string, number>();
       const count: Record<Pool, number> = { linux: 0, macos: 0 };
@@ -463,7 +470,10 @@ export class Manager {
         if (covered > 0) spare.set(key, covered - 1);
         else if (count[job.pool] < limits[job.pool]) {
           count[job.pool]++;
-          job.note = `${this.#short}: the job waits until there is room`;
+          if (this.#short !== null) job.note = `${this.#short}: the job waits until there is room`;
+        } else if (limits[job.pool] > 0) {
+          const kind = job.pool === 'macos' ? 'macOS' : 'Linux';
+          job.note = `Every ${kind} slot is in use (${limits[job.pool]} of ${limits[job.pool]})`;
         }
       }
     }
@@ -642,6 +652,7 @@ export class Manager {
       status: 'cloning',
       createdAt: now,
       since: now,
+      jobAt: null,
       job: null,
       runnerId: null,
       result: null,
@@ -796,6 +807,7 @@ export class Manager {
         : (vm.job ?? { id: null, name: 'unknown job', workflow: '', url: '' });
       // GitHub's word for how the job ended; the runner's own only until GitHub has one.
       const conclusion = job?.conclusion ?? vm.result ?? 'lost';
+      const queuedAt = job ? Date.parse(job.createdAt) : Number.NaN;
       this.#history.push({
         vm: vm.name,
         repo: vm.repo,
@@ -803,6 +815,8 @@ export class Manager {
         job: ref,
         conclusion,
         startedAt: vm.createdAt,
+        ...(vm.jobAt === null ? {} : { jobAt: vm.jobAt }),
+        ...(Number.isFinite(queuedAt) ? { queuedAt } : {}),
         endedAt: this.#now(),
       });
       this.#history = this.#history.slice(-HISTORY_LIMIT);
@@ -903,6 +917,7 @@ export class Manager {
   #setStatus(vm: Vm, status: VmStatus): void {
     vm.status = status;
     vm.since = this.#now();
+    if (status === 'running') vm.jobAt ??= vm.since;
     this.#changed();
   }
 
@@ -926,6 +941,7 @@ function view(vm: Vm): VmView {
     status: vm.status,
     createdAt: vm.createdAt,
     since: vm.since,
+    jobAt: vm.jobAt,
     job: vm.job,
   };
 }

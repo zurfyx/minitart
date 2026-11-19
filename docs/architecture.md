@@ -74,7 +74,8 @@ When the manager stops, it deletes every VM. A job that was running fails on Git
 | `src/version.ts`                  | The version a release wrote, or `0.0.0-dev` for a checkout                                    |
 | `src/testing/`                    | A GitHub and a Tart in memory, for the tests and `--demo`                                     |
 | `firewall/`                       | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                |
-| `dashboard/`                      | The page: plain HTML, CSS and one script, no build                                            |
+| `src/resources.ts`                | CPU, memory and disk over the last hour, for the charts                                       |
+| `dashboard/`                      | The page: plain HTML, CSS and three scripts, no build                                         |
 | `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
 | `site/`                           | minitart.rovira.sh                                                                            |
 
@@ -124,8 +125,11 @@ Everything else is rebuilt from GitHub and Tart on start.
 
 `http://127.0.0.1:4141`, served by the manager ([D10](decisions/D10-the-dashboard.md)).
 
-- `GET /api/state`, and `GET /api/events` (server-sent events): slots, running, queued,
-  done, repos, health, activity.
+- `GET /api/state`, and `GET /api/events` (server-sent events): running, queued, done,
+  repos, health, activity.
+- `GET /api/resources`: the last hour of CPU and memory, a point every ten seconds, and the
+  disk (`src/resources.ts`, [D23](decisions/D23-what-the-dashboard-leads-with.md)). Apart
+  from the state, which is sent on every change.
 - `GET /api/vms/{name}/log`: what a VM printed. `GET /api/jobs/{id}/log`: a finished job's
   log, fetched from GitHub, for jobs minitart ran.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.

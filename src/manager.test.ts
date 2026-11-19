@@ -172,6 +172,44 @@ test('no more VMs than the limit; the rest of the queue waits', async () => {
   assert.equal(manager.snapshot().queued.length, 4);
 });
 
+test('a job that waits because every slot of its kind is in use says so', async () => {
+  const { github, manager, settle } = setup();
+  for (let i = 0; i < 3; i++) github.queue('octo/app', ['minitart-macos'], `job ${i}`);
+  await manager.tick();
+  await settle();
+  // Two VMs are on their way for two of them: those wait for nothing that needs saying.
+  assert.deepEqual(
+    manager.snapshot().queued.map((job) => job.note),
+    [null, null, 'Every macOS slot is in use (2 of 2)'],
+  );
+});
+
+test('the history says when the job was queued, and when its VM was cloned and took it', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test');
+  const queuedAt = Date.parse(job.createdAt);
+  advance(20_000);
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  assert.equal(manager.snapshot().vms[0]?.jobAt, null, 'no job yet');
+  advance(15_000);
+  github.take(name);
+  tart.print(name, 'Running job: test');
+  assert.equal(manager.snapshot().vms[0]?.jobAt, queuedAt + 35_000);
+  await manager.tick();
+  advance(60_000);
+  github.complete(job);
+  tart.exit(name, 0);
+  await settle();
+  const [done] = manager.snapshot().done;
+  assert.equal(done?.queuedAt, queuedAt);
+  assert.equal(done?.startedAt, queuedAt + 20_000);
+  assert.equal(done?.jobAt, queuedAt + 35_000);
+  assert.equal(done?.endedAt, queuedAt + 95_000);
+});
+
 test('a VM no job comes for is deleted and its runner removed', async () => {
   const { github, tart, manager, settle, advance } = setup();
   const job = github.queue('octo/app', ['minitart-linux']);

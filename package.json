@@ -25,7 +25,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mjs\"",
+    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mjs\" \"dashboard/**/*.test.mjs\"",
     "prepare": "husky"
   },
   "lint-staged": {
