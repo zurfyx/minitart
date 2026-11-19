@@ -41,6 +41,19 @@ export interface JobRef {
   name: string;
   workflow: string;
   url: string;
+  /** Who the job ran for (Job.actor). Absent when not known, and before minitart 0.1.14. */
+  actor?: string;
+}
+
+/** What the page and the history keep of a job. */
+function refOf(job: Job): JobRef {
+  return {
+    id: job.id,
+    name: job.name,
+    workflow: job.workflow,
+    url: job.url,
+    ...(job.actor === null ? {} : { actor: job.actor }),
+  };
 }
 
 export interface VmView {
@@ -62,6 +75,7 @@ export interface QueuedView {
   name: string;
   workflow: string;
   url: string;
+  actor: string | null;
   pool: Pool | null;
   createdAt: string;
   /** Why the job is still waiting, when minitart knows. */
@@ -359,7 +373,7 @@ export class Manager {
     for (const job of jobs) {
       const vm = job.runnerName ? this.#vms.get(job.runnerName) : undefined;
       if (!vm || vm.repo !== job.repo) continue;
-      vm.job = { id: job.id, name: job.name, workflow: job.workflow, url: job.url };
+      vm.job = refOf(job);
       if (job.status === 'in_progress' && vm.status === 'waiting') this.#setStatus(vm, 'running');
       if (
         job.status === 'completed' &&
@@ -452,6 +466,7 @@ export class Manager {
         name: job.name,
         workflow: job.workflow,
         url: job.url,
+        actor: job.actor,
         pool: pool === 'unsatisfiable' ? null : pool,
         createdAt: job.createdAt,
         note,
@@ -834,7 +849,7 @@ export class Manager {
     if (ranJob) {
       const job = await this.#findJob(github, vm);
       const ref = job
-        ? { id: job.id, name: job.name, workflow: job.workflow, url: job.url }
+        ? refOf(job)
         : (vm.job ?? { id: null, name: 'unknown job', workflow: '', url: '' });
       // GitHub's word for how the job ended; the runner's own only until GitHub has one.
       const conclusion = job?.conclusion ?? vm.result ?? 'lost';

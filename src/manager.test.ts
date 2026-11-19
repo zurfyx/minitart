@@ -111,6 +111,26 @@ test('the page is sent the last hour of jobs and today’s figures, not the whol
   assert.equal(snapshot.today.passed, snapshot.today.finished - 1);
 });
 
+test('who a job runs for is shown while it waits, while it runs, and kept with it', async () => {
+  const { github, tart, manager, history, settle } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test', 'CI', 'mona');
+  assert.equal(manager.snapshot().queued.length, 0, 'not polled yet');
+  await manager.tick();
+  assert.equal(manager.snapshot().queued[0]?.actor, 'mona');
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, 'Running job: test');
+  await manager.tick();
+  assert.equal(manager.snapshot().vms[0]?.job?.actor, 'mona');
+  github.complete(job);
+  tart.exit(name, 0);
+  await settle();
+  assert.equal(manager.snapshot().done[0]?.job.actor, 'mona');
+  assert.equal(history.recent(0, 1)[0]?.job.actor, 'mona');
+});
+
 test('a job that ends between two polls is still found', async () => {
   const { github, tart, manager, settle } = setup();
   const job = github.queue('octo/app', ['minitart-macos'], 'archive');

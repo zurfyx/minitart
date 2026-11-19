@@ -141,6 +141,7 @@ interface Row {
   job_name: string;
   workflow: string;
   url: string;
+  actor: string | null;
   conclusion: string;
   started_at: number;
   job_at: number | null;
@@ -153,7 +154,13 @@ function fromRow(row: Row): DoneView {
     vm: row.vm,
     repo: row.repo,
     pool: row.pool === 'macos' ? 'macos' : 'linux',
-    job: { id: row.job_id, name: row.job_name, workflow: row.workflow, url: row.url },
+    job: {
+      id: row.job_id,
+      name: row.job_name,
+      workflow: row.workflow,
+      url: row.url,
+      ...(row.actor === null ? {} : { actor: row.actor }),
+    },
     conclusion: row.conclusion,
     startedAt: row.started_at,
     ...(row.job_at === null ? {} : { jobAt: row.job_at }),
@@ -173,6 +180,7 @@ const SCHEMA = `
     job_name TEXT NOT NULL,
     workflow TEXT NOT NULL,
     url TEXT NOT NULL,
+    actor TEXT,
     conclusion TEXT NOT NULL,
     started_at INTEGER NOT NULL,
     job_at INTEGER,
@@ -205,10 +213,15 @@ export class SqliteHistory implements History {
       this.#db.exec('PRAGMA journal_mode = WAL');
     }
     this.#db.exec(SCHEMA);
+    // Who a job ran for came in minitart 0.1.14: a history from before gains the column.
+    const columns = this.#db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+    if (!columns.some((column) => column.name === 'actor')) {
+      this.#db.exec('ALTER TABLE jobs ADD COLUMN actor TEXT');
+    }
     this.#insert = this.#db.prepare(
       `INSERT OR IGNORE INTO jobs
-        (vm, repo, pool, job_id, job_name, workflow, url, conclusion, started_at, job_at, queued_at, ended_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (vm, repo, pool, job_id, job_name, workflow, url, actor, conclusion, started_at, job_at, queued_at, ended_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.#since = this.#db.prepare(
       'SELECT * FROM jobs WHERE ended_at >= ? ORDER BY ended_at DESC, id DESC',
@@ -227,6 +240,7 @@ export class SqliteHistory implements History {
       entry.job.name,
       entry.job.workflow,
       entry.job.url,
+      entry.job.actor ?? null,
       entry.conclusion,
       entry.startedAt,
       entry.jobAt ?? null,

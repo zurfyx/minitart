@@ -23,7 +23,13 @@ export class FakeGitHub implements GitHub {
   }
 
   /** A new workflow run with one queued job. */
-  queue(repo: string, labels: string[], name = 'build', workflow = 'CI'): Job {
+  queue(
+    repo: string,
+    labels: string[],
+    name = 'build',
+    workflow = 'CI',
+    actor: string | null = 'octocat',
+  ): Job {
     const runId = this.#nextId++;
     const id = this.#nextId++;
     const job: Job = {
@@ -36,6 +42,7 @@ export class FakeGitHub implements GitHub {
       status: 'queued',
       conclusion: null,
       runnerName: null,
+      actor,
       url: `https://github.com/${repo}/actions/runs/${runId}/job/${id}`,
       createdAt: new Date(this.#clock()).toISOString(),
       startedAt: null,

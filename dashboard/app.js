@@ -75,14 +75,38 @@ function row(...cells) {
 }
 
 /** A job's name, and under it where it comes from and why it waits, if it does. */
-function jobCell(name, repo, workflow, pool, note) {
+function jobCell(name, repo, workflow, pool, note, actor) {
   return h(
     'span',
     { class: 'main' },
     name,
-    h('span', { class: 'meta' }, [repo, workflow, POOL[pool]].filter(Boolean).join(' · ')),
+    h(
+      'span',
+      { class: 'meta' },
+      [repo, workflow, POOL[pool]].filter(Boolean).join(' · '),
+      actor ? [' · by ', author(actor)] : null,
+    ),
     note ? h('span', { class: 'note' }, note) : null,
   );
+}
+
+/** Who a job runs for: a link to them on GitHub, when the name is one GitHub would give. */
+function author(login) {
+  return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?$/.test(login)
+    ? h(
+        'a',
+        {
+          class: 'author',
+          // A bot's page is its app's; a person's is their own.
+          href: login.endsWith('[bot]')
+            ? `https://github.com/apps/${login.slice(0, -'[bot]'.length)}`
+            : `https://github.com/${login}`,
+          target: '_blank',
+          rel: 'noreferrer',
+        },
+        login,
+      )
+    : h('span', { class: 'author' }, login);
 }
 
 function empty(text) {
@@ -168,6 +192,8 @@ function render() {
           vm.repo,
           vm.job?.workflow,
           vm.pool,
+          null,
+          vm.job?.actor,
         ),
         clock(vm.jobAt ?? vm.createdAt),
         logButton({ kind: 'vm', name: vm.name, title: vm.name }),
@@ -176,7 +202,7 @@ function render() {
     ...queued.map((job) =>
       row(
         status('queued'),
-        jobCell(jobName(job), job.repo, job.workflow, job.pool, job.note),
+        jobCell(jobName(job), job.repo, job.workflow, job.pool, job.note, job.actor),
         clock(Date.parse(job.createdAt)),
       ),
     ),
@@ -185,7 +211,7 @@ function render() {
       .map((job) =>
         row(
           status(job.conclusion),
-          jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool),
+          jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool, null, job.job.actor),
           h('span', { class: 'muted num' }, ago(state.now - job.endedAt)),
           job.job.id !== null
             ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
@@ -309,7 +335,7 @@ function drawTimeline() {
     to,
     glyphs: GLYPHS,
     describe: (item) => [
-      `${item.repo}${item.workflow ? ` · ${item.workflow}` : ''}`,
+      `${item.repo}${item.workflow ? ` · ${item.workflow}` : ''}${item.actor ? ` · by ${item.actor}` : ''}`,
       item.name ?? (item.jobAt === null ? 'Waiting for its job' : 'A job'),
       `Starting: ${duration((item.jobAt ?? item.endAt ?? to) - item.startAt)}`,
       ...(item.jobAt !== null ? [`Job: ${duration((item.endAt ?? to) - item.jobAt)}`] : []),
@@ -664,7 +690,7 @@ function drawJobs(wanted) {
           const took = `took ${duration(job.endedAt - (job.jobAt ?? job.startedAt))}`;
           return row(
             status(job.conclusion),
-            jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool),
+            jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool, null, job.job.actor),
             h('span', { class: 'muted num times' }, [waited, took].filter(Boolean).join(' · ')),
             h(
               'time',
