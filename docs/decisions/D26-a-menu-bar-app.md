@@ -11,8 +11,8 @@ one install sets up both; the formula alone stays the headless install it always
 The app is a window onto the minitart on the same Mac, and nothing more:
 
 - **The mark** in the menu bar is the cup and ball of minitart's icon, as a template image:
-  outlined when idle, filled with the number of jobs running beside it (on by default, can be
-  turned off), an exclamation mark in the ball's place when the owner is needed (no job can
+  outlined when idle, filled when jobs run, with their number cut out of the cup (on by
+  default, can be turned off), an exclamation mark in the ball's place when the owner is needed (no job can
   start, GitHub failing, a setup step missing, short of memory, a job waiting more than ten
   minutes), a pause sign when draining, and faint when minitart is not there.
 - **The menu** says the dashboard's headline word for word (both are held to

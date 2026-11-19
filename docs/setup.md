@@ -248,7 +248,7 @@ brew install --cask zurfyx/tap/minitart-app
 ```
 
 It installs minitart too, if it is not yet. The menu bar shows minitart's mark, with the number
-of jobs running, an exclamation mark when it needs you, and a pause sign when it is draining.
+of jobs running inside it, an exclamation mark when it needs you, and a pause sign when it is draining.
 Its menu has the dashboard's headline, the jobs running, Open Dashboard and Drain. When
 minitart is not running or not set up, it says so and offers to start it, or to finish the
 setup in Terminal. Turn on Settings → Open at Login to keep it there. `minitart upgrade`

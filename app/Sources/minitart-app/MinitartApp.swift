@@ -22,8 +22,7 @@ struct MinitartApp: App {
       MenuContent(model: model, showCount: $showCount)
     } label: {
       let label = barLabel(model.condition, showCount: showCount)
-      Image(nsImage: MarkImage.make(label.mark))
-      if let count = label.count { Text("\(count)") }
+      Image(nsImage: MarkImage.make(label.mark, count: label.count))
     }
     .menuBarExtraStyle(.menu)
   }
