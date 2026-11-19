@@ -52,7 +52,8 @@ const STATUSES: Record<string, JobStatus> = {
 
 /**
  * Every status GitHub gives a workflow run that has not completed. All of them are asked
- * for: a run left out is a run whose queued job is never seen.
+ * for, and they are what a run in the unfiltered list must have to be kept: a run left out
+ * is a run whose queued job is never seen.
  */
 const ACTIVE_RUN_STATUSES = ['requested', 'queued', 'in_progress', 'waiting', 'pending'] as const;
 
@@ -86,6 +87,18 @@ export class GitHubClient implements GitHub {
         (page) => (page as { workflow_runs?: unknown[] }).workflow_runs ?? [],
       )) as { id: number }[];
       for (const run of runs) ids.add(run.id);
+    }
+    // The lists by status can miss a run: GitHub has been seen to leave a queued run out of
+    // every one of them while the run itself, and the list with no filter, said `queued`,
+    // so its job waited for good. The newest runs, unfiltered, are read too, and any of
+    // them that has not completed is kept.
+    const newest = (await this.#get(repo, `/repos/${repo}/actions/runs?per_page=100`)) as {
+      workflow_runs?: { id: number; status?: string }[];
+    };
+    for (const run of newest.workflow_runs ?? []) {
+      if ((ACTIVE_RUN_STATUSES as readonly (string | undefined)[]).includes(run.status)) {
+        ids.add(run.id);
+      }
     }
     return [...ids];
   }
