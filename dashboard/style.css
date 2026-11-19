@@ -258,6 +258,78 @@ select {
   stroke-width: 2;
 }
 
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.section-head h2 {
+  flex: 1;
+}
+
+/* A menu that opens under its button: the Providers list */
+
+.menu {
+  position: relative;
+}
+
+.menu summary {
+  padding: 3px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu summary::after {
+  content: ' ▾';
+  color: var(--muted);
+}
+
+.menu summary:hover {
+  background: var(--hover);
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  z-index: 3;
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.menu-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.menu-panel label:hover {
+  background: var(--hover);
+}
+
+.menu-panel input {
+  accent-color: var(--accent);
+}
+
 .compare .row {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr) 180px 130px;

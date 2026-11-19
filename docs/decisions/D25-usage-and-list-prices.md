@@ -15,12 +15,13 @@ The dashboard has a Usage view. It shows, for the last 7, 30 or 90 days or a yea
   average draw at the owner's price of electricity, each only if the owner gives it.
 
 The providers are GitHub-hosted, Blacksmith, Depot, Namespace, WarpBuild and Avrea, all
-always shown. Each row has a menu for its Linux runner and one for its macOS runner, each
-runner with its price a minute; they start at a 2 vCPU x64 Linux runner, the size of
-GitHub's `ubuntu-latest`, and the provider's smallest macOS runner. Toggles to pick which
-providers are shown were tried and taken out: they put controls on the page without a use.
-A plain table with no menus was tried too, and the menus came back: they show each
-provider's runners and prices, and let the owner price at the runner they would pick.
+shown at first. A Providers menu by the table's heading, closed until opened, picks which are
+in the table and its notes. Each row has a menu for its Linux runner and one for its macOS
+runner, each runner with its price a minute; they start at a 2 vCPU x64 Linux runner, the
+size of GitHub's `ubuntu-latest`, and the provider's smallest macOS runner. A row of toggles
+and a plain table with no menus were both tried first: the toggles put controls on the page
+for something done once, and without menus the table no longer showed each provider's
+runners and prices.
 
 ## Why
 
@@ -49,7 +50,8 @@ Left out:
 - The figures count minutes as they ran here. The same job can take more or fewer minutes on
   other hardware, and the page says so.
 - A month is worked out from the days minitart kept its history, not from days before it.
-- The settings gain `cost`: the runners picked for each provider (`compare`; a provider not
-  in it is at its defaults), and the Mac's price, life, draw and electricity price. A saved
+- The settings gain `cost`: the providers shown and the runners picked for each (`compare`),
+  and the Mac's price, life, draw and electricity price. A settings file without `compare`
+  shows every provider at its defaults. A saved
   provider or runner since taken out of the price list is dropped or reset, never a reason to
   set the settings aside.

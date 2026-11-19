@@ -908,14 +908,10 @@ function drawCost() {
     h('small', {}, ' h'),
   );
 
-  // Every provider is shown, at the runners the owner picked for it, or at its defaults.
-  const runnersOf = (provider) =>
-    cost.compare.find((entry) => entry.provider === provider.id) ?? {
-      provider: provider.id,
-      linux: provider.linux[0].id,
-      macos: provider.macos[0].id,
-    };
-  const rows = compareProviders(sum, prices.providers, prices.providers.map(runnersOf));
+  // The providers shown are the ones in `compare`, each at the runners picked for it.
+  const entryOf = (provider) => cost.compare.find((entry) => entry.provider === provider.id);
+  const shown = prices.providers.filter((provider) => entryOf(provider));
+  const rows = compareProviders(sum, prices.providers, cost.compare);
   const ownMonth = macCost(cost, MONTH_DAYS);
   $('cost-own').textContent = ownMonth.usd === null ? '–' : usd(ownMonth.usd);
   $('cost-own-split').textContent =
@@ -955,9 +951,34 @@ function drawCost() {
       .catch((error) => alert(error.message));
   };
 
-  $('compare').replaceChildren(
+  // The Providers menu: a box each, in the price list's order. Unticked, a provider is not in
+  // the table or its notes.
+  $('provider-count').textContent = `${shown.length} of ${prices.providers.length}`;
+  $('provider-list').replaceChildren(
     ...prices.providers.map((provider) => {
-      const on = runnersOf(provider);
+      const box = h('input', {
+        type: 'checkbox',
+        checked: Boolean(entryOf(provider)),
+        'data-key': `show ${provider.id}`,
+      });
+      box.addEventListener('change', () =>
+        saveCompare((current) =>
+          current.some((entry) => entry.provider === provider.id)
+            ? current.filter((entry) => entry.provider !== provider.id)
+            : [
+                ...current,
+                { provider: provider.id, linux: provider.linux[0].id, macos: provider.macos[0].id },
+              ],
+        ),
+      );
+      return h('label', {}, box, provider.name);
+    }),
+  );
+
+  $('compare').replaceChildren(
+    ...(shown.length ? [] : [empty('No provider is shown. Pick some under Providers.')]),
+    ...shown.map((provider) => {
+      const on = entryOf(provider);
       const row = rows.find((one) => one.provider.id === provider.id);
       const runner = (kind) => {
         const select = h(
@@ -975,10 +996,11 @@ function drawCost() {
           ),
         );
         select.addEventListener('change', () =>
-          saveCompare((current) => [
-            ...current.filter((entry) => entry.provider !== provider.id),
-            { ...runnersOf(provider), [kind]: select.value },
-          ]),
+          saveCompare((current) =>
+            current.map((entry) =>
+              entry.provider === provider.id ? { ...entry, [kind]: select.value } : entry,
+            ),
+          ),
         );
         return select;
       };
@@ -1014,24 +1036,28 @@ function drawCost() {
     }),
   );
   if (focused) {
-    for (const element of document.querySelectorAll('#compare [data-key]')) {
+    for (const element of document.querySelectorAll(
+      '#compare [data-key], #provider-list [data-key]',
+    )) {
       if (/** @type {HTMLElement} */ (element).dataset.key === focused) {
         /** @type {HTMLElement} */ (element).focus();
       }
     }
   }
   $('compare-notes').replaceChildren(
-    h(
-      'p',
-      {},
-      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
-        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
-        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
-        'runner took it, rounded up to a whole minute.',
-    ),
-    ...prices.providers.map((provider) =>
-      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
-    ),
+    ...(shown.length
+      ? [
+          h(
+            'p',
+            {},
+            `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+              'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+              'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+              'runner took it, rounded up to a whole minute.',
+          ),
+          ...shown.map((provider) => h('p', {}, h('b', {}, `${provider.name}: `), provider.note)),
+        ]
+      : []),
   );
 
   const form = /** @type {HTMLFormElement} */ ($('own'));
@@ -1041,6 +1067,20 @@ function drawCost() {
     }
   }
 }
+
+// The Providers menu closes as a menu does: Escape, or a click anywhere else.
+const providerMenu = /** @type {HTMLDetailsElement} */ ($('provider-menu'));
+document.addEventListener('click', (event) => {
+  if (providerMenu.open && !providerMenu.contains(/** @type {Node} */ (event.target))) {
+    providerMenu.open = false;
+  }
+});
+providerMenu.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && providerMenu.open) {
+    providerMenu.open = false;
+    providerMenu.querySelector('summary')?.focus();
+  }
+});
 
 const ownForm = /** @type {HTMLFormElement} */ ($('own'));
 ownForm.addEventListener('input', () => {
