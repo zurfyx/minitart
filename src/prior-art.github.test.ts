@@ -99,9 +99,9 @@ test('a list of exactly one page asks for the next, and a list never ends is rea
     'GET /repos/octo/app/actions/runs': (call) =>
       Response.json(runs(page(call.url) === 1 ? 100 : 0)),
   });
-  // Five statuses, each one full page and one empty one.
+  // Five statuses, each one full page and one empty one; then the unfiltered newest page.
   assert.equal((await new GitHubClient(auth, exact.fetch).activeRuns('octo/app')).length, 100);
-  assert.equal(exact.calls.length, 10);
+  assert.equal(exact.calls.length, 11);
 
   const endless = fakeFetch({
     'GET /repos/octo/app/actions/runs': (call) =>
@@ -194,7 +194,7 @@ test('each repo is reached with the token of the installation it belongs to', as
   );
   await new GitHubClient(appAuth, fetch).activeRuns('acme/api');
   const reads = calls.filter((call) => call.url.includes('/repos/acme/api/'));
-  assert.equal(reads.length, 5);
+  assert.equal(reads.length, 6);
   assert.ok(reads.every((call) => call.headers['authorization'] === 'Bearer ghs_eight'));
 });
 

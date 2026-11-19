@@ -103,6 +103,7 @@ The App subscribes to no events and its webhook is inactive.
 | `GET /app/installations`, `GET /installation/repositories` | Once a minute: what the App can see                                                |
 | `POST /app/installations/{id}/access_tokens`               | When a token nears its hour                                                        |
 | `GET /repos/{repo}/actions/runs?status={status}`           | Every poll, per watched repo, once for each status of a run that has not completed |
+| `GET /repos/{repo}/actions/runs`                           | Every poll, per watched repo: the newest 100, for a run the lists by status miss   |
 | `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run                                                         |
 | `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                                                                        |
 | `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job                                                           |

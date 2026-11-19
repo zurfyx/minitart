@@ -135,8 +135,8 @@ test('reads are conditional: an unchanged answer comes from the cache', async ()
   // Asked by status, so finished runs never crowd a waiting one out.
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
   assert.deepEqual(await client.activeRuns('octo/app'), [1, 3]);
-  assert.equal(served, 5, 'one request per status, then nothing new to serve');
-  assert.equal(calls[5]?.headers['if-none-match'], '"v1"');
+  assert.equal(served, 6, 'one request per status and one unfiltered, then nothing new to serve');
+  assert.equal(calls[6]?.headers['if-none-match'], '"v1"');
   assert.equal(calls[0]?.headers['authorization'], 'Bearer ghs_x');
 });
 
@@ -160,8 +160,32 @@ test('every status of a run that has not completed is asked for, and no other', 
     'GET /repos/octo/app/actions/runs': () => json({ workflow_runs: [] }),
   });
   await new GitHubClient(auth, fetch).activeRuns('octo/app');
-  const asked = calls.map((call) => new URL(call.url).searchParams.get('status')).sort();
-  assert.deepEqual(asked, notCompleted);
+  const statuses = calls.map((call) => new URL(call.url).searchParams.get('status'));
+  assert.deepEqual(statuses.filter((status) => status !== null).sort(), notCompleted);
+  assert.equal(statuses.filter((status) => status === null).length, 1, 'and one unfiltered list');
+});
+
+test('a run the lists by status leave out is found in the newest runs, if it has not completed', async () => {
+  // Seen on GitHub: a queued run missing from every list by status, while the run and the
+  // unfiltered list both said `queued`. Its job was never picked up.
+  const { fetch } = fakeFetch({
+    'GET /repos/octo/app/actions/runs': (call) => {
+      if (new URL(call.url).searchParams.get('status') !== null) return json({ workflow_runs: [] });
+      return json({
+        workflow_runs: [
+          { id: 41, status: 'queued' },
+          { id: 42, status: 'completed' },
+          { id: 43, status: 'in_progress' },
+          { id: 44, status: 'pending' },
+          { id: 45 },
+        ],
+      });
+    },
+  });
+  assert.deepEqual(
+    (await new GitHubClient(auth, fetch).activeRuns('octo/app')).sort(),
+    [41, 43, 44],
+  );
 });
 
 test('a list longer than a page is read to its end', async () => {
