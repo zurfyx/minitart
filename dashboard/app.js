@@ -784,6 +784,15 @@ function drawStorage() {
       ),
     );
   }
+  for (const log of storage?.own ?? []) {
+    lines.push(
+      line(
+        'minitart’s own log',
+        `What the Activity list shows, as it happened, kept whole · ${log.path.replace(/^\/Users\/[^/]+/, '~')}`,
+        bytes(log.bytes),
+      ),
+    );
+  }
   for (const entry of disk?.tart ?? []) {
     lines.push(
       line(
