@@ -70,6 +70,11 @@ watched in the browser:
 brew install zurfyx/tap/minitart
 ```
 
+<picture>
+  <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
+  <img src="site/dashboard-light.png" width="640" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
+</picture>
+
 **The same, with a menu bar app.** One command installs minitart and a Mac app for it that
 lives in the menu bar:
 
