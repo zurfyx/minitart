@@ -79,7 +79,7 @@ function loadSettings(home: Home, warn: (text: string) => void = console.warn): 
   }
 }
 
-/** The demo's settings: its repos served, and a Mac with a price, for the Cost view. */
+/** The demo's settings: its repos served, and a Mac with a price, for the Usage view. */
 function demoSettings(): Settings {
   const defaults = defaultSettings(machine);
   return {

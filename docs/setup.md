@@ -15,7 +15,7 @@ Everything else is commands.
 ## 0. What you need
 
 - An Apple silicon Mac on macOS 26 or newer, that stays on.
-- Node 24 or newer (`node --version`), and Homebrew.
+- Homebrew, which brings Node. From a checkout instead, Node 24 or newer (`node --version`).
 - About 30 GB of free disk for Linux jobs, and 60 GB more for macOS jobs.
 
 ## 1. Install
@@ -25,10 +25,12 @@ brew install zurfyx/tap/minitart
 minitart doctor --fix
 ```
 
-The first line installs minitart. The second installs what it drives, Tart and Softnet, from
-their own tap if they are missing, and then does steps 2 and 3 below, asking for the Mac's
-password once. `minitart doctor`, without `--fix`, only looks: it prints what is missing and
-the command for each, if you would rather run them yourself.
+The first line installs minitart. For the menu bar app too, use
+`brew install --cask zurfyx/tap/minitart-app` instead: it installs minitart with it (step
+13). The second installs what it drives, Tart and Softnet, from their own tap if they are
+missing, and then does steps 2 and 3 below, asking for the Mac's password once.
+`minitart doctor`, without `--fix`, only looks: it prints what is missing and the command
+for each, if you would rather run them yourself.
 
 Tart and Softnet are not installed with minitart by Homebrew itself, because Homebrew stops
 an install that needs a formula from a tap it has not been told to trust. `doctor --fix`
@@ -45,8 +47,8 @@ If you skip this line, nothing unsafe happens and nothing runs: minitart starts 
 Mac whose network is not closed. Jobs wait on GitHub, and `minitart doctor` and the
 dashboard both say that this is the step that is missing.
 
-To run it from the source instead, clone the repo and write `node src/main.ts` wherever
-this page says `minitart`.
+To run it from the source instead, clone the repo and write `node src/main.ts` wherever this
+page says `minitart`.
 
 ## 2. Close the network (**Owner**, `sudo`)
 
@@ -65,9 +67,9 @@ A Homebrew upgrade of Softnet installs a new binary, and this is needed again. `
 the dashboard say so.
 
 **The firewall rule** is what keeps a job off the Mac itself. A VM can always reach the Mac
-at one address, for DHCP and DNS, and macOS serves other things there too (AirPlay,
-Handoff, sharing). The rule lets DHCP and DNS through and drops the rest. `doctor` prints
-the line, a `sudo sh …/firewall/install.sh`.
+at one address, for DHCP and DNS, and macOS serves other things there too (AirPlay, Handoff,
+sharing). The rule lets DHCP and DNS through and drops the rest. `doctor` prints the line, a
+`sudo sh …/firewall/install.sh`.
 
 It writes two files (`/etc/pf.anchors/minitart` and a LaunchDaemon that loads it at boot)
 and touches nothing else. Read it first if you like: it is short. Its neighbour,
@@ -76,8 +78,8 @@ and touches nothing else. Read it first if you like: it is short. Its neighbour,
 Instead of copying the lines, `minitart doctor --fix` runs these and step 3 for you, asking
 for the password once.
 
-Check: `doctor` shows `ok  Network: Softnet: jobs reach the internet and nothing private` and
-`ok  Firewall: A VM reaches this Mac for DHCP and DNS only`. Step 5 tests both for real.
+Check: `doctor` shows `ok  Network: Softnet: jobs reach the internet and nothing private`
+and `ok  Firewall: A VM reaches this Mac for DHCP and DNS only`. Step 5 tests both for real.
 
 ## 3. Keep the Mac awake (**Owner**, `sudo`)
 
@@ -94,8 +96,8 @@ minitart image build linux     # about a minute
 minitart image build macos     # downloads tens of gigabytes the first time
 ```
 
-Skip the one you do not need, and set that kind to 0 VMs in the dashboard later. For jobs
-that need Xcode, build the macOS image from one that has it:
+Skip the one you do not need, and set that kind to 0 VMs in the dashboard's **This Mac**
+settings later. For jobs that need Xcode, build the macOS image from one that has it:
 
 ```bash
 minitart image build macos --from ghcr.io/cirruslabs/macos-tahoe-xcode:latest
@@ -141,16 +143,16 @@ from a browser that is logged in as you, so this is two clicks nobody can make f
 The App's key is saved to `~/.minitart/app.json` by itself. It has to be a browser on the
 Mac: the dashboard refuses setup from any other machine.
 
-Back in the dashboard, the **Repos** section lists the repos you picked, each `Not served`.
-Click **Serve** on the ones this Mac should run jobs for. A repo is served only when the App
-is installed on it _and_ it is turned on here, so choosing "All repositories" by mistake
-serves nothing.
+Back in the dashboard, under **This Mac**, the **Repos** section lists the repos you picked,
+each `Not served`. Click **Serve** on the ones this Mac should run jobs for. A repo is
+served only when the App is installed on it _and_ it is turned on here, so choosing "All
+repositories" by mistake serves nothing.
 
 Check: those repos show `Watching`. A public repo shows `Public, skipped`; that is the
 default, on purpose.
 
-To install the App on more repos later, use the link under the list. It goes to the App's
-page on GitHub.
+To install the App on more repos later, use **Add or remove repos on GitHub** under the
+list. It goes to the App's page on GitHub.
 
 ## 8. Point a workflow at it
 
@@ -162,8 +164,9 @@ jobs:
     runs-on: minitart-linux # or minitart-macos
 ```
 
-Check: push it. The job appears under **Queued** in the dashboard, then **Running** with its
-VM, then **Done**. Afterwards `tart list` shows no `minitart-linux-…` VM.
+Check: push it. In the dashboard's Jobs list the job shows **Queued**, then **Running** with
+its VM, then **Passed**; the Jobs view keeps it after that. Afterwards `tart list` shows no
+`minitart-linux-…` VM.
 
 ## 9. Keep it running
 
@@ -195,8 +198,8 @@ unless the Mac logs in by itself, and macOS allows that only with FileVault off.
 
 To open the dashboard from your phone or laptop, let Tailscale forward a name on your
 tailnet to it. minitart keeps listening on `127.0.0.1` only; it notices what Tailscale
-forwards and answers to it, within half a minute. **Everyone your tailnet lets reach that name
-can do everything you can do at the Mac.**
+forwards and answers to it, within half a minute. **Everyone your tailnet lets reach that
+name can do everything you can do at the Mac.**
 
 For a name of its own, `https://minitart.<tailnet>.ts.net`, use a Tailscale Service. Part of
 it is in Tailscale's admin console (**Owner**):
@@ -206,8 +209,8 @@ it is in Tailscale's admin console (**Owner**):
    the policy file (`"tagOwners": { "tag:server": ["autogroup:admin"] }`) and give it to the
    Mac (Machines, Edit ACL tags).
 3. Policy file: a Service is not covered by wildcard rules. Add
-   `{"src": ["*"], "dst": ["svc:minitart"], "ip": ["*"]}`, or name the users who may reach it
-   instead of `*`.
+   `{"src": ["*"], "dst": ["svc:minitart"], "ip": ["*"]}`, or name the users who may reach
+   it instead of `*`.
 
 Then on the Mac:
 
@@ -227,8 +230,8 @@ while Tailscale gets the certificate.
 Use `--https`, as above: minitart does not answer to a plain-HTTP name. And do not use
 `tailscale funnel` for it: that publishes to the internet, and minitart refuses whatever
 comes in that way. If `doctor` shows a `FIX  Tailnet` line, it comes with the command that
-puts that one name right; `tailscale funnel reset` is not it, since it removes every
-forward on the Mac.
+puts that one name right; `tailscale funnel reset` is not it, since it removes every forward
+on the Mac.
 
 ## 12. Optional: the dashboard as an app
 
@@ -247,13 +250,13 @@ offline.
 brew install --cask zurfyx/tap/minitart-app
 ```
 
-It installs minitart too, if it is not yet. The menu bar shows minitart's mark, a Mac mini with
-a screen: the number of jobs running on the screen, an exclamation mark when it needs you, and
-a pause sign when it is draining.
-Its menu has the dashboard's headline, the jobs running, Open Dashboard and Drain. When
-minitart is not running or not set up, it says so and offers to start it, or to finish the
-setup in Terminal. Turn on Settings → Open at Login to keep it there. `minitart upgrade`
-upgrades it with the rest ([D26](decisions/D26-a-menu-bar-app.md)).
+It installs minitart too, if it is not yet. The menu bar shows minitart's mark, a Mac mini
+with a screen: the number of jobs running on the screen, an exclamation mark when it needs
+you, and a pause sign when it is draining. Its menu has the dashboard's headline, the jobs
+running, Open Dashboard and Drain. When minitart is not running or not set up, it says so
+and offers to start it, or to finish the setup in Terminal. Turn on Settings → Open at Login
+to keep it there. `minitart upgrade` upgrades it with the rest
+([D26](decisions/D26-a-menu-bar-app.md)).
 
 ## Later
 
@@ -261,25 +264,29 @@ upgrades it with the rest ([D26](decisions/D26-a-menu-bar-app.md)).
   weeks after a new one is out. Rebuild that image (step 4); it replaces the old one only
   when the build succeeds.
 - **Upgrading.** `minitart upgrade`, not `brew upgrade`. It lets running jobs finish and
-  starts no new ones, upgrades minitart, Tart and Softnet together, asks for the Mac's
-  password once to give the new Softnet its permission back, restarts minitart, and runs
-  `doctor`. `doctor` and the dashboard say when a newer minitart is out. With `--now` it
-  does not wait: running jobs fail on GitHub and can be re-run.
+  starts no new ones, upgrades minitart, Tart and Softnet together (and the menu bar app, if
+  you have it), asks for the Mac's password once to give the new Softnet its permission back
+  (`doctor --fix`), and restarts minitart if a service runs it. `doctor` and the dashboard
+  say when a newer minitart is out. With `--now` it does not wait: running jobs fail on
+  GitHub and can be re-run.
 - **The Mac is busy with something else.** minitart starts a VM only when the Mac has the
   memory for it at that moment; otherwise the job waits and the dashboard says so. To give
-  jobs less of the Mac for good, lower the VM counts or the memory per VM in the dashboard.
+  jobs less of the Mac for good, lower the VM counts or the memory per VM in the dashboard's
+  **This Mac** settings.
 - **Pausing for something else.** `minitart drain` starts no new jobs and lets the running
   ones finish; `minitart resume`, or a restart, undoes it.
-- **Backing up.** `~/.minitart/settings.json` is the whole configuration: the repos that
-  are served, VM counts and size, timings. It is plain JSON, written by the dashboard and
+- **Backing up.** `~/.minitart/settings.json` is the whole configuration: the repos that are
+  served, VM counts and size, timings. It is plain JSON, written by the dashboard and
   checked every time it is read. `~/.minitart/app.json` holds the App's key: back it up like
-  a password, or do not, and create a new App on a new Mac.
+  a password, or do not, and create a new App on a new Mac. `~/.minitart/history.db` is the
+  year of jobs the Jobs and Usage views show: back it up if you want them on a new Mac.
 - **Seeing the dashboard from another device.** Step 11.
 - **Running it as its own macOS user.** It works: do every step above logged in as that
   user, and make it the user that logs in automatically
   ([D09](decisions/D09-a-launchagent-in-your-account.md)).
 - **Removing it.** `brew services stop minitart`, delete the App on GitHub (Settings,
   Developer settings, GitHub Apps), run the firewall's `uninstall.sh` with `sudo` (it is
-  beside `install.sh`, whose path `doctor` printed), then `brew uninstall minitart`, and
-  delete `~/.minitart` and the two images
+  beside `install.sh`, whose path `doctor` printed), then
+  `brew uninstall --zap --cask minitart-app` if you have the menu bar app, and
+  `brew uninstall minitart`, and delete `~/.minitart` and the two images
   (`tart delete minitart-base-linux minitart-base-macos`).

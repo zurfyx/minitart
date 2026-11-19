@@ -18,4 +18,5 @@ decision.
 ## Consequences
 
 - No deploy secret is stored in GitHub: Vercel's Git integration deploys.
-- The screenshots on the page are taken from `pnpm demo` and committed.
+- The screenshots on the page are taken from `pnpm demo` and committed: the dashboard's in a
+  browser, the menu bar's with the menu bar app watching the demo.

@@ -30,7 +30,7 @@ export const SPARE_INTERFACES = 4;
  */
 export const LINUX_VM_LIMIT = FIREWALL_INTERFACES - MACOS_VM_LIMIT - SPARE_INTERFACES;
 
-/** How the Cost view prices the minutes run here, and what this Mac costs (D25). */
+/** How the Usage view prices the minutes run here, and what this Mac costs (D25). */
 export interface CostSettings {
   /** The providers compared, in order, each with the runner its Linux and macOS jobs are priced at. */
   compare: { provider: string; linux: string; macos: string }[];

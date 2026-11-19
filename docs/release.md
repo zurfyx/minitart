@@ -7,26 +7,28 @@ Nobody cuts a release, picks a version or edits one. Merging to `main` does it
 
 `.github/workflows/release.yml`, three jobs, and only on `main`:
 
-1. **check.** The same gate as CI, on that commit. It is a job of its own so that the tools
-   it installs never touch what is packed and never hold a token that can publish.
+1. **check.** Typecheck, lint and the tests, as in CI, on that commit. It is a job of its
+   own so that the tools it installs never touch what is packed and never hold a token that
+   can publish.
 2. **release.** A clean checkout and Node, nothing installed. `scripts/release.mjs plan`
    decides: if nothing that ships has changed since the last tag (`src/`, `dashboard/`,
    `images/`, `firewall/`, `package.json`, tests aside), nothing happens. Otherwise the
    version is the next patch after the highest `v*` tag. `scripts/release.mjs pack` builds
    `minitart-<version>.tar.gz` and its `.sha256`: what ships, the docs, a `VERSION` file,
    and a `package.json` with the version in it. The same commit always packs to the same
-   bytes. The tag and the GitHub release are created with both files. A commit that does
-   not have the newest release in its history (an old run started again) releases nothing.
-3. **tap.** `scripts/update-tap.sh` makes `zurfyx/homebrew-tap` match the newest release:
-   it renders `Formula/minitart.rb` (the template in this repo, with its `url`, `version`
-   and `sha256` lines filled in from the published checksum), opens a pull request on the
-   tap as the release bot, waits for the tap's CI to install and test the formula, and
-   merges it. A tap that is already right is left alone, and a proposal is always rebuilt on
-   the tap's current `main`, so the job is safe to run again, and other projects releasing
-   into the same tap do not get in its way.
+   bytes. The tag and the GitHub release are created with both files. A commit that does not
+   have the newest release in its history (an old run started again) releases nothing.
+3. **tap.** `scripts/update-tap.sh` makes `zurfyx/homebrew-tap` match the newest release: it
+   renders `Formula/minitart.rb` (the template in this repo, with its `url`, `version` and
+   `sha256` lines filled in from the published checksum), opens a pull request on the tap as
+   the release bot, waits for the tap's CI to install and test the formula, and merges it. A
+   tap that is already right is left alone, and a proposal is always rebuilt on the tap's
+   current `main`, so the job is safe to run again, and other projects releasing into the
+   same tap do not get in its way.
 
-The source keeps `0.0.0` everywhere: `package.json`, the formula template. `0.0.0` can never
-be published, and a checkout calls itself `0.0.0-dev`.
+The source keeps `0.0.0` everywhere: `package.json`, the formula template, the cask template
+(`Casks/minitart-app.rb`) and `scripts/app.sh`'s default. `0.0.0` can never be published,
+and a checkout calls itself `0.0.0-dev`.
 
 ## The menu bar app
 
@@ -34,36 +36,43 @@ The app ([D26](decisions/D26-a-menu-bar-app.md)) has releases of its own, `app-v
 by `.github/workflows/release-app.yml` when a push to main changes `app/` or
 `scripts/app.sh`. On GitHub's macOS runners it runs `swift test`, builds with
 `scripts/app.sh`, signs with the Developer ID certificate, sends the zip to Apple's notary
-service and waits (usually minutes), staples the ticket, and publishes the zip and its
-checksum. An app release is never the repo's latest release: that is minitart's, which the
-formula's tap update reads. The release bot then updates `Casks/minitart-app.rb` in the tap
+service and waits (usually minutes; the job allows five hours, as a team's first can take
+hours), staples the ticket, and publishes the zip and its checksum. An app release is never
+the repo's latest release: that is minitart's, which the formula's tap update reads. The
+release bot then updates `Casks/minitart-app.rb` in the tap
 (`PRODUCT=minitart-app scripts/update-tap.sh`).
 
 Its secrets are in the `release-app` environment, which only protected branches reach:
 `DEVELOPER_ID_P12` (base64) and `DEVELOPER_ID_PASSWORD`, `APPLE_API_KEY_P8`,
-`APPLE_API_KEY_ID`, `APPLE_API_ISSUER` and `APPLE_TEAM_ID`. Without the certificate the
-workflow says so and publishes nothing; run it by hand once it is there.
+`APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, and `APPLE_TEAM_ID`, which nothing reads but is kept
+for reference. The workflow checks that the certificate is there before it builds (without
+it, it says so and publishes nothing), and warns when it ends within thirty days: it ends on
+2027-12-19, and a new one is made by the Account Holder on developer.apple.com.
 
 ## The release bot
 
-The tap job acts as a GitHub App, because a pull request opened with a workflow's own token
-does not start the tap's CI. Set up once, by the owner:
+Both tap jobs, the formula's and the cask's, act as a GitHub App, because a pull request
+opened with a workflow's own token does not start the tap's CI. Set up once, by the owner:
 
 - The App is installed on `minitart` and on `homebrew-tap`, with `Contents` and
   `Pull requests` read and write on the tap.
 - This repo has the Actions variable `RELEASE_APP_ID`, and its `release` environment, which
   only protected branches may use, has the secret `RELEASE_APP_PRIVATE_KEY`.
 
-Until the variable exists the tap job is skipped, and releases are still published.
+Each tap job runs only when `RELEASE_APP_ID` is set; a release is published either way.
 
 ## By hand
 
-- **Catch the tap up** (the App was set up later, or a run failed halfway): run the Release
-  workflow from the Actions page, or `gh workflow run release.yml --ref main`.
+- **Catch the tap up** (a run failed halfway): run Release or Release app from the Actions
+  page, or `gh workflow run release.yml --ref main` /
+  `gh workflow run release-app.yml --ref main`.
 - **Start a new minor or major**: tag the commit yourself, `git tag v0.2.0 <sha>` and push
   the tag. The next releases are `0.2.1`, `0.2.2`, and so on. That tag has no archive, so
   let the next push to `main` publish the first installable one.
-- **See what a push would do**: `node scripts/release.mjs plan`.
-- **Try the formula** before it reaches the tap: `node scripts/release.mjs pack 9.9.9 /tmp/out`
-  and `node scripts/release.mjs formula 9.9.9 <sha256>`, into a tap of your own made with
+- **See what a push would do**: `node scripts/release.mjs plan`, and
+  `node scripts/release-app.mjs plan` for the app.
+- **Try the formula** before it reaches the tap:
+  `node scripts/release.mjs pack 9.9.9 /tmp/out` and
+  `node scripts/release.mjs formula 9.9.9 <sha256>`, into a tap of your own made with
   `brew tap-new`.
+- **Try the cask**: `node scripts/release-app.mjs cask 9.9.9 <sha256>`.

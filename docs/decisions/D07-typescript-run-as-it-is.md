@@ -6,8 +6,8 @@ Status: `DECIDED`
 
 minitart is TypeScript, run by Node 24 directly from `src/` (Node strips the types). There
 is no build step and no bundler. It has **no runtime dependencies**: HTTP, crypto, child
-processes and the test runner are Node's own. The dashboard is plain HTML, CSS and one
-script.
+processes and the test runner are Node's own. The dashboard is plain HTML, CSS and a few
+JavaScript modules, served as they are.
 
 `tsc` only checks (`noEmit`, `erasableSyntaxOnly`). Imports name the `.ts` file.
 
@@ -27,4 +27,6 @@ in, with the same tools (pnpm, Prettier, ESLint, strict TypeScript).
 - No enums, parameter properties or namespaces: only syntax that can be erased.
 - Development dependencies (TypeScript, ESLint, Prettier) do not run on the Mac that serves
   jobs.
-- The dashboard has no framework. If it outgrows one file, that is a new decision.
+- The dashboard has no framework; adopting one is a new decision.
+- The menu bar app is Swift, built, signed and notarized apart
+  ([D26](D26-a-menu-bar-app.md)); the manager stays unbuilt.

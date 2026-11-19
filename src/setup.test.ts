@@ -131,7 +131,7 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
   });
   const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
   assert.equal(byId['tart']?.fix, 'brew upgrade tart');
-  assert.equal(byId['network']?.fix, 'brew upgrade softnet');
+  assert.equal(byId['network']?.fix, 'minitart upgrade');
   assert.match(byId['runner-linux']?.detail ?? '', /2\.330\.0.*2\.338\.2/);
   assert.equal(byId['runner-linux']?.optional, true);
   assert.equal(byId['runner-macos'], undefined);
@@ -611,7 +611,7 @@ test('a Mac whose network is not closed starts no VM, and says which step is mis
     softnet: () => ({ path: '/opt/homebrew/bin/softnet', uid: 0, mode: 0o104755 }),
     firewall: () => ({ rules: `# ${FIREWALL_VERSION}.`, daemon: true }),
   });
-  assert.match(blockedBy(old, 'softnet') ?? '', /Run: brew upgrade softnet$/);
+  assert.match(blockedBy(old, 'softnet') ?? '', /Run: minitart upgrade$/);
 });
 
 test('memory to spare is what macOS can hand out without squeezing programs, read from vm_stat', () => {

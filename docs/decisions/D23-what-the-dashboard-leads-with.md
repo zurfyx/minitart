@@ -8,11 +8,12 @@ The top of the dashboard is one sentence that says what needs the owner, picked 
 order:
 
 1. No job can start (the Mac is not set up to isolate one), or GitHub cannot be read.
-2. minitart is draining.
-3. Jobs are waiting, and why: every slot of their kind is in use, the Mac is short of
+2. minitart is not connected to GitHub yet (no App, no repos).
+3. minitart is draining.
+4. Jobs are waiting, and why: every slot of their kind is in use, the Mac is short of
    memory, there is no image.
-4. Jobs are running or starting, and nothing waits.
-5. Idle, and how many jobs ran today.
+5. Jobs are running or starting, and nothing waits.
+6. Idle, and how many jobs ran today.
 
 Four figures sit beside it: jobs running, jobs queued, jobs passed today, and how long a job
 waited for a VM, as the median of today's.
@@ -30,9 +31,9 @@ Under it, the last hour of the Mac:
 
 The owner chose this from three mocks. A resource figure was first proposed as the headline
 ("76% of the CPU busy") and rejected: busy CPU is the Mac doing the work it is there for,
-CPU never keeps a job from starting (VMs share the cores), and nothing about the number
-says what to do. What makes jobs wait is a full slot, memory, or a Mac that is not closed;
-the headline names those, and a resource only as the reason a job waits.
+CPU never keeps a job from starting (VMs share the cores), and nothing about the number says
+what to do. What makes jobs wait is a full slot, memory, or a Mac that is not closed; the
+headline names those, and a resource only as the reason a job waits.
 
 The timeline answers what the owner looks at the page for: what ran, when, for how long,
 whether the slots were full, and what starting a VM costs, which no GitHub page shows.
@@ -54,7 +55,6 @@ whether the slots were full, and what starting a VM costs, which no GitHub page 
 - The charts start empty after a restart, and fill in over the first hour.
 - Whatever else needs the owner, beyond what the headline says, is a line under it: GitHub
   failing while the Mac is not closed, say, or draining while jobs wait.
-- Today's figures are counted by minitart from the whole history (D24), by the Mac's
-  clock.
+- Today's figures are counted by minitart from the whole history (D24), by the Mac's clock.
 - A VM of the owner's own, or one `image build` runs, counts as everything else.
 - Slot pips are gone: the timeline's lanes are the slots.

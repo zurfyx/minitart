@@ -2,16 +2,17 @@
 
 A very small manager for GitHub Actions runners on the owner's own Mac mini: every job runs
 in a fresh Tart VM that reaches the internet and nothing private, and is deleted when the
-job ends. One Node process (the manager and its dashboard) and one static website. It is
-public, and it holds a credential with administration rights on its owner's repos, so
-smallness and the security model come before features.
+job ends. One Node process (the manager and its dashboard), a menu bar app that watches it
+(`app/`, D26), and one static website. It is public, and it holds a credential with
+administration rights on its owner's repos, so smallness and the security model come before
+features.
 
 ## Read before working
 
 - `docs/product.md`: what minitart is and what it promises (authoritative product intent)
 - `docs/architecture.md`: the system shape: the life of a job, the parts, the GitHub calls
-- `docs/security.md`: what a job can and cannot do, and what is not covered. **A change
-  that touches a row of its table changes the table in the same pull request.**
+- `docs/security.md`: what a job can and cannot do, and what is not covered. **A change that
+  touches a row of its table changes the table in the same pull request.**
 - `docs/setup.md`: setting a Mac up, step by step. A change to a command, a flag or what
   `doctor` prints changes this file in the same pull request.
 - `docs/release.md`: how a push to `main` becomes a release and reaches the Homebrew tap
@@ -26,13 +27,17 @@ smallness and the security model come before features.
 
 ```
 src/         the manager: TypeScript that Node runs as it is (D07)
-dashboard/   the page the manager serves: plain HTML, CSS and one script
+dashboard/   the page the manager serves: plain HTML, CSS and four scripts, no build
+app/         the menu bar app: a Swift package, built by scripts/app.sh (D26)
 images/      the scripts that turn an upstream image into a job image (D11)
 firewall/    the pf rule that keeps a VM off the Mac's own services, and its removal (D21)
 Formula/     the Homebrew formula's template; a release fills in its version (D16)
+Casks/       the menu bar app's cask template; its release fills in version and sha256 (D26)
 site/        minitart.rovira.sh, one static page (D15)
 docs/        product, architecture, security, design, testing, and the decision register
 scripts/     repo tooling, with its tests
+test/        cases the dashboard and the app share (headline-cases.json)
+.github/     CI, the pr-checklist job, the two release workflows
 ```
 
 ## Commands
@@ -44,9 +49,12 @@ pnpm start            # the real manager
 pnpm typecheck        # strict TS (tsc, no emit): must pass before every commit
 pnpm lint             # ESLint
 pnpm format:check     # Prettier
-pnpm test             # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
-node src/main.ts doctor [--fix] | upgrade | drain | resume | selftest | image build <kind> | service install
+pnpm test             # node --test over src/**/*.test.ts, scripts/**/*.test.mjs and dashboard/**/*.test.mjs
+node src/main.ts doctor [--fix] | upgrade | drain | resume | selftest | image build <kind> | service install | service uninstall
 node scripts/release.mjs plan   # what a push to main would release (docs/release.md)
+(cd app && swift test)          # the menu bar app's tests
+scripts/app.sh                  # builds app/build/minitart.app, signed for this Mac only
+node scripts/release-app.mjs plan   # what a push to main would release of the app
 ```
 
 ## Conventions
@@ -64,9 +72,9 @@ node scripts/release.mjs plan   # what a push to main would release (docs/releas
   - Everything from outside is untrusted: request bodies, `settings.json`, and every name
     that comes from GitHub (jobs, workflows, repos). Validate, never coerce; write to the
     page as text, never HTML; pass to `tart` as arguments, never through a shell.
-  - The dashboard listens on 127.0.0.1 and refuses any other connection (D10). It answers
-    to `127.0.0.1`, `localhost`, and the tailnet names Tailscale Serve forwards to it,
-    never to one Funnel publishes (D20). No flag or setting adds a name.
+  - The dashboard listens on 127.0.0.1 and refuses any other connection (D10). It answers to
+    `127.0.0.1`, `localhost`, and the tailnet names Tailscale Serve forwards to it, never to
+    one Funnel publishes (D20). No flag or setting adds a name.
   - A repo is served only when the App is installed on it and it is in `settings.repos`
     (D03). A fresh install serves nothing.
 - **Tests use the fakes**, not mocks of modules: `src/testing/fakes.ts` is a GitHub and a
@@ -75,8 +83,8 @@ node scripts/release.mjs plan   # what a push to main would release (docs/releas
   the rule it holds.
 - **Design**: colours, fonts and radii come from `dashboard/tokens.css`; `site/tokens.css`
   is a copy and a test keeps them identical. No raw colours elsewhere. A state is a glyph
-  and a word in the state's colour, never the colour alone. Motion only on a change of
-  state (`docs/design.md`).
+  and a word in the state's colour, never the colour alone. Motion only on a change of state
+  (`docs/design.md`).
 - **Docs are rewritten, never amended** (D14): when reality changes, rewrite the doc to read
   as if written fresh today. Git is the changelog.
 - **Names in examples and tests are made up** (`octo/app`). The owner's private repo names
@@ -85,15 +93,17 @@ node scripts/release.mjs plan   # what a push to main would release (docs/releas
   `main`, never commit to `main` directly. The owner reviews every PR and squash-merges it
   himself: open the PR and stop there. Commits: concise imperative subject, authored by the
   repo owner, no AI trailers. PR descriptions carry no AI attribution either.
-- **Versions are not edited** (D16). `package.json` and `Formula/minitart.rb` say `0.0.0`
-  and stay that way; a release takes the next patch number by itself. A change to what
-  ships (`src/`, `dashboard/`, `images/`, `firewall/`, `package.json`) is released when it
-  reaches `main`: it must be fit to run on the owner's Mac the moment it merges.
+- **Versions are not edited** (D16). `package.json`, `Formula/minitart.rb` and
+  `Casks/minitart-app.rb` say `0.0.0` and stay that way; a release takes the next patch
+  number by itself. A change to what ships is released when it reaches `main`: `src/`,
+  `dashboard/`, `images/`, `firewall/` and `package.json` as minitart, and `app/` (but its
+  tests) or `scripts/app.sh` as the menu bar app, its own `app-vX.Y.Z`, signed and
+  notarized. Either must be fit to run on the owner's Mac the moment it merges.
 - Never deploy by hand (D15). Vercel deploys the website on pushes to `main`. No deploy
   secret is stored in GitHub.
-- Workflows: every action pinned to a full commit sha with a version comment, `contents:
-read` permissions, checkouts with `persist-credentials: false`. The `zizmor` CI job must
-  stay clean. CI runs on GitHub's hosted runners, never on minitart (D05).
+- Workflows: every action pinned to a full commit sha with a version comment,
+  `contents: read` permissions, checkouts with `persist-credentials: false`. The `zizmor` CI
+  job must stay clean. CI runs on GitHub's hosted runners, never on minitart (D05).
 
 ## Before a PR
 
@@ -102,16 +112,20 @@ that you did them well.
 
 1. **Look at it.** Run what you changed and look at the result: `pnpm demo` for the
    dashboard, `site/index.html` for the website, in light and dark, at 1440px and 390px
-   wide. Put the screenshots in the PR. A change nobody can see says so:
+   wide. For the menu bar app, `scripts/app.sh`, then open `app/build/minitart.app` against
+   `pnpm demo`, or
+   `app/build/minitart.app/Contents/MacOS/minitart-app --render-marks <folder>` for every
+   state of its mark. Put the screenshots in the PR. A change nobody can see says so:
    `No visual change: <reason>`.
 2. **Have it reviewed.** Run a code review on the final diff (`/code-review` in Claude Code,
    or a fresh agent that has not seen your reasoning). Fix each finding or answer it in the
    PR.
 3. **Test it.** `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` (the
-   pre-push hook runs them). A change to how VMs start, to the network or to the images is
-   also run on the Mac: `docs/testing.md`, layer 3. Say in the PR what you ran.
-4. **Fill in the PR template**, tick its boxes, and set `Verified at:` to the head commit you
-   verified.
+   pre-push hook runs them). A change under `app/` also runs `cd app && swift test`; the
+   hook does not. A change to how VMs start, to the network or to the images is also run on
+   the Mac: `docs/testing.md`, layer 3. Say in the PR what you ran.
+4. **Fill in the PR template**, tick its boxes, and set `Verified at:` to the head commit
+   you verified.
 
 **After every amendment, do it again.** A new push makes the `pr-checklist` job fail until
 `Verified at:` names the new head commit. Update it only after looking and reviewing again.

@@ -30,7 +30,8 @@ maintained by their owners. minitart is the thin part, so it is the part worth o
 ## Consequences
 
 - At most two macOS VMs at once: Apple's licence and its hypervisor both stop there. Linux
-  VMs are limited by memory.
+  VMs are limited by memory, and to 26 at once, so that every VM stays behind the firewall
+  rule ([D21](D21-what-a-job-reaches-on-the-mac-itself.md)).
 - Linux VMs are arm64. A job that needs x86 stays on GitHub's runners.
 - No state survives a job. Caches go through `actions/cache` or into the image
   ([D11](D11-images-are-built-on-the-mac.md)).

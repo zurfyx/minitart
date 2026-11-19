@@ -2,8 +2,8 @@
 
 minitart runs your GitHub Actions jobs on a Mac you own. Every job gets a fresh virtual
 machine, cloned from an image in under a second and deleted when the job ends. It is a
-manager and a dashboard, a few hundred lines each, on top of three things other people
-maintain: Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner.
+manager and a dashboard, a few thousand lines between them, on top of three things other
+people maintain: Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner.
 
 ## Who it is for
 
@@ -13,7 +13,8 @@ handful of private repos, who wants:
 - macOS and Linux jobs on the same machine, faster and cheaper than hosted runners;
 - the isolation hosted runners give, so a job cannot read the Mac's files or reach the home
   network;
-- to see what is queued, running and done, and read the logs, on one page;
+- to see what is queued, running and done, and read the logs, on one page; to look back over
+  a year of jobs and the minutes they ran; and, if wanted, to see it from the menu bar;
 - something small enough to read in an afternoon.
 
 It is not for a team with a fleet. Nothing in it coordinates several Macs, scales to zero in
@@ -27,10 +28,10 @@ purpose.
 2. **A job reaches the internet and nothing of yours.** Not this Mac's files, not its
    keychain, not your router, not your NAS, not your tailnet. The network is an allowlist:
    public internet addresses, and nothing else ([security](security.md)).
-3. **A repo is served only when you said so twice.** The GitHub App must be installed on
-   it, which GitHub enforces, and you must have turned it on in the dashboard, so installing
-   the App on a whole account serves nothing by itself. Public repos are skipped unless
-   you say otherwise.
+3. **A repo is served only when you said so twice.** The GitHub App must be installed on it,
+   which GitHub enforces, and you must have turned it on in the dashboard, so installing the
+   App on a whole account serves nothing by itself. Public repos are skipped unless you say
+   otherwise.
 4. **No secret a job can use against you.** A VM holds one thing of value: the single-use
    config of its own runner. The App's key stays on the Mac.
 5. **Nothing to configure by hand.** No config file. How many VMs run at once starts from

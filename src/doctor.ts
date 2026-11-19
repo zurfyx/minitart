@@ -155,7 +155,7 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
         softnet === null
           ? 'brew install openai/tools/softnet'
           : !current
-            ? 'brew upgrade softnet'
+            ? 'minitart upgrade'
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,

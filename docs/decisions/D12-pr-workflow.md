@@ -1,4 +1,4 @@
-# D12: PR workflow: protected main, required checks, squash merge
+# D12: PR workflow: protected main, required checks, squash merge, no AI trailers
 
 Status: `DECIDED`
 
@@ -25,5 +25,4 @@ holds a credential with administration rights on the owner's repos, so nothing r
 ## Consequences
 
 - Pushes to `main` deploy the website ([D15](D15-a-static-site-on-vercel.md)).
-- CI runs on GitHub's hosted runners: the repo is public
-  ([D05](D05-private-repos-only.md)).
+- CI runs on GitHub's hosted runners: the repo is public ([D05](D05-private-repos-only.md)).
