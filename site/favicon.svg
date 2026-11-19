@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <!-- minitart's mark: a Mac mini with a screen rising from it, a prompt on the screen. One
        colour; the prompt, the light and the gap between the two are cut out. docs/design.md. -->
-  <style>g { fill: #b3214a } @media (prefers-color-scheme: dark) { g { fill: #e35d82 } }</style>
+  <style>g { fill: #b3214a } @media (prefers-color-scheme: dark) { g { fill: #f0688c } }</style>
   <defs>
     <rect id="base" x="3" y="17.7" width="26" height="10.4" rx="3.4"/>
     <mask id="screen" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
