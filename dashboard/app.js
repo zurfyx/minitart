@@ -940,14 +940,15 @@ function drawCost() {
   // Which providers are shown: a toggle each, in the price list's order. Only the ones on are
   // in the table and its notes.
   const shown = new Map(cost.compare.map((entry) => [entry.provider, entry]));
+  // Drawn again after each change: the control that had the keyboard gets it back.
+  const focused = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.key;
   /** Saves the providers shown and their runners, one change after another, each from what is saved. */
   const saveCompare = (change) => {
-    costSaving = costSaving.then(() =>
-      saveSettings({ cost: { compare: change(state.settings.cost.compare) } }).then(
-        drawCost,
-        (error) => alert(error.message),
-      ),
-    );
+    // Whatever goes wrong is said, and the next change is still saved.
+    costSaving = costSaving
+      .then(() => saveSettings({ cost: { compare: change(state.settings.cost.compare) } }))
+      .then(drawCost)
+      .catch((error) => alert(error.message));
   };
   $('providers').replaceChildren(
     ...prices.providers.map((provider) =>
@@ -956,6 +957,7 @@ function drawCost() {
         {
           type: 'button',
           class: 'chip',
+          'data-key': `chip ${provider.id}`,
           'aria-pressed': shown.has(provider.id) ? 'true' : 'false',
           onclick: () =>
             saveCompare((current) =>
@@ -985,7 +987,10 @@ function drawCost() {
           const runner = (kind) => {
             const select = h(
               'select',
-              { 'aria-label': `${provider.name} runner for ${POOL[kind]} jobs` },
+              {
+                'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`,
+                'data-key': `runner ${provider.id} ${kind}`,
+              },
               ...provider[kind].map((one) =>
                 h(
                   'option',
@@ -1035,6 +1040,13 @@ function drawCost() {
         })
       : [empty('No provider is shown. Pick one above to see its list prices.')]),
   );
+  if (focused) {
+    for (const element of document.querySelectorAll('#providers [data-key], #compare [data-key]')) {
+      if (/** @type {HTMLElement} */ (element).dataset.key === focused) {
+        /** @type {HTMLElement} */ (element).focus();
+      }
+    }
+  }
   $('compare-notes').replaceChildren(
     ...(listed.length
       ? [
