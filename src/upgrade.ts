@@ -58,7 +58,13 @@ export function serviceArgs(plist: string): string[] {
 /** The commands of an upgrade, after the drain. */
 export function upgradeSteps(
   install: Install,
-  options: { node: string; service: Service; serviceArgs: readonly string[] },
+  options: {
+    node: string;
+    service: Service;
+    serviceArgs: readonly string[];
+    /** Whether the menu bar app's cask is installed (D26): upgraded with the rest when it is. */
+    app?: boolean;
+  },
 ): Step[] {
   const restart = (minitart: string[], brew?: string): Step[] => {
     if (options.service === 'own') {
@@ -114,6 +120,15 @@ export function upgradeSteps(
       optional: true,
     },
     { what: 'Pinning Softnet', command: [brew, 'pin', 'softnet'], optional: true },
+    ...(options.app
+      ? [
+          {
+            what: 'Upgrading the menu bar app',
+            command: [brew, 'upgrade', '--cask', 'zurfyx/tap/minitart-app'],
+            optional: true,
+          },
+        ]
+      : []),
     doctor(minitart),
     ...restart(minitart, brew),
   ];

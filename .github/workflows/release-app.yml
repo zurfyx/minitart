@@ -1,0 +1,170 @@
+name: Release app
+
+# The menu bar app's release (D26, docs/release.md): every push to main that changes the app
+# is a candidate. scripts/release-app.mjs takes the next app-vX.Y.Z and does nothing when the
+# app has not changed, so minitart's own releases never wait on Apple.
+#
+#   release   tests, builds, signs with the Developer ID certificate, notarizes with Apple,
+#             staples, and publishes app-vX.Y.Z, never as the repo's latest release (that is
+#             minitart's, and the formula's tap update reads it)
+#   tap       makes the Homebrew tap's minitart-app cask match the newest app release
+#
+# The secrets live in the release-app environment, which only protected branches reach. Until
+# the Developer ID certificate is in it, the release says so and publishes nothing; running
+# this workflow by hand afterwards catches up.
+#
+# Every action is pinned to a full commit sha; zizmor audits this file in CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'scripts/app.sh'
+      - 'scripts/release-app.mjs'
+      - 'Casks/**'
+      - '.github/workflows/release-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-app
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    # Apple's first notarizations for a team can take hours; later ones take minutes.
+    timeout-minutes: 330
+    environment: release-app
+    permissions:
+      contents: write # creating the app's tag and release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - id: plan
+        run: node scripts/release-app.mjs plan
+      - id: ready
+        if: steps.plan.outputs.action == 'publish'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+        run: |
+          if [ -z "$DEVELOPER_ID_P12" ]; then
+            echo "::notice::The release-app environment has no Developer ID certificate yet (D26): nothing is released."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ready.outputs.go == 'true'
+        run: swift test
+        working-directory: app
+      # The secrets reach the steps through the environment, never through a shell line, and
+      # are written where only this job's VM can read them.
+      - name: Install the Developer ID certificate
+        if: steps.ready.outputs.go == 'true'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_PASSWORD: ${{ secrets.DEVELOPER_ID_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/signing/AuthKey.p8"
+          # A keychain of its own, first in the search list, its key usable by codesign
+          # without a prompt. It never locks: the VM goes with the job.
+          keychain="$RUNNER_TEMP/signing/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/signing/developer-id.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/signing/developer-id.p12" -P "$DEVELOPER_ID_PASSWORD" \
+            -f pkcs12 -k "$keychain" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user | tr -d '"' | xargs security list-keychains -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain" | grep -q 'Developer ID Application'
+          if ! security find-certificate -c 'Developer ID Application' -p "$keychain" \
+            | openssl x509 -noout -checkend 2592000 > /dev/null; then
+            echo "::warning::The Developer ID certificate ends within thirty days (D26)."
+          fi
+      - name: Build and sign
+        if: steps.ready.outputs.go == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          APP_SIGN_IDENTITY: Developer ID Application
+        run: scripts/app.sh "$VERSION"
+      # Apple's automated check, usually minutes (hours for a team's first); then its ticket is stapled to the app, so it
+      # opens without a warning even offline, and the zip is made again with it.
+      - name: Notarize
+        if: steps.ready.outputs.go == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          cd app/build
+          xcrun notarytool submit "minitart-app-$VERSION.zip" \
+            --key "$RUNNER_TEMP/signing/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
+            --wait --timeout 5h
+          xcrun stapler staple minitart.app
+          spctl --assess --type execute --verbose minitart.app
+          rm "minitart-app-$VERSION.zip"
+          ditto -c -k --keepParent minitart.app "minitart-app-$VERSION.zip"
+          shasum -a 256 "minitart-app-$VERSION.zip" > "minitart-app-$VERSION.zip.sha256"
+      - name: Publish
+        if: steps.ready.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          gh release create "app-v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "minitart app $VERSION" \
+            --notes "The menu bar app (D26). Install: brew install --cask zurfyx/tap/minitart-app" \
+            --latest=false \
+            "app/build/minitart-app-$VERSION.zip" "app/build/minitart-app-$VERSION.zip.sha256"
+      - name: Forget the signing secrets
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/signing"
+
+  tap:
+    # As for the formula: not only after a publish, so a tap left behind catches up.
+    name: tap
+    needs: release
+    if: github.ref == 'refs/heads/main' && vars.RELEASE_APP_ID != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - id: bot
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: zurfyx
+          repositories: homebrew-tap
+          permission-contents: write
+          permission-pull-requests: write
+      - run: sh scripts/update-tap.sh
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          SOURCE_REPO: ${{ github.repository }}
+          PRODUCT: minitart-app

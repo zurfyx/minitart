@@ -18,6 +18,7 @@ import { PRICES_CHECKED, PROVIDERS } from './pricing.ts';
 import type { ResourcesView } from './resources.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
+import { VERSION } from './version.ts';
 
 export interface ServerDeps {
   manager: Manager;
@@ -98,6 +99,11 @@ export function createDashboardServer(deps: ServerDeps): Server {
     health: deps.health(),
     app: appView(deps.app()),
     machine: { name: deps.machineName ?? hostname(), ...deps.machine },
+    // For the menu bar app (D26): which minitart this is, and where else it is served.
+    version: VERSION,
+    tailnet: (deps.tailnet?.() ?? [])
+      .filter((name) => name.refused === null)
+      .map((name) => name.origin),
   });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {

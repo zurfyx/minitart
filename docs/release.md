@@ -28,6 +28,22 @@ Nobody cuts a release, picks a version or edits one. Merging to `main` does it
 The source keeps `0.0.0` everywhere: `package.json`, the formula template. `0.0.0` can never
 be published, and a checkout calls itself `0.0.0-dev`.
 
+## The menu bar app
+
+The app ([D26](decisions/D26-a-menu-bar-app.md)) has releases of its own, `app-vX.Y.Z`, made
+by `.github/workflows/release-app.yml` when a push to main changes `app/` or
+`scripts/app.sh`. On GitHub's macOS runners it runs `swift test`, builds with
+`scripts/app.sh`, signs with the Developer ID certificate, sends the zip to Apple's notary
+service and waits (usually minutes), staples the ticket, and publishes the zip and its
+checksum. An app release is never the repo's latest release: that is minitart's, which the
+formula's tap update reads. The release bot then updates `Casks/minitart-app.rb` in the tap
+(`PRODUCT=minitart-app scripts/update-tap.sh`).
+
+Its secrets are in the `release-app` environment, which only protected branches reach:
+`DEVELOPER_ID_P12` (base64) and `DEVELOPER_ID_PASSWORD`, `APPLE_API_KEY_P8`,
+`APPLE_API_KEY_ID`, `APPLE_API_ISSUER` and `APPLE_TEAM_ID`. Without the certificate the
+workflow says so and publishes nothing; run it by hand once it is there.
+
 ## The release bot
 
 The tap job acts as a GitHub App, because a pull request opened with a workflow's own token

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Makes the Homebrew tap's formula match the newest release (docs/release.md).
+# Makes the Homebrew tap match the newest release (docs/release.md): minitart's formula, or
+# with PRODUCT=minitart-app, the menu bar app's cask (D26).
 #
 # Needs GH_TOKEN, a token that can write to the tap (the release bot's), and SOURCE_REPO.
 # Safe to run again at any time: a tap that is already right is left alone, and a proposal
@@ -8,16 +9,35 @@ set -eu
 
 TAP=zurfyx/homebrew-tap
 SOURCE=${SOURCE_REPO:?set SOURCE_REPO, as owner/name}
+PRODUCT=${PRODUCT:-minitart}
 
-TAG=$(gh api "repos/$SOURCE/releases/latest" --jq .tag_name 2>/dev/null || true)
+case "$PRODUCT" in
+  minitart)
+    # minitart's releases are the repo's latest; the app's never are.
+    TAG=$(gh api "repos/$SOURCE/releases/latest" --jq .tag_name 2>/dev/null || true)
+    PREFIX=v FILE=Formula/minitart.rb TITLE=minitart
+    ;;
+  minitart-app)
+    TAG=$(gh release list --repo "$SOURCE" --limit 100 --json tagName \
+      --jq '[.[].tagName | select(startswith("app-v"))][0] // ""' 2>/dev/null || true)
+    PREFIX=app-v FILE=Casks/minitart-app.rb TITLE="minitart app"
+    ;;
+  *) echo "PRODUCT is minitart or minitart-app, not $PRODUCT." >&2; exit 2 ;;
+esac
+
 case "$TAG" in
-  v[0-9]*.[0-9]*.[0-9]*) VERSION=${TAG#v} ;;
-  *) echo "No release yet: nothing for the tap."; exit 0 ;;
+  "$PREFIX"[0-9]*.[0-9]*.[0-9]*) VERSION=${TAG#"$PREFIX"} ;;
+  *) echo "No $TITLE release yet: nothing for the tap."; exit 0 ;;
 esac
 
 # The checksum is the one published with the release, not one computed again here.
-SHA256=$(gh release download "$TAG" --repo "$SOURCE" --pattern "minitart-$VERSION.tar.gz.sha256" --output - | cut -d' ' -f1)
-node scripts/release.mjs formula "$VERSION" "$SHA256" > formula.rb
+if [ "$PRODUCT" = minitart ]; then
+  SHA256=$(gh release download "$TAG" --repo "$SOURCE" --pattern "minitart-$VERSION.tar.gz.sha256" --output - | cut -d' ' -f1)
+  node scripts/release.mjs formula "$VERSION" "$SHA256" > rendered.rb
+else
+  SHA256=$(gh release download "$TAG" --repo "$SOURCE" --pattern "minitart-app-$VERSION.zip.sha256" --output - | cut -d' ' -f1)
+  node scripts/release-app.mjs cask "$VERSION" "$SHA256" > rendered.rb
+fi
 
 # GitHub answers 502 now and then. A step that only failed is tried again, twice.
 retry() {
@@ -37,21 +57,21 @@ open_pr() {
 
 propose() {
   gh pr create --repo "$TAP" --head "$BRANCH" --base main \
-    --title "minitart $VERSION" \
-    --body "Formula for [minitart $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null ||
+    --title "$TITLE $VERSION" \
+    --body "$FILE for [$TITLE $VERSION](https://github.com/$SOURCE/releases/tag/$TAG), rendered by its release workflow." >/dev/null ||
     [ -n "$(open_pr)" ]
 }
 
 current() {
-  gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true
+  gh api "repos/$TAP/contents/$FILE?ref=$1" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true
 }
 
-if [ "$(current main)" = "$(cat formula.rb)" ]; then
-  echo "The tap already has minitart $VERSION."
+if [ "$(current main)" = "$(cat rendered.rb)" ]; then
+  echo "The tap already has $TITLE $VERSION."
   exit 0
 fi
 
-BRANCH="minitart-$VERSION"
+BRANCH="$PRODUCT-$VERSION"
 
 # Up to three goes: the tap has other projects' releases merging into it, and its main has
 # to be in the branch before a merge is allowed.
@@ -63,10 +83,10 @@ while :; do
     gh api "repos/$TAP/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$BASE" >/dev/null
 
   # An update has to name the file's current blob; a new file has none.
-  BLOB=$(gh api "repos/$TAP/contents/Formula/minitart.rb?ref=$BRANCH" --jq .sha 2>/dev/null || true)
-  gh api -X PUT "repos/$TAP/contents/Formula/minitart.rb" \
-    -f message="minitart $VERSION" -f branch="$BRANCH" ${BLOB:+-f sha="$BLOB"} \
-    -f content="$(base64 < formula.rb | tr -d '\n')" >/dev/null
+  BLOB=$(gh api "repos/$TAP/contents/$FILE?ref=$BRANCH" --jq .sha 2>/dev/null || true)
+  gh api -X PUT "repos/$TAP/contents/$FILE" \
+    -f message="$TITLE $VERSION" -f branch="$BRANCH" ${BLOB:+-f sha="$BLOB"} \
+    -f content="$(base64 < rendered.rb | tr -d '\n')" >/dev/null
 
   # An open proposal for this branch is picked up; a merged or closed one is not. Creating
   # one counts as done when one is open afterwards: GitHub can fail the answer to a request
@@ -101,8 +121,8 @@ while :; do
   echo "The tap moved on meanwhile; proposing again on its new main."
 done
 
-if [ "$(current main)" != "$(cat formula.rb)" ]; then
-  echo "The pull request merged, and the tap's formula is not the one proposed." >&2
+if [ "$(current main)" != "$(cat rendered.rb)" ]; then
+  echo "The pull request merged, and the tap's $FILE is not the one proposed." >&2
   exit 1
 fi
-echo "The tap has minitart $VERSION."
+echo "The tap has $TITLE $VERSION."
