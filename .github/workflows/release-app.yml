@@ -38,7 +38,8 @@ jobs:
     name: release
     if: github.ref == 'refs/heads/main'
     runs-on: macos-15
-    timeout-minutes: 45
+    # Apple's first notarizations for a team can take hours; later ones take minutes.
+    timeout-minutes: 330
     environment: release-app
     permissions:
       contents: write # creating the app's tag and release
@@ -102,7 +103,7 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           APP_SIGN_IDENTITY: Developer ID Application
         run: scripts/app.sh "$VERSION"
-      # Apple's automated check, usually minutes; then its ticket is stapled to the app, so it
+      # Apple's automated check, usually minutes (hours for a team's first); then its ticket is stapled to the app, so it
       # opens without a warning even offline, and the zip is made again with it.
       - name: Notarize
         if: steps.ready.outputs.go == 'true'
@@ -114,7 +115,7 @@ jobs:
           cd app/build
           xcrun notarytool submit "minitart-app-$VERSION.zip" \
             --key "$RUNNER_TEMP/signing/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" \
-            --wait --timeout 40m
+            --wait --timeout 5h
           xcrun stapler staple minitart.app
           spctl --assess --type execute --verbose minitart.app
           rm "minitart-app-$VERSION.zip"
