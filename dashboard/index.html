@@ -18,26 +18,30 @@
   <body>
     <header class="top">
       <h1><img src="/favicon.svg" alt="" width="20" height="20" /> minitart</h1>
-      <p id="machine" class="muted"></p>
+      <nav class="views" aria-label="Views">
+        <a href="#now" data-view="now">Now</a>
+        <a href="#jobs" data-view="jobs">Jobs</a>
+        <a href="#mac" data-view="mac">This Mac</a>
+      </nav>
       <p id="live" class="status" role="status"></p>
       <button type="button" id="drain">Drain</button>
     </header>
 
-    <main>
-      <div id="alerts"></div>
+    <div id="alerts"></div>
 
-      <section id="setup" hidden>
-        <h2>Connect GitHub</h2>
-        <p>
-          minitart talks to GitHub as a GitHub App that only you own. Creating it takes one click
-          here and one on GitHub; then you choose the repos it may run jobs for.
-        </p>
-        <form id="create-app" method="post">
-          <input type="hidden" name="manifest" />
-          <button type="submit" class="primary">Create the GitHub App</button>
-        </form>
-      </section>
+    <section id="setup" hidden>
+      <h2>Connect GitHub</h2>
+      <p>
+        minitart talks to GitHub as a GitHub App that only you own. Creating it takes one click here
+        and one on GitHub; then you choose the repos it may run jobs for.
+      </p>
+      <form id="create-app" method="post">
+        <input type="hidden" name="manifest" />
+        <button type="submit" class="primary">Create the GitHub App</button>
+      </form>
+    </section>
 
+    <main id="view-now" data-view="now">
       <section class="hero" aria-label="Now">
         <p id="headline" class="headline" role="status"></p>
         <p class="stat"><span>Running</span><b class="num" id="stat-running"></b></p>
@@ -79,21 +83,61 @@
 
       <section class="split">
         <div>
-          <h2>Jobs</h2>
+          <h2>Jobs <a class="aside" href="#jobs">Every job →</a></h2>
           <div id="jobs" class="rows"></div>
         </div>
         <div>
           <h2>Disk <span class="aside num" id="disk-free"></span></h2>
           <div id="disk"></div>
+          <p class="more"><a href="#mac">Storage →</a></p>
         </div>
       </section>
+    </main>
 
-      <section id="log-panel" hidden>
-        <h2>
-          <span id="log-title"></span>
-          <button type="button" id="log-close" class="quiet">Close</button>
-        </h2>
-        <pre id="log" tabindex="0"></pre>
+    <main id="view-jobs" data-view="jobs" hidden>
+      <section class="page-head">
+        <h2 class="page-title">Jobs</h2>
+        <p id="history-summary" class="muted"></p>
+      </section>
+      <form id="job-filters" class="filters" aria-label="Filter the jobs">
+        <label>
+          <span>Repo</span>
+          <select name="repo">
+            <option value="">Every repo</option>
+          </select>
+        </label>
+        <label>
+          <span>Result</span>
+          <select name="result">
+            <option value="">Every result</option>
+            <option value="success">Passed</option>
+            <option value="failure">Failed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="lost">Lost</option>
+          </select>
+        </label>
+        <span id="jobs-count" class="muted num"></span>
+      </form>
+      <div id="history" class="rows history"></div>
+      <nav id="pager" class="pager" aria-label="Pages"></nav>
+    </main>
+
+    <main id="view-mac" data-view="mac" hidden>
+      <section>
+        <h2>Health</h2>
+        <div id="health" class="rows"></div>
+        <p id="machine" class="muted small"></p>
+      </section>
+
+      <section>
+        <h2>Storage <span class="aside num" id="storage-free"></span></h2>
+        <div id="storage-disk"></div>
+        <div id="storage" class="rows"></div>
+        <p class="muted small">
+          minitart deletes nothing of the history for its size: a job is kept a year, then goes. A
+          clone shares space with what it was cloned from, so Tart's sizes can add up to more than
+          they take.
+        </p>
       </section>
 
       <section>
@@ -103,8 +147,7 @@
       </section>
 
       <section>
-        <h2>This Mac</h2>
-        <div id="health" class="rows"></div>
+        <h2>Settings</h2>
         <form id="settings">
           <label>
             <span>Linux VMs at once</span>
@@ -147,5 +190,13 @@
         <div id="activity" class="rows activity"></div>
       </section>
     </main>
+
+    <dialog id="log-dialog" aria-labelledby="log-title">
+      <header>
+        <h2 id="log-title"></h2>
+        <button type="button" id="log-close" class="quiet">Close</button>
+      </header>
+      <pre id="log" tabindex="0"></pre>
+    </dialog>
   </body>
 </html>

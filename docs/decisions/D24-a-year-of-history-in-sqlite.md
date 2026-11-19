@@ -56,4 +56,7 @@ may read and back them up by hand.
 - `node:sqlite` is marked as still in development by Node. Node 26, which Homebrew installs,
   runs it without a warning. If its interface changes, `src/history.ts` is the one file
   that uses it.
+- There is no limit on its size, only on age, and the owner sees what it takes: the Jobs
+  view says how many jobs, since when and how much disk, and pages through all of them;
+  This Mac's Storage lists it beside the VM logs and Tart's images.
 - Charts of CPU and memory are not in it: they are an hour, in memory (D23).

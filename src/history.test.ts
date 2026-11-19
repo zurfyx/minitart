@@ -91,6 +91,39 @@ for (const [kind, make] of [
     assert.deepEqual(history.today(NOW), { passed: 0, finished: 0, medianWaitMs: null });
   });
 
+  test(`${kind}: pages, newest first, of one repo or one result, with how many in all`, () => {
+    const history = make();
+    for (let n = 1; n <= 7; n++) {
+      history.add(job(n, 100 - n, { conclusion: n % 3 === 0 ? 'failure' : 'success' }));
+    }
+    const first = history.page({ offset: 0, limit: 3 });
+    assert.equal(first.total, 7);
+    assert.deepEqual(
+      first.jobs.map((entry) => entry.job.name),
+      ['job 7', 'job 6', 'job 5'],
+    );
+    assert.deepEqual(
+      history.page({ offset: 6, limit: 3 }).jobs.map((entry) => entry.job.name),
+      ['job 1'],
+    );
+    assert.equal(history.page({ offset: 9, limit: 3 }).jobs.length, 0);
+    const failed = history.page({ offset: 0, limit: 10, conclusion: 'failure' });
+    assert.deepEqual(
+      [failed.total, failed.jobs.map((entry) => entry.job.name)],
+      [2, ['job 6', 'job 3']],
+    );
+    // Odd jobs are octo/app's.
+    const app = history.page({ offset: 0, limit: 10, repo: 'octo/app', conclusion: 'failure' });
+    assert.deepEqual(
+      app.jobs.map((entry) => entry.job.name),
+      ['job 3'],
+    );
+    assert.deepEqual(history.repos(), ['octo/api', 'octo/app']);
+    const stats = history.stats();
+    assert.equal(stats.entries, 7);
+    assert.equal(stats.oldestAt, NOW - 99 * MIN);
+  });
+
   test(`${kind}: only a job minitart ran has a repo, and pruning forgets it`, () => {
     const history = make();
     history.add(job(1, 400 * 24 * 60));
@@ -110,6 +143,7 @@ test('the JSON history of earlier versions is moved in once, and the file kept a
   const first = openHistory(dir, (text) => warnings.push(text));
   assert.equal(first.recent(0, 10).length, 2);
   first.add(job(3, 1));
+  assert.ok((first.stats().bytes ?? 0) > 0, 'its size on disk, with its log');
   first.close();
   assert.deepEqual(
     readdirSync(dir)

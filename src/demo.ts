@@ -138,6 +138,25 @@ export function demoWorld(machine: Machine): {
       },
     ];
   });
+  // And the days before: a job every thirteen minutes or so, for the Jobs view's pages.
+  for (let n = 0; n < 320; n++) {
+    const work = WORK[n % WORK.length];
+    if (!work) continue;
+    const pool = work[1] === 'minitart-macos' ? ('macos' as const) : ('linux' as const);
+    const ended = 75 + n * 13;
+    const took = ended + work[4] / 60;
+    history.push({
+      vm: `minitart-${pool}-${(0xb10000 + n * 257).toString(16)}`,
+      repo: work[0],
+      pool,
+      job: { id: null, name: work[3], workflow: work[2], url: '' },
+      conclusion: n % 11 === 3 ? 'failure' : n % 29 === 7 ? 'cancelled' : 'success',
+      startedAt: at(took + 0.6),
+      jobAt: at(took),
+      queuedAt: at(took + 0.3 + (n % 5) * 0.4),
+      endedAt: at(ended),
+    });
+  }
   // Oldest first, as the manager keeps it.
   history.sort((a, b) => a.endedAt - b.endedAt);
 

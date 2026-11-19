@@ -3,7 +3,7 @@
 // whether a job is one minitart ran (which guards its log).
 
 import { DatabaseSync } from 'node:sqlite';
-import { chmodSync, existsSync, readFileSync, renameSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import type { DoneView } from './manager.ts';
 
 /** How long a finished job is kept. */
@@ -16,8 +16,28 @@ export interface Today {
   medianWaitMs: number | null;
 }
 
+/** A page of the history: newest first, of one repo or one result if asked. */
+export interface JobQuery {
+  offset: number;
+  limit: number;
+  repo?: string;
+  conclusion?: string;
+}
+
+export interface HistoryStats {
+  entries: number;
+  /** When the oldest job kept ended. */
+  oldestAt: number | null;
+  /** What the history takes on disk, with its write-ahead log; null when in memory. */
+  bytes: number | null;
+}
+
 export interface History {
   add(entry: DoneView): void;
+  page(query: JobQuery): { total: number; jobs: DoneView[] };
+  /** Every repo with a job kept, by name. */
+  repos(): string[];
+  stats(): HistoryStats;
   /** Newest first: every job that ended at or after `since`, and at least the newest `atLeast`. */
   recent(since: number, atLeast: number): DoneView[];
   /** What ended at or after `since`. */
@@ -73,6 +93,32 @@ export class MemoryHistory implements History {
 
   today(since: number): Today {
     return summarise(this.#entries.filter((entry) => entry.endedAt >= since));
+  }
+
+  page(query: JobQuery): { total: number; jobs: DoneView[] } {
+    const matching = [...this.#entries]
+      .reverse()
+      .filter(
+        (entry) =>
+          (query.repo === undefined || entry.repo === query.repo) &&
+          (query.conclusion === undefined || entry.conclusion === query.conclusion),
+      );
+    return {
+      total: matching.length,
+      jobs: matching.slice(query.offset, query.offset + query.limit),
+    };
+  }
+
+  repos(): string[] {
+    return [...new Set(this.#entries.map((entry) => entry.repo))].sort();
+  }
+
+  stats(): HistoryStats {
+    return {
+      entries: this.#entries.length,
+      oldestAt: this.#entries[0]?.endedAt ?? null,
+      bytes: null,
+    };
   }
 
   repoOfJob(jobId: number): string | null {
@@ -136,10 +182,12 @@ const SCHEMA = `
   ) STRICT;
   CREATE INDEX IF NOT EXISTS jobs_by_end ON jobs (ended_at);
   CREATE INDEX IF NOT EXISTS jobs_by_job ON jobs (job_id);
+  CREATE INDEX IF NOT EXISTS jobs_by_repo ON jobs (repo, ended_at);
 `;
 
 /** In a file: `~/.minitart/history.db`. Times are milliseconds since 1970, as in the page. */
 export class SqliteHistory implements History {
+  readonly #path: string;
   readonly #db: DatabaseSync;
   readonly #insert;
   readonly #since;
@@ -150,6 +198,7 @@ export class SqliteHistory implements History {
   constructor(path: string) {
     // Waits a moment for another reader or writer (`sqlite3` in a terminal) rather than
     // failing at once. With a write-ahead log, a reader never blocks minitart's writes.
+    this.#path = path;
     this.#db = new DatabaseSync(path, { timeout: 2000 });
     if (path !== ':memory:') {
       chmodSync(path, 0o600);
@@ -207,6 +256,56 @@ export class SqliteHistory implements History {
 
   today(since: number): Today {
     return summarise((this.#since.all(since) as unknown as Row[]).map(fromRow));
+  }
+
+  page(query: JobQuery): { total: number; jobs: DoneView[] } {
+    // Only values reach SQL, as parameters; the shape of the query is one of four.
+    const where: string[] = [];
+    const values: (string | number)[] = [];
+    if (query.repo !== undefined) {
+      where.push('repo = ?');
+      values.push(query.repo);
+    }
+    if (query.conclusion !== undefined) {
+      where.push('conclusion = ?');
+      values.push(query.conclusion);
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const count = this.#db.prepare(`SELECT count(*) AS n FROM jobs ${clause}`).get(...values) as {
+      n: number;
+    };
+    const rows = this.#db
+      .prepare(`SELECT * FROM jobs ${clause} ORDER BY ended_at DESC, id DESC LIMIT ? OFFSET ?`)
+      .all(...values, query.limit, query.offset) as unknown as Row[];
+    return { total: Number(count.n), jobs: rows.map(fromRow) };
+  }
+
+  repos(): string[] {
+    const rows = this.#db.prepare('SELECT DISTINCT repo FROM jobs ORDER BY repo').all() as {
+      repo: string;
+    }[];
+    return rows.map((row) => row.repo);
+  }
+
+  stats(): HistoryStats {
+    const row = this.#db
+      .prepare('SELECT count(*) AS n, min(ended_at) AS oldest FROM jobs')
+      .get() as {
+      n: number;
+      oldest: number | null;
+    };
+    const size = (path: string) => {
+      try {
+        return statSync(path).size;
+      } catch {
+        return 0;
+      }
+    };
+    return {
+      entries: Number(row.n),
+      oldestAt: row.oldest === null ? null : Number(row.oldest),
+      bytes: this.#path === ':memory:' ? null : size(this.#path) + size(`${this.#path}-wal`),
+    };
   }
 
   repoOfJob(jobId: number): string | null {

@@ -13,6 +13,7 @@ import { appManifest, convertManifestCode, type AppCredentials } from './github/
 import type { Fetch } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import type { Manager } from './manager.ts';
+import { KEEP_MS, type History } from './history.ts';
 import type { ResourcesView } from './resources.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
@@ -25,6 +26,12 @@ export interface ServerDeps {
   health: () => Check[];
   /** The Mac's CPU, memory and disk over the last hour, for the charts (D23). */
   resources?: () => ResourcesView | null;
+  /** Every job that ran, for the Jobs view (D24). */
+  history?: History;
+  /** A VM's log as written to disk, its last `maxBytes`, or null. The name is a job VM's. */
+  vmLogFile?: (name: string, maxBytes: number) => string | null;
+  /** The VM logs kept on disk: how many, what they take, and how many are kept at most. */
+  logs?: () => { files: number; bytes: number; kept: number };
   machine: Machine;
   port: number;
   /**
@@ -68,6 +75,8 @@ const SECURITY_HEADERS = {
 };
 
 const MAX_BODY = 64 * 1024;
+/** Jobs on a page of the Jobs view. */
+export const JOBS_PER_PAGE = 50;
 const MAX_LOG = 1024 * 1024;
 
 export function isLoopback(address: string | undefined): boolean {
@@ -119,11 +128,28 @@ export function createDashboardServer(deps: ServerDeps): Server {
       if (path === '/api/events') return events(request, response);
       // Apart from the state: an hour of points is more than every change needs to carry.
       if (path === '/api/resources') return json(response, 200, deps.resources?.() ?? null);
+      if (path === '/api/jobs') return jobsPage(response, url.searchParams);
+      if (path === '/api/storage') {
+        return json(response, 200, {
+          history: deps.history?.stats() ?? null,
+          keepDays: Math.round(KEEP_MS / 86_400_000),
+          logs: deps.logs?.() ?? null,
+        });
+      }
 
       const vmLog = /^\/api\/vms\/(minitart-(?:linux|macos)-[0-9a-f]{6})\/log$/.exec(path);
       if (vmLog?.[1] !== undefined) {
         const lines = deps.manager.vmLog(vmLog[1]);
-        return lines ? send(response, 200, lines.join('\n')) : send(response, 404, 'No such VM');
+        if (lines) return send(response, 200, lines.join('\n'));
+        // One that ended a while ago, or before a restart: as it was written to disk.
+        const saved = deps.vmLogFile?.(vmLog[1], MAX_LOG) ?? null;
+        return saved !== null
+          ? send(response, 200, saved)
+          : send(
+              response,
+              404,
+              'minitart no longer has this VM’s output: it keeps that of the newest VMs only',
+            );
       }
 
       const jobLog = /^\/api\/jobs\/(\d{1,15})\/log$/.exec(path);
@@ -219,6 +245,38 @@ export function createDashboardServer(deps: ServerDeps): Server {
       return json(response, 200, state());
     }
     return send(response, 405, 'Method not allowed');
+  }
+
+  /** A page of the history, newest first; the query is untrusted and checked. */
+  function jobsPage(response: ServerResponse, query: URLSearchParams): void {
+    const page = Number(query.get('page') ?? '1');
+    const repo = query.get('repo') || undefined;
+    const result = query.get('result') || undefined;
+    if (!Number.isInteger(page) || page < 1 || page > 1_000_000) {
+      return send(response, 400, 'page must be a whole number from 1');
+    }
+    if (repo !== undefined && !/^[A-Za-z0-9_-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
+      return send(response, 400, 'repo must be owner/name');
+    }
+    if (result !== undefined && !/^[a-z_]{1,32}$/.test(result)) {
+      return send(response, 400, 'result must be a word such as success or failure');
+    }
+    const history = deps.history;
+    const found = history
+      ? history.page({
+          offset: (page - 1) * JOBS_PER_PAGE,
+          limit: JOBS_PER_PAGE,
+          ...(repo === undefined ? {} : { repo }),
+          ...(result === undefined ? {} : { conclusion: result }),
+        })
+      : { total: 0, jobs: [] };
+    json(response, 200, {
+      ...found,
+      page,
+      pages: Math.max(1, Math.ceil(found.total / JOBS_PER_PAGE)),
+      per: JOBS_PER_PAGE,
+      repos: history?.repos() ?? [],
+    });
   }
 
   function events(request: IncomingMessage, response: ServerResponse): void {

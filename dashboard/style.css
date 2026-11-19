@@ -61,9 +61,159 @@ code {
 
 .top {
   display: flex;
+  align-items: center;
+  gap: 16px 24px;
+  padding-bottom: 20px;
+}
+
+/* The views: words in a row, the one open underlined in the accent */
+
+.views {
+  display: flex;
+  gap: 4px;
+}
+
+.views a {
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.views a:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.views a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+main[hidden] {
+  display: none;
+}
+
+a.aside,
+.more a {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+a.aside:hover,
+.more a:hover {
+  color: var(--accent);
+}
+
+.more {
+  margin: 12px 0 0;
+}
+
+/* The Jobs view: a line on the history, filters, the rows, and pages */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-top: 12px;
+}
+
+.page-head p {
+  margin: 0;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  margin: 20px 0 12px;
+}
+
+.filters label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.filters #jobs-count {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+select {
+  min-width: 12em;
+  padding: 5px 8px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+.history .times {
+  min-width: 12em;
+  text-align: right;
+}
+
+.history time {
+  min-width: 8em;
+  text-align: right;
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
   align-items: baseline;
   gap: 16px;
-  padding-bottom: 20px;
+  padding: 16px 0;
+}
+
+.pager a {
+  text-decoration: none;
+}
+
+/* The log: a dialog over whichever view it was opened from */
+
+#log-dialog {
+  width: min(1100px, 94vw);
+  max-width: none;
+  max-height: 86vh;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--body);
+}
+
+#log-dialog::backdrop {
+  background: color-mix(in oklab, var(--ink) 35%, transparent);
+}
+
+#log-dialog header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+#log-dialog h2 {
+  flex: 1;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .top h1 {
@@ -653,7 +803,7 @@ h2 .legend {
 /* The log */
 
 #log {
-  max-height: 60vh;
+  max-height: calc(86vh - 80px);
   margin: 8px 0 0;
   padding: 12px 14px;
   border-radius: var(--radius);
@@ -686,6 +836,22 @@ h2 .legend {
 @media (max-width: 700px) {
   body {
     padding: 20px 16px 64px;
+  }
+
+  .top {
+    flex-wrap: wrap;
+  }
+
+  .views {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: -10px;
+  }
+
+  .history .times,
+  .history time {
+    min-width: 0;
+    text-align: left;
   }
 
   .top {
