@@ -264,31 +264,6 @@ select {
   align-items: center;
 }
 
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 12px 0 14px;
-}
-
-.chip {
-  padding: 3px 12px;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.chip[aria-pressed='true'],
-.chip[aria-pressed='true']:hover {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.chip:hover {
-  border-color: var(--ink);
-}
-
 .compare .provider {
   display: flex;
   align-items: center;

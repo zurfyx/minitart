@@ -908,7 +908,14 @@ function drawCost() {
     h('small', {}, ' h'),
   );
 
-  const rows = compareProviders(sum, prices.providers, cost.compare);
+  // Every provider is shown, at the runners the owner picked for it, or at its defaults.
+  const runnersOf = (provider) =>
+    cost.compare.find((entry) => entry.provider === provider.id) ?? {
+      provider: provider.id,
+      linux: provider.linux[0].id,
+      macos: provider.macos[0].id,
+    };
+  const rows = compareProviders(sum, prices.providers, prices.providers.map(runnersOf));
   const ownMonth = macCost(cost, MONTH_DAYS);
   $('cost-own').textContent = ownMonth.usd === null ? '–' : usd(ownMonth.usd);
   $('cost-own-split').textContent =
@@ -937,12 +944,9 @@ function drawCost() {
     });
   }
 
-  // Which providers are shown: a toggle each, in the price list's order. Only the ones on are
-  // in the table and its notes.
-  const shown = new Map(cost.compare.map((entry) => [entry.provider, entry]));
-  // Drawn again after each change: the control that had the keyboard gets it back.
+  // Drawn again after each change: the menu that had the keyboard gets it back.
   const focused = /** @type {HTMLElement | null} */ (document.activeElement)?.dataset?.key;
-  /** Saves the providers shown and their runners, one change after another, each from what is saved. */
+  /** Saves the runners picked, one change after another, each from what is saved. */
   const saveCompare = (change) => {
     // Whatever goes wrong is said, and the next change is still saved.
     costSaving = costSaving
@@ -950,117 +954,84 @@ function drawCost() {
       .then(drawCost)
       .catch((error) => alert(error.message));
   };
-  $('providers').replaceChildren(
-    ...prices.providers.map((provider) =>
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'chip',
-          'data-key': `chip ${provider.id}`,
-          'aria-pressed': shown.has(provider.id) ? 'true' : 'false',
-          onclick: () =>
-            saveCompare((current) =>
-              current.some((entry) => entry.provider === provider.id)
-                ? current.filter((entry) => entry.provider !== provider.id)
-                : [
-                    ...current,
-                    {
-                      provider: provider.id,
-                      linux: provider.linux[0].id,
-                      macos: provider.macos[0].id,
-                    },
-                  ],
-            ),
-        },
-        provider.name,
-      ),
-    ),
-  );
 
-  const listed = prices.providers.filter((provider) => shown.has(provider.id));
   $('compare').replaceChildren(
-    ...(listed.length
-      ? listed.map((provider) => {
-          const on = shown.get(provider.id);
-          const row = rows.find((one) => one.provider.id === provider.id);
-          const runner = (kind) => {
-            const select = h(
-              'select',
-              {
-                'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`,
-                'data-key': `runner ${provider.id} ${kind}`,
-              },
-              ...provider[kind].map((one) =>
-                h(
-                  'option',
-                  { value: one.id, selected: on[kind] === one.id },
-                  `${one.name} · $${one.usd}/min`,
-                ),
-              ),
-            );
-            select.addEventListener('change', () =>
-              saveCompare((current) =>
-                current.map((entry) =>
-                  entry.provider === provider.id ? { ...entry, [kind]: select.value } : entry,
-                ),
-              ),
-            );
-            return select;
-          };
-          const monthly = row ? perMonth(row.usd, counted) : null;
-          return h(
-            'div',
-            { class: 'row' },
+    ...prices.providers.map((provider) => {
+      const on = runnersOf(provider);
+      const row = rows.find((one) => one.provider.id === provider.id);
+      const runner = (kind) => {
+        const select = h(
+          'select',
+          {
+            'aria-label': `${provider.name} runner for ${POOL[kind]} jobs`,
+            'data-key': `runner ${provider.id} ${kind}`,
+          },
+          ...provider[kind].map((one) =>
             h(
-              'span',
-              { class: 'provider' },
-              h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
+              'option',
+              { value: one.id, selected: on[kind] === one.id },
+              `${one.name} · $${one.usd}/min`,
             ),
-            h('span', { class: 'runners' }, runner('linux'), runner('macos')),
-            h(
-              'span',
-              { class: 'num price' },
-              row ? h('b', {}, usd(row.usd)) : null,
-              row
-                ? h(
-                    'span',
-                    { class: 'meta' },
-                    `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
-                  )
-                : null,
-            ),
-            h(
-              'span',
-              { class: 'num price' },
-              row ? h('b', {}, `${usd(monthly)} a month`) : null,
-              row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
-            ),
-          );
-        })
-      : [empty('No provider is shown. Pick one above to see its list prices.')]),
+          ),
+        );
+        select.addEventListener('change', () =>
+          saveCompare((current) => [
+            ...current.filter((entry) => entry.provider !== provider.id),
+            { ...runnersOf(provider), [kind]: select.value },
+          ]),
+        );
+        return select;
+      };
+      const monthly = row ? perMonth(row.usd, counted) : null;
+      return h(
+        'div',
+        { class: 'row' },
+        h(
+          'span',
+          { class: 'provider' },
+          h('a', { href: provider.source, target: '_blank', rel: 'noreferrer' }, provider.name),
+        ),
+        h('span', { class: 'runners' }, runner('linux'), runner('macos')),
+        h(
+          'span',
+          { class: 'num price' },
+          row ? h('b', {}, usd(row.usd)) : null,
+          row
+            ? h(
+                'span',
+                { class: 'meta' },
+                `${usd(row.linuxUsd)} Linux · ${usd(row.macosUsd)} macOS`,
+              )
+            : null,
+        ),
+        h(
+          'span',
+          { class: 'num price' },
+          row ? h('b', {}, `${usd(monthly)} a month`) : null,
+          row ? h('span', { class: 'meta' }, 'at this range’s pace') : null,
+        ),
+      );
+    }),
   );
   if (focused) {
-    for (const element of document.querySelectorAll('#providers [data-key], #compare [data-key]')) {
+    for (const element of document.querySelectorAll('#compare [data-key]')) {
       if (/** @type {HTMLElement} */ (element).dataset.key === focused) {
         /** @type {HTMLElement} */ (element).focus();
       }
     }
   }
   $('compare-notes').replaceChildren(
-    ...(listed.length
-      ? [
-          h(
-            'p',
-            {},
-            `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
-              'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
-              'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
-              'runner took it, rounded up to a whole minute.',
-          ),
-          ...listed.map((provider) => h('p', {}, h('b', {}, `${provider.name}: `), provider.note)),
-        ]
-      : []),
+    h(
+      'p',
+      {},
+      `For reference only: what each provider lists for these minutes, as published on ${prices.checked}. ` +
+        'Not a quote. Free minutes, plans and discounts are not counted, and runners differ in speed, ' +
+        'so the same job can take more or fewer minutes elsewhere. Each job is counted from when its ' +
+        'runner took it, rounded up to a whole minute.',
+    ),
+    ...prices.providers.map((provider) =>
+      h('p', {}, h('b', {}, `${provider.name}: `), provider.note),
+    ),
   );
 
   const form = /** @type {HTMLFormElement} */ ($('own'));

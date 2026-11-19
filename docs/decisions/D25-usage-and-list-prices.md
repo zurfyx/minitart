@@ -14,9 +14,13 @@ The dashboard has a Usage view. It shows, for the last 7, 30 or 90 days or a yea
 - what this Mac costs a month: its price written off over a number of months, and its
   average draw at the owner's price of electricity, each only if the owner gives it.
 
-The providers are GitHub-hosted, Blacksmith, Depot, Namespace, WarpBuild and Avrea. The
-owner chooses which are shown. Each starts at a 2 vCPU x64 Linux runner, the size of
-GitHub's `ubuntu-latest`, and the provider's smallest macOS runner.
+The providers are GitHub-hosted, Blacksmith, Depot, Namespace, WarpBuild and Avrea, all
+always shown. Each row has a menu for its Linux runner and one for its macOS runner, each
+runner with its price a minute; they start at a 2 vCPU x64 Linux runner, the size of
+GitHub's `ubuntu-latest`, and the provider's smallest macOS runner. Toggles to pick which
+providers are shown were tried and taken out: they put controls on the page without a use.
+A plain table with no menus was tried too, and the menus came back: they show each
+provider's runners and prices, and let the owner price at the runner they would pick.
 
 ## Why
 
@@ -45,5 +49,7 @@ Left out:
 - The figures count minutes as they ran here. The same job can take more or fewer minutes on
   other hardware, and the page says so.
 - A month is worked out from the days minitart kept its history, not from days before it.
-- The settings gain `cost`: the providers compared and their runners, and the Mac's price,
-  life, draw and electricity price.
+- The settings gain `cost`: the runners picked for each provider (`compare`; a provider not
+  in it is at its defaults), and the Mac's price, life, draw and electricity price. A saved
+  provider or runner since taken out of the price list is dropped or reset, never a reason to
+  set the settings aside.
