@@ -320,11 +320,15 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     vmLogFile: (name, maxBytes) => home?.readLog(`${name}.log`, maxBytes) ?? null,
     // Where the service writes: Homebrew's log folder, or the folder of `service install`.
     ownLogs: () =>
-      [
-        '/opt/homebrew/var/log/minitart.log',
-        '/usr/local/var/log/minitart.log',
-        ...(home ? [home.path('logs', 'manager.log')] : []),
-      ].flatMap((path) => {
+      // The demo writes no log of its own, and shows none of the Mac's.
+      (home
+        ? [
+            '/opt/homebrew/var/log/minitart.log',
+            '/usr/local/var/log/minitart.log',
+            home.path('logs', 'manager.log'),
+          ]
+        : []
+      ).flatMap((path) => {
         try {
           return [{ path, bytes: statSync(path).size }];
         } catch {
