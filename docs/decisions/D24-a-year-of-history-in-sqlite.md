@@ -4,7 +4,8 @@ Status: `DECIDED`
 
 ## Decision
 
-Every job minitart runs is a row in `~/.minitart/history.db`: which VM, repo and job, how it
+Every job minitart runs is a row in `~/.minitart/history.db`: which VM, repo and job, who it
+ran for, how it
 ended, and when its VM was cloned, when GitHub queued it, when its runner took it and when
 it ended. A row is kept for a year from when its job ended. The database is SQLite as Node
 has it built in (`node:sqlite`): no dependency, no server.
@@ -60,3 +61,5 @@ may read and back them up by hand.
   view says how many jobs, since when and how much disk, and pages through all of them;
   This Mac's Storage lists it beside the VM logs, minitart's own log and Tart's images.
 - Charts of CPU and memory are not in it: they are an hour, in memory (D23).
+- Who a job ran for came in 0.1.14. The column is added to a history from before, whose jobs
+  say nothing of it.

@@ -83,6 +83,7 @@ export function lanes(state, from) {
         repo: job.repo,
         name: job.job.name,
         workflow: job.job.workflow,
+        actor: job.job.actor ?? null,
         startAt: job.startedAt,
         // An entry older than 0.1.8 does not say when its job began: all of it was the job.
         jobAt: job.jobAt ?? job.startedAt,
@@ -96,6 +97,7 @@ export function lanes(state, from) {
       repo: vm.repo,
       name: vm.job?.name ?? null,
       workflow: vm.job?.workflow ?? '',
+      actor: vm.job?.actor ?? null,
       startAt: vm.createdAt,
       jobAt: vm.jobAt,
       endAt: null,

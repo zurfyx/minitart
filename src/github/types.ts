@@ -19,6 +19,11 @@ export interface Job {
   labels: string[];
   status: JobStatus;
   conclusion: string | null;
+  /**
+   * Who the job runs for: the login that triggered its run (who re-ran it, for a run run
+   * again), or null when GitHub did not say.
+   */
+  actor: string | null;
   /** The runner that took the job. minitart names a runner after its VM. */
   runnerName: string | null;
   url: string;

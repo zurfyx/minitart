@@ -163,6 +163,27 @@ test('the JSON history of earlier versions is moved in once, and the file kept a
   assert.deepEqual(warnings, []);
 });
 
+test('a history from before authors were kept gains the column, and keeps its jobs', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minitart-history-'));
+  // The table as minitart 0.1.10 to 0.1.13 made it.
+  const old = new DatabaseSync(join(dir, 'history.db'));
+  old.exec(`CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY, vm TEXT NOT NULL, repo TEXT NOT NULL, pool TEXT NOT NULL,
+    job_id INTEGER, job_name TEXT NOT NULL, workflow TEXT NOT NULL, url TEXT NOT NULL,
+    conclusion TEXT NOT NULL, started_at INTEGER NOT NULL, job_at INTEGER, queued_at INTEGER,
+    ended_at INTEGER NOT NULL, UNIQUE (vm, ended_at)) STRICT`);
+  old.exec(`INSERT INTO jobs (vm, repo, pool, job_id, job_name, workflow, url, conclusion, started_at, ended_at)
+    VALUES ('minitart-linux-000001', 'octo/app', 'linux', 1, 'old', 'CI', '', 'success', 1, 2)`);
+  old.close();
+  const history = openHistory(dir, () => {});
+  history.add(job(5, 1, { job: { id: 5, name: 'new', workflow: 'CI', url: '', actor: 'mona' } }));
+  const [newer, older] = history.recent(0, 10);
+  assert.equal(newer?.job.actor, 'mona');
+  assert.equal(older?.job.name, 'old');
+  assert.equal(older?.job.actor, undefined, 'not known for a job from before');
+  history.close();
+});
+
 test('someone reading the database in a terminal does not stop a job being recorded', () => {
   const dir = mkdtempSync(join(tmpdir(), 'minitart-history-'));
   const history = openHistory(dir, () => {});

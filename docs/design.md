@@ -26,6 +26,9 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
   and for an alert.
 - **A state is a glyph and a word in the state's colour**: `✓ Passed`, `✕ Failed`,
   `● Running`, `○ Queued`. Never the colour alone, and a status colour is never decoration.
+- **A job is named, then placed**: its name, and under it the repo, the workflow, the kind of
+  VM and who it runs for (the login that triggered its run, or re-ran it), linked to them on
+  GitHub.
 - **Text wears text tokens.** Names are `--ink`, the rest `--muted`. The accent is not a text
   colour except on hover.
 - **Numbers are tabular**, so a ticking duration does not shift its row.

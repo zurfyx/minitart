@@ -205,7 +205,52 @@ test('a list longer than a page is read to its end', async () => {
   });
   const jobs = await new GitHubClient(auth, fetch).jobs('octo/app', 9);
   assert.equal(jobs.length, 130);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.filter((call) => call.url.includes('/jobs')).length, 2);
+});
+
+test('a job says who it runs for: who triggered its run, or who re-ran it', async () => {
+  const runs = [
+    { id: 9, status: 'queued', actor: { login: 'mona' }, triggering_actor: { login: 'mona' } },
+    // Run again by someone else: the job now runs for them.
+    {
+      id: 10,
+      status: 'in_progress',
+      actor: { login: 'dependabot[bot]' },
+      triggering_actor: { login: 'hubot' },
+    },
+  ];
+  const job = (id: number, runId: number) => ({
+    id,
+    run_id: runId,
+    name: 'test',
+    status: 'queued',
+    created_at: 'x',
+  });
+  const { fetch, calls } = fakeFetch({
+    'GET /repos/octo/app/actions/runs': (call) =>
+      json({
+        workflow_runs: runs.filter(
+          (run) => call.url.includes(`status=${run.status}`) || !call.url.includes('status='),
+        ),
+      }),
+    'GET /repos/octo/app/actions/runs/9/jobs': () => json({ jobs: [job(1, 9)] }),
+    'GET /repos/octo/app/actions/runs/10/jobs': () => json({ jobs: [job(2, 10)] }),
+    'GET /repos/octo/app/actions/runs/11/jobs': () => json({ jobs: [job(3, 11)] }),
+    // A run the lists never showed, asked for on its own.
+    'GET /repos/octo/app/actions/runs/11': () => json({ id: 11, actor: { login: 'octocat' } }),
+    'GET /repos/octo/app/actions/runs/12/jobs': () => json({ jobs: [job(4, 12)] }),
+  });
+  const client = new GitHubClient(auth, fetch);
+  await client.activeRuns('octo/app');
+  assert.equal((await client.jobs('octo/app', 9))[0]?.actor, 'mona');
+  assert.equal((await client.jobs('octo/app', 10))[0]?.actor, 'hubot');
+  const before = calls.length;
+  assert.equal((await client.jobs('octo/app', 11))[0]?.actor, 'octocat');
+  assert.equal(calls.length - before, 2, 'its jobs, then the run');
+  // A run GitHub will not say who ran still has its jobs.
+  const [unknown] = await client.jobs('octo/app', 12);
+  assert.equal(unknown?.id, 4);
+  assert.equal(unknown?.actor, null);
 });
 
 test('jobs are read into the shape the manager uses', async () => {

@@ -61,6 +61,8 @@ export class GitHubClient implements GitHub {
   readonly #auth: Auth;
   readonly #fetch: Fetch;
   readonly #cache = new Map<string, { etag: string; body: unknown }>();
+  /** Who triggered each run seen in the lists: the job lists do not say. */
+  readonly #actors = new Map<number, string>();
 
   constructor(auth: Auth, fetchImpl: Fetch = fetch) {
     this.#auth = auth;
@@ -85,17 +87,21 @@ export class GitHubClient implements GitHub {
         repo,
         `/repos/${repo}/actions/runs?status=${status}`,
         (page) => (page as { workflow_runs?: unknown[] }).workflow_runs ?? [],
-      )) as { id: number }[];
-      for (const run of runs) ids.add(run.id);
+      )) as RawRun[];
+      for (const run of runs) {
+        ids.add(run.id);
+        this.#noteActor(run);
+      }
     }
     // The lists by status can miss a run: GitHub has been seen to leave a queued run out of
     // every one of them while the run itself, and the list with no filter, said `queued`,
     // so its job waited for good. The newest runs, unfiltered, are read too, and any of
     // them that has not completed is kept.
     const newest = (await this.#get(repo, `/repos/${repo}/actions/runs?per_page=100`)) as {
-      workflow_runs?: { id: number; status?: string }[];
+      workflow_runs?: RawRun[];
     };
     for (const run of newest.workflow_runs ?? []) {
+      this.#noteActor(run);
       if ((ACTIVE_RUN_STATUSES as readonly (string | undefined)[]).includes(run.status)) {
         ids.add(run.id);
       }
@@ -109,6 +115,15 @@ export class GitHubClient implements GitHub {
       `/repos/${repo}/actions/runs/${runId}/jobs?filter=latest`,
       (page) => (page as { jobs?: unknown[] }).jobs ?? [],
     )) as RawJob[];
+    // A run not seen in the lists (one that finished before minitart looked) is asked for.
+    // Who ran it is a nicety: not knowing never costs the jobs themselves.
+    if (jobs.length > 0 && !this.#actors.has(runId)) {
+      try {
+        this.#noteActor((await this.#get(repo, `/repos/${repo}/actions/runs/${runId}`)) as RawRun);
+      } catch {
+        // Shown without an author.
+      }
+    }
     return jobs.map((job) => ({
       id: job.id,
       runId: job.run_id,
@@ -119,6 +134,7 @@ export class GitHubClient implements GitHub {
       status: STATUSES[job.status] ?? 'pending',
       conclusion: job.conclusion ?? null,
       runnerName: job.runner_name || null,
+      actor: this.#actors.get(job.run_id) ?? null,
       url: job.html_url ?? '',
       createdAt: job.created_at,
       startedAt: job.started_at ?? null,
@@ -204,6 +220,14 @@ export class GitHubClient implements GitHub {
     return body;
   }
 
+  #noteActor(run: RawRun): void {
+    const login = run.triggering_actor?.login ?? run.actor?.login;
+    if (typeof login !== 'string' || login === '') return;
+    // Kept for the runs of the last while; like the cache, cleared now and then.
+    if (this.#actors.size > 5000) this.#actors.clear();
+    this.#actors.set(run.id, login);
+  }
+
   async #send(repo: string, method: string, path: string, body?: unknown): Promise<Response> {
     const token = await this.#auth.token(repo);
     const init: RequestInit = { method, headers: githubHeaders(token) };
@@ -211,6 +235,14 @@ export class GitHubClient implements GitHub {
     const response = await this.#fetch(`${API}${path}`, init);
     return expectOk(response, `${method} ${path}`);
   }
+}
+
+interface RawRun {
+  id: number;
+  status?: string;
+  actor?: { login?: string } | null;
+  /** Who started this attempt: the same as `actor`, except for a run run again. */
+  triggering_actor?: { login?: string } | null;
 }
 
 interface RawJob {

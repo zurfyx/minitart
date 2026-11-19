@@ -149,7 +149,8 @@ test('a failed read keeps the cached answer, which an unchanged reply then serve
   await assert.rejects(client.jobs('octo/app', 9));
   failing = false;
   assert.equal((await client.jobs('octo/app', 9))[0]?.id, 5);
-  assert.equal(calls.at(-1)?.headers['if-none-match'], '"v1"');
+  const jobReads = calls.filter((call) => call.url.includes('/jobs'));
+  assert.equal(jobReads.at(-1)?.headers['if-none-match'], '"v1"');
 });
 
 // After ephemerd pkg/github/appauth_test.go: TestExchangeToken_Non201

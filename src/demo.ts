@@ -8,6 +8,8 @@ import type { Job } from './github/types.ts';
 import { FakeGitHub, FakeTart } from './testing/fakes.ts';
 
 const REPOS = ['octo/app', 'octo/api', 'octo/site'];
+/** Who the made-up jobs run for: people, and a bot that opens pull requests. */
+const ACTORS = ['mona', 'mona', 'hubot', 'dependabot[bot]'];
 const WORK: [repo: string, label: string, workflow: string, job: string, seconds: number][] = [
   ['octo/app', 'minitart-macos', 'CI', 'test (iOS 26)', 340],
   ['octo/api', 'minitart-linux', 'CI', 'test', 140],
@@ -104,7 +106,8 @@ export function demoWorld(machine: Machine): {
   let queued: Job[] = [];
   const queueOne = () => {
     const work = WORK[next++ % WORK.length];
-    if (work) queued.push(github.queue(work[0], [work[1]], work[3], work[2]));
+    const actor = ACTORS[next % ACTORS.length] ?? null;
+    if (work) queued.push(github.queue(work[0], [work[1]], work[3], work[2], actor));
   };
   for (let i = 0; i < 7; i++) queueOne();
   // Pushes keep coming, but never more than a few jobs wait: a demo left open stays legible.
@@ -129,7 +132,13 @@ export function demoWorld(machine: Machine): {
         vm: `minitart-${pool}-${(0xa1b2c0 + n * 4099).toString(16)}`,
         repo: work[0],
         pool,
-        job: { id: null, name: work[3], workflow: work[2], url: '' },
+        job: {
+          id: null,
+          name: work[3],
+          workflow: work[2],
+          url: '',
+          actor: ACTORS[n % ACTORS.length] ?? 'mona',
+        },
         conclusion: n === 2 ? 'failure' : n === 7 ? 'cancelled' : 'success',
         startedAt: at(cloned),
         jobAt: at(took),
@@ -149,7 +158,13 @@ export function demoWorld(machine: Machine): {
       vm: `minitart-${pool}-${(0xb10000 + n * 257).toString(16)}`,
       repo: work[0],
       pool,
-      job: { id: null, name: work[3], workflow: work[2], url: '' },
+      job: {
+        id: null,
+        name: work[3],
+        workflow: work[2],
+        url: '',
+        actor: ACTORS[n % ACTORS.length] ?? 'mona',
+      },
       conclusion: n % 11 === 3 ? 'failure' : n % 29 === 7 ? 'cancelled' : 'success',
       startedAt: at(took + 0.6),
       jobAt: at(took),
