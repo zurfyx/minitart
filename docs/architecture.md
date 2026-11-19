@@ -135,6 +135,9 @@ Everything else is rebuilt from GitHub and Tart on start.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.
 - `POST /api/drain`: start no new jobs and let the running ones finish, or resume.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.
+- `GET /manifest.webmanifest` and the icons: what makes the page an app a browser can
+  install. There is no service worker: the page is live from minitart or nothing, and one
+  could keep serving an old page after an upgrade.
 
 It listens on `127.0.0.1` and answers only connections from the Mac itself. To be on the
 owner's tailnet, Tailscale Serve forwards a tailnet name to that port, and minitart answers

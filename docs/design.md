@@ -45,6 +45,16 @@ dark follow `prefers-color-scheme`; the dark values are chosen, not inverted.
 - **Empty states are a sentence**, in `--muted`: "Nothing is running."
 - **At 390px** a row wraps: the name on its own line, the facts under it.
 
+## Icons
+
+The mark is a cup with a ball over it, in the accent. `favicon.svg` is the mark alone, for
+tabs and the page's header. The app icon, `dashboard/icons/app-icon.svg`, is the mark in
+white on the accent, edge to edge: as the maskable icon, a system cuts its own shape from it
+and the mark stays inside any of them. The PNGs are rendered from those two files by Chrome:
+192 and 512 pixels (square for maskable, rounded for any), 180 for Apple, which rounds it
+itself, and 16 and 32 for `favicon.ico` and browsers that do not draw SVG in a tab. The
+website has copies, and a test keeps them the same.
+
 ## Words
 
 Sentence case. Plain verbs. The dashboard says what happened ("no job came for it"), not

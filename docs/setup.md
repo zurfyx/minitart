@@ -230,6 +230,17 @@ comes in that way. If `doctor` shows a `FIX  Tailnet` line, it comes with the co
 puts that one name right; `tailscale funnel reset` is not it, since it removes every
 forward on the Mac.
 
+## 12. Optional: the dashboard as an app
+
+The dashboard can be installed as an app, with its own window and a place in the Dock, from
+`http://127.0.0.1:4141` or from its tailnet name. In Chrome or Edge: the install button at
+the end of the address bar. In Safari: **File → Add to Dock**. On an iPhone or iPad, from
+the tailnet name: **Share → Add to Home Screen**. Installed from both, it is two apps, one
+for each address.
+
+It is the same page, live from minitart: it needs minitart running, and shows nothing
+offline.
+
 ## Later
 
 - **`doctor` says a runner is behind.** GitHub stops accepting old runner versions some

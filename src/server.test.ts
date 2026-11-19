@@ -105,6 +105,23 @@ test('the page and its state are served, with a policy that allows no outside sc
   ]) {
     assert.equal((await fetch(`${origin}${path}`)).status, 200, path);
   }
+  // The app's manifest and icons, as what they are: a browser installs it from these.
+  for (const [path, type] of [
+    ['/manifest.webmanifest', 'application/manifest+json'],
+    ['/favicon.ico', 'image/x-icon'],
+    ['/apple-touch-icon.png', 'image/png'],
+    ['/icons/icon-512.png', 'image/png'],
+    ['/icons/icon-maskable-512.png', 'image/png'],
+  ]) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('content-type'), type, path);
+  }
+  assert.equal(
+    (await fetch(`${origin}/icons/app-icon.svg`)).status,
+    404,
+    'the source is not served',
+  );
   // The tests beside the page are not part of it.
   assert.equal((await fetch(`${origin}/view.test.mjs`)).status, 404);
   const resources = (await (await fetch(`${origin}/api/resources`)).json()) as {
