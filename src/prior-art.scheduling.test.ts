@@ -8,6 +8,7 @@ import { route } from './schedule.ts';
 import { defaultSettings, type Settings } from './settings.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
+import { MemoryHistory } from './history.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
 
@@ -27,8 +28,7 @@ function setup(options: { settings?: Partial<Settings> } = {}) {
     network: 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED, ...options.settings },
     saveSettings: () => {},
-    history: [],
-    saveHistory: () => {},
+    history: new MemoryHistory(),
     now: () => now,
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
   });

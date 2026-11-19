@@ -10,6 +10,7 @@ import { createDashboardServer } from './server.ts';
 import { defaultSettings } from './settings.ts';
 import { FakeGitHub, FakeTart, SERVED } from './testing/fakes.ts';
 import { GitHubError } from './github/types.ts';
+import { MemoryHistory } from './history.ts';
 
 const machine = { cpus: 15, memoryBytes: 64 * 1024 ** 3 };
 
@@ -33,8 +34,7 @@ async function setup() {
     network: 'softnet',
     settings: { ...defaultSettings(machine), repos: SERVED },
     saveSettings: () => {},
-    history: [],
-    saveHistory: () => {},
+    history: new MemoryHistory(),
     sleep: () => new Promise((resolve) => setImmediate(resolve)),
   });
   const port = await freePort();

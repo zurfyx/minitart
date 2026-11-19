@@ -3,13 +3,6 @@
 
 const POOL = { linux: 'Linux', macos: 'macOS' };
 
-/** Midnight today, on this machine's clock. */
-export function startOfDay(now) {
-  const day = new Date(now);
-  day.setHours(0, 0, 0, 0);
-  return day.getTime();
-}
-
 function lowerFirst(text) {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
@@ -53,35 +46,25 @@ export function headline(state) {
     if (coming) parts.push(`${coming} starting`);
     return { lead: `${parts.join(', ')}.`, point: null };
   }
-  const today = state.done.filter((job) => job.endedAt >= startOfDay(state.now)).length;
+  // Counted by minitart, by the Mac's clock: the page is sent only the newest jobs.
+  const today = state.today.finished;
   return {
     lead: 'Idle.',
     point: today ? `${today} ${today === 1 ? 'job' : 'jobs'} today.` : null,
   };
 }
 
-function median(values) {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
 /** The figures beside the headline. */
 export function stats(state) {
   const running = state.vms.filter((vm) => vm.status === 'running');
-  const today = state.done.filter((job) => job.endedAt >= startOfDay(state.now));
-  const waits = today
-    .filter((job) => job.jobAt !== undefined && job.queuedAt !== undefined)
-    .map((job) => Math.max(0, job.jobAt - job.queuedAt));
   return {
     running: running.length,
     linux: running.filter((vm) => vm.pool === 'linux').length,
     macos: running.filter((vm) => vm.pool === 'macos').length,
     queued: state.queued.length,
-    passed: today.filter((job) => job.conclusion === 'success').length,
-    finished: today.length,
-    medianWaitMs: median(waits),
+    passed: state.today.passed,
+    finished: state.today.finished,
+    medianWaitMs: state.today.medianWaitMs,
   };
 }
 

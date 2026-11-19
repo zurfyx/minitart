@@ -17,6 +17,7 @@ function state(overrides = {}) {
     githubError: null,
     draining: false,
     settings: { linux: { max: 2 }, macos: { max: 1 } },
+    today: { passed: 0, finished: 0, medianWaitMs: null },
     ...overrides,
   };
 }
@@ -82,36 +83,31 @@ test('a job whose VM is on its way is starting, not waiting', () => {
   });
 });
 
-test('idle says how many jobs ran today, and only today', () => {
-  const done = (endedAt) => ({ endedAt, conclusion: 'success', job: { name: 'x' } });
-  const said = headline(state({ done: [done(NOW - MIN), done(NOW - 24 * 60 * MIN)] }));
-  assert.deepEqual(said, { lead: 'Idle.', point: '1 job today.' });
+test('idle says how many jobs ran today, as minitart counted them', () => {
+  const today = (finished) => ({ passed: finished, finished, medianWaitMs: null });
+  assert.deepEqual(headline(state({ today: today(1) })), { lead: 'Idle.', point: '1 job today.' });
+  assert.deepEqual(headline(state({ today: today(640) })), {
+    lead: 'Idle.',
+    point: '640 jobs today.',
+  });
 });
 
-test('stats: passed today, and the median wait of the jobs that say when they were queued', () => {
-  const done = (wait, conclusion = 'success') => ({
-    endedAt: NOW - MIN,
-    conclusion,
-    jobAt: NOW - 10 * MIN,
-    queuedAt: NOW - 10 * MIN - wait,
-    job: { name: 'x' },
-  });
+test('stats: running counts VMs with a job; today’s figures are minitart’s own', () => {
   const figures = stats(
     state({
       vms: [vm('running'), vm('booting')],
-      done: [
-        done(10_000),
-        done(30_000, 'failure'),
-        done(50_000),
-        { endedAt: NOW - MIN, conclusion: 'success', job: {} },
-      ],
+      today: { passed: 3, finished: 4, medianWaitMs: 30_000 },
     }),
   );
-  assert.equal(figures.running, 1, 'a VM with no job yet is not running one');
-  assert.equal(figures.passed, 3);
-  assert.equal(figures.finished, 4);
-  assert.equal(figures.medianWaitMs, 30_000);
-  assert.equal(stats(state()).medianWaitMs, null);
+  assert.deepEqual(figures, {
+    running: 1,
+    linux: 1,
+    macos: 0,
+    queued: 0,
+    passed: 3,
+    finished: 4,
+    medianWaitMs: 30_000,
+  });
 });
 
 test('lanes: one per slot, a VM in the first lane of its kind free when it was cloned', () => {
