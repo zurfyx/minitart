@@ -35,10 +35,24 @@ may read and back them up by hand.
 
 ## Consequences
 
-- The history is read with any SQLite client: `sqlite3 -json ~/.minitart/history.db 'select
-  - from jobs order by ended_at desc limit 10'`. `sqlite3`comes with macOS. A copy of the
-file taken while minitart is stopped is a backup; while it runs,`sqlite3 history.db
-    ".backup copy.db"`.
+- The history is read with any SQLite client, and `sqlite3` comes with macOS:
+
+  ```sh
+  sqlite3 -json ~/.minitart/history.db "select * from jobs order by ended_at desc limit 10"
+  ```
+
+  A backup, whether or not minitart is running:
+
+  ```sh
+  sqlite3 ~/.minitart/history.db ".backup history-copy.db"
+  ```
+
+- The database keeps a write-ahead log (`history.db-wal` beside it), so a reader never
+  holds up minitart recording a job, and minitart waits up to two seconds for a writer.
+- A row is a job, not a VM: VM names are six random hex digits and come round again within
+  a year. The same job added twice (an import run again) is one row.
+- A `history.db` that cannot be opened does not stop minitart: it warns, keeps the jobs in
+  memory until it restarts, and the file can be moved aside.
 - `node:sqlite` is marked as still in development by Node. Node 26, which Homebrew installs,
   runs it without a warning. If its interface changes, `src/history.ts` is the one file
   that uses it.

@@ -186,9 +186,18 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
 
   const stamp = (at: number) => new Date(at).toISOString();
   // The jobs that ran, a year of them (D24). The demo's are made up, and kept in memory.
-  const history: History = home
-    ? openHistory(home.dir, (text) => early.push(text))
-    : new MemoryHistory(demo?.history ?? []);
+  let history: History;
+  try {
+    history = home
+      ? openHistory(home.dir, (text) => early.push(text))
+      : new MemoryHistory(demo?.history ?? []);
+  } catch (error) {
+    // A damaged file must not stop the jobs: they run, and are remembered until a restart.
+    early.push(
+      `Could not open history.db (${(error as Error).message}): jobs are kept in memory until it is moved aside`,
+    );
+    history = new MemoryHistory();
+  }
   const pruneHistory = () => {
     try {
       history.prune(Date.now() - KEEP_MS);

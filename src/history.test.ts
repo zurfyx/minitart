@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { MemoryHistory, openHistory, SqliteHistory, type History } from './history.ts';
 import type { DoneView } from './manager.ts';
@@ -63,10 +64,14 @@ for (const [kind, make] of [
     history.add(full);
     history.add(old);
     assert.deepEqual(history.recent(0, 10), [full, old]);
-    // The same VM again replaces it: a VM runs one job.
-    history.add({ ...full, conclusion: 'cancelled' });
+    // The same job twice, as an import run again would add it, is one.
+    history.add(full);
     assert.equal(history.recent(0, 10).length, 2);
-    assert.equal(history.recent(0, 10)[0]?.conclusion, 'cancelled');
+    // A VM name that comes round again months later is another job, and both are kept.
+    history.add({ ...full, endedAt: full.endedAt + 1, job: { ...full.job, id: 77 } });
+    assert.equal(history.recent(0, 10).length, 3);
+    assert.equal(history.repoOfJob(1001), 'octo/app');
+    assert.equal(history.repoOfJob(77), 'octo/app');
   });
 
   test(`${kind}: today’s figures, and the median wait of those that say when they were queued`, () => {
@@ -106,7 +111,12 @@ test('the JSON history of earlier versions is moved in once, and the file kept a
   assert.equal(first.recent(0, 10).length, 2);
   first.add(job(3, 1));
   first.close();
-  assert.deepEqual(readdirSync(dir).sort(), ['history.db', 'history.json.imported']);
+  assert.deepEqual(
+    readdirSync(dir)
+      .filter((name) => !name.endsWith('-wal') && !name.endsWith('-shm'))
+      .sort(),
+    ['history.db', 'history.json.imported'],
+  );
   assert.equal(statSync(join(dir, 'history.db')).mode & 0o777, 0o600, 'for the owner only');
 
   // Opened again: the same rows, nothing imported twice.
@@ -117,6 +127,43 @@ test('the JSON history of earlier versions is moved in once, and the file kept a
   );
   again.close();
   assert.deepEqual(warnings, []);
+});
+
+test('someone reading the database in a terminal does not stop a job being recorded', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minitart-history-'));
+  const history = openHistory(dir, () => {});
+  history.add(job(1, 5));
+  // A reader in the middle of a long read, as `sqlite3` or a backup would be.
+  const reader = new DatabaseSync(join(dir, 'history.db'));
+  reader.exec('BEGIN');
+  reader.prepare('SELECT count(*) FROM jobs').get();
+  history.add(job(2, 1));
+  assert.equal(history.recent(0, 10).length, 2);
+  reader.exec('COMMIT');
+  reader.close();
+  history.close();
+});
+
+test('a file that is not a database throws, for minitart to start without it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minitart-history-'));
+  writeFileSync(
+    join(dir, 'history.db'),
+    'this is not a database, and is long enough to be read as one',
+  );
+  assert.throws(() => openHistory(dir, () => {}), /not a database/);
+});
+
+test('an earlier history.json.imported is never written over', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'minitart-history-'));
+  writeFileSync(join(dir, 'history.json.imported'), '[]');
+  writeFileSync(join(dir, 'history.json'), JSON.stringify([job(1, 5)]));
+  openHistory(dir, () => {}).close();
+  const names = readdirSync(dir);
+  assert.ok(names.includes('history.json.imported'));
+  assert.ok(
+    names.some((name) => /^history\.json\.imported-\d+$/.test(name)),
+    names.join(),
+  );
 });
 
 test('a JSON history that cannot be read is said, and left where it is', () => {

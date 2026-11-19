@@ -59,7 +59,8 @@ export class MemoryHistory implements History {
   }
 
   add(entry: DoneView): void {
-    this.#entries = this.#entries.filter((one) => one.vm !== entry.vm);
+    // The same job twice (an import run again) is one; a VM name used again later is not.
+    if (this.#entries.some((one) => one.vm === entry.vm && one.endedAt === entry.endedAt)) return;
     this.#entries.push(entry);
     this.#entries.sort((a, b) => a.endedAt - b.endedAt);
   }
@@ -117,7 +118,9 @@ function fromRow(row: Row): DoneView {
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS jobs (
-    vm TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
+    -- Six random hex digits: over a year a name comes round again, so it is not the key.
+    vm TEXT NOT NULL,
     repo TEXT NOT NULL,
     pool TEXT NOT NULL,
     job_id INTEGER,
@@ -128,7 +131,8 @@ const SCHEMA = `
     started_at INTEGER NOT NULL,
     job_at INTEGER,
     queued_at INTEGER,
-    ended_at INTEGER NOT NULL
+    ended_at INTEGER NOT NULL,
+    UNIQUE (vm, ended_at)
   ) STRICT;
   CREATE INDEX IF NOT EXISTS jobs_by_end ON jobs (ended_at);
   CREATE INDEX IF NOT EXISTS jobs_by_job ON jobs (job_id);
@@ -144,16 +148,23 @@ export class SqliteHistory implements History {
   readonly #prune;
 
   constructor(path: string) {
-    this.#db = new DatabaseSync(path);
-    if (path !== ':memory:') chmodSync(path, 0o600);
+    // Waits a moment for another reader or writer (`sqlite3` in a terminal) rather than
+    // failing at once. With a write-ahead log, a reader never blocks minitart's writes.
+    this.#db = new DatabaseSync(path, { timeout: 2000 });
+    if (path !== ':memory:') {
+      chmodSync(path, 0o600);
+      this.#db.exec('PRAGMA journal_mode = WAL');
+    }
     this.#db.exec(SCHEMA);
     this.#insert = this.#db.prepare(
-      `INSERT OR REPLACE INTO jobs
+      `INSERT OR IGNORE INTO jobs
         (vm, repo, pool, job_id, job_name, workflow, url, conclusion, started_at, job_at, queued_at, ended_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    this.#since = this.#db.prepare('SELECT * FROM jobs WHERE ended_at >= ? ORDER BY ended_at DESC');
-    this.#newest = this.#db.prepare('SELECT * FROM jobs ORDER BY ended_at DESC LIMIT ?');
+    this.#since = this.#db.prepare(
+      'SELECT * FROM jobs WHERE ended_at >= ? ORDER BY ended_at DESC, id DESC',
+    );
+    this.#newest = this.#db.prepare('SELECT * FROM jobs ORDER BY ended_at DESC, id DESC LIMIT ?');
     this.#byJob = this.#db.prepare('SELECT repo FROM jobs WHERE job_id = ? LIMIT 1');
     this.#prune = this.#db.prepare('DELETE FROM jobs WHERE ended_at < ?');
   }
@@ -223,7 +234,11 @@ export function openHistory(dir: string, warn: (text: string) => void): SqliteHi
     try {
       const entries = JSON.parse(readFileSync(old, 'utf8')) as DoneView[];
       history.addAll(Array.isArray(entries) ? entries : []);
-      renameSync(old, `${old}.imported`);
+      // Never over an earlier one: it is the owner's copy of what was moved in.
+      const aside = existsSync(`${old}.imported`)
+        ? `${old}.imported-${Date.now()}`
+        : `${old}.imported`;
+      renameSync(old, aside);
     } catch (error) {
       warn(`Could not move history.json into history.db: ${(error as Error).message}`);
     }

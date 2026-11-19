@@ -516,11 +516,21 @@ export class Manager {
     if (this.#recent === null || now - this.#recent.at > 5000) {
       const midnight = new Date(now);
       midnight.setHours(0, 0, 0, 0);
-      this.#recent = {
-        at: now,
-        done: this.#deps.history.recent(now - HOUR_MS, RECENT_JOBS),
-        today: this.#deps.history.today(midnight.getTime()),
-      };
+      try {
+        this.#recent = {
+          at: now,
+          done: this.#deps.history.recent(now - HOUR_MS, RECENT_JOBS),
+          today: this.#deps.history.today(midnight.getTime()),
+        };
+      } catch (error) {
+        // The page keeps what it had; nothing that draws it may take the manager down.
+        this.#say('warn', `Could not read the history: ${message(error)}`);
+        this.#recent = {
+          at: now,
+          done: this.#recent?.done ?? [],
+          today: this.#recent?.today ?? { passed: 0, finished: 0, medianWaitMs: null },
+        };
+      }
     }
     return { done: this.#recent.done, today: this.#recent.today };
   }
