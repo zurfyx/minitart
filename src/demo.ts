@@ -161,10 +161,12 @@ export function demoWorld(machine: Machine): {
       }
     }
     wobble = Math.max(-1, Math.min(1, wobble + (Math.random() - 0.5) * 0.4));
+    const other = 8 + wobble * 3;
     return {
       at: time,
-      cpuVms: Math.round(Math.min(96, (busyCores / cores) * 100) * 10) / 10,
-      cpuOther: Math.round((8 + wobble * 3) * 10) / 10,
+      // The whole Mac is 100%: the VMs get what the rest leaves.
+      cpuVms: Math.round(Math.min(100 - other, (busyCores / cores) * 100) * 10) / 10,
+      cpuOther: Math.round(other * 10) / 10,
       memVms: Math.round(gb * 1024),
       memOther: Math.round(Math.min(totalGb - gb, 16 + wobble) * 1024),
     };

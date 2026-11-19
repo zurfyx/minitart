@@ -52,5 +52,9 @@ whether the slots were full, and what starting a VM costs, which no GitHub page 
 ## Consequences
 
 - The charts start empty after a restart, and fill in over the first hour.
+- Whatever else needs the owner, beyond what the headline says, is a line under it: GitHub
+  failing while the Mac is not closed, say, or draining while jobs wait.
+- Today's figures count what the history keeps, the last 200 jobs. A day of more counts
+  only its last 200.
 - A VM of the owner's own, or one `image build` runs, counts as everything else.
 - Slot pips are gone: the timeline's lanes are the slots.

@@ -315,7 +315,7 @@ button.quiet:hover {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr));
   gap: 24px;
   align-items: end;
   margin-top: 12px;

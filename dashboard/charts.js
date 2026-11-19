@@ -65,13 +65,11 @@ function placeTip(tip, x, width) {
  * A stacked area chart of the last hour, with a crosshair whose tooltip lists every series
  * at the pointer. `series`, bottom up: `{ name, values, color }`, `color` 'vm' or 'other'.
  */
-export function areaChart(root, { times, series, max, ticks, format, height, label }) {
+export function areaChart(root, { from, to, times, series, max, ticks, format, height, label }) {
   sized(root, (width) => {
     const m = { top: 8, right: 8, bottom: 22, left: 44 };
     const w = width - m.left - m.right;
     const ht = height - m.top - m.bottom;
-    const from = times[0] ?? 0;
-    const to = times.at(-1) ?? 1;
     const minutes = Math.round((to - from) / 60_000);
     const x = (t) => m.left + ((t - from) / Math.max(1, to - from)) * w;
     const y = (v) => m.top + ht - (Math.min(v, max) / max) * ht;

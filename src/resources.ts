@@ -155,7 +155,9 @@ export class Resources {
     const at = this.#deps.now();
     const cpu = this.#deps.cpuTimes();
     const ps = await this.#deps.run('ps', ['-axo', 'pid=,time=,rss=,comm=']);
-    const processes = ps === null ? [] : vmProcesses(ps);
+    // Not knowing the VMs is not the same as there being none: no point, and nothing forgotten.
+    if (ps === null) return;
+    const processes = vmProcesses(ps);
     const alive = new Set(processes.map((vm) => vm.pid));
     for (const pid of this.#names.keys()) if (!alive.has(pid)) this.#names.delete(pid);
     for (const vm of processes) {
@@ -208,8 +210,12 @@ export class Resources {
       ...images.map((name) => join(this.#deps.tartHome, 'vms', name)),
       join(this.#deps.tartHome, 'cache'),
     ];
-    const du = await this.#deps.run('du', ['-sk', ...paths]);
-    const sizes = du === null ? new Map<string, number>() : duSizes(du);
+    // One at a time: `du` fails on the lot when one of them is missing (an image not built).
+    const sizes = new Map<string, number>();
+    for (const path of paths) {
+      const du = await this.#deps.run('du', ['-sk', path]);
+      for (const [where, bytes] of du === null ? [] : duSizes(du)) sizes.set(where, bytes);
+    }
     const tart = [
       ...images.map((name) => ({ name, bytes: sizes.get(join(this.#deps.tartHome, 'vms', name)) })),
       { name: 'Downloaded images', bytes: sizes.get(join(this.#deps.tartHome, 'cache')) },

@@ -110,22 +110,32 @@ function render() {
   $('machine').textContent =
     `${state.machine.name} · ${state.machine.cpus} cores · ${Math.round(state.machine.memoryBytes / GB)} GB`;
 
-  // Said always, whatever else is going on: jobs can reach the LAN.
-  $('alerts').replaceChildren(
-    ...(state.network === 'shared'
-      ? [
-          h(
-            'p',
-            { class: 'alert' },
-            status('fix', 'Started with --unsafe-shared-network: jobs can reach your LAN.'),
-          ),
-        ]
-      : []),
-  );
   $('setup').hidden = state.app !== null || state.repos.length > 0;
   $('drain').textContent = state.draining ? 'Resume' : 'Drain';
 
   const said = headline(state);
+  // The headline says the most important thing; whatever else needs the owner is said here.
+  const words = `${said.lead} ${said.point ?? ''}`.toLowerCase();
+  const alerts = [];
+  if (state.network === 'shared') {
+    alerts.push('Started with --unsafe-shared-network: jobs can reach your LAN.');
+  }
+  if (state.blocked && !words.includes(state.blocked.toLowerCase())) {
+    alerts.push(`No VM is started until this is put right. ${state.blocked}`);
+  }
+  if (state.githubError && !words.includes(state.githubError.toLowerCase())) {
+    alerts.push(`GitHub: ${state.githubError}`);
+  }
+  if (state.draining && said.lead !== 'Draining.') {
+    alerts.push('Draining: the jobs that are running finish, and no new one starts.');
+  }
+  if (state.shortOfMemory && !words.includes(state.shortOfMemory.toLowerCase())) {
+    alerts.push(`${state.shortOfMemory}: jobs wait until there is room.`);
+  }
+  $('alerts').replaceChildren(
+    ...alerts.map((text) => h('p', { class: 'alert' }, status('fix', text))),
+  );
+
   $('headline').replaceChildren(
     said.lead,
     said.point ? ' ' : '',
@@ -308,6 +318,9 @@ function drawResources() {
   if (!resources) return;
   const points = resources.points;
   const times = points.map((point) => point.at);
+  // The hour up to the newest point, as the timeline shows it, however few points there are.
+  const to = points.at(-1)?.at ?? Date.now();
+  const span = { from: to - HOUR, to };
   const last = points.at(-1);
   const memoryGb = Math.round(resources.memoryBytes / GB);
   $('cpu-now').textContent = last ? `${Math.round(last.cpuVms + last.cpuOther)}% now` : '';
@@ -320,6 +333,7 @@ function drawResources() {
   ];
   if (!inUse($('cpu'))) {
     areaChart($('cpu'), {
+      ...span,
       times,
       series: series(
         (point) => point.cpuVms,
@@ -334,6 +348,7 @@ function drawResources() {
   }
   if (!inUse($('memory'))) {
     areaChart($('memory'), {
+      ...span,
       times,
       series: series(
         (point) => point.memVms,

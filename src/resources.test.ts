@@ -59,6 +59,7 @@ function mac() {
     available: (40 * 1024) as number | null,
     processes: new Map<number, { name: string; seconds: number; rss: number }>(),
     lsofCalls: 0,
+    failPs: false,
     du: '' as string | null,
     statfsPaths: [] as string[],
   };
@@ -77,6 +78,7 @@ function mac() {
     },
     run: async (command, args) => {
       if (command === 'ps') {
+        if (world.failPs) return null;
         return [...world.processes]
           .map(([pid, p]) => `${pid} 0:${p.seconds.toFixed(2)} ${p.rss / 1024} ${VZ}`)
           .join('\n');
@@ -86,7 +88,11 @@ function mac() {
         const vm = world.processes.get(Number(args.at(-1)));
         return vm ? `p1\nn/t/vms/${vm.name}/disk.img\n` : null;
       }
-      if (command === 'du') return world.du;
+      if (command === 'du') {
+        // As `du` does: a path that is not there fails the call.
+        const line = world.du?.split('\n').find((one) => one.endsWith(`\t${args.at(-1)}`));
+        return line === undefined ? null : `${line}\n`;
+      }
       return null;
     },
   };
@@ -172,6 +178,35 @@ test('disk: the data volume, and what Tart keeps of each image and of its downlo
   world.now += STEP_MS;
   await resources.sample();
   assert.equal(resources.view().disk?.tart.length, 3);
+});
+
+test('an image not built yet leaves out only itself', async () => {
+  const { world, resources } = mac();
+  world.du = `5000000\t/t/vms/minitart-base-linux\n100\t/t/cache\n`;
+  await resources.sample();
+  assert.deepEqual(
+    resources.view().disk?.tart.map((entry) => entry.name),
+    ['minitart-base-linux', 'Downloaded images'],
+  );
+});
+
+test('a ps that fails adds no point and forgets no VM', async () => {
+  const { world, resources } = mac();
+  world.processes.set(7, { name: 'minitart-linux-0a1b2c', seconds: 10, rss: GB });
+  await resources.sample();
+  world.now += STEP_MS;
+  world.total += 100;
+  world.failPs = true;
+  await resources.sample();
+  assert.equal(resources.view().points.length, 0);
+  world.failPs = false;
+  world.now += STEP_MS;
+  world.busy += 50;
+  world.total += 100;
+  world.processes.get(7)!.seconds += 20;
+  await resources.sample();
+  assert.equal(resources.view().points[0]?.cpuVms, 10, 'its CPU counts from before the failure');
+  assert.equal(world.lsofCalls, 1, 'and it was not asked about again');
 });
 
 test('memory not known from macOS is not made up', async () => {

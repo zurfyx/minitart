@@ -473,7 +473,7 @@ export class Manager {
           if (this.#short !== null) job.note = `${this.#short}: the job waits until there is room`;
         } else if (limits[job.pool] > 0) {
           const kind = job.pool === 'macos' ? 'macOS' : 'Linux';
-          job.note = `Every ${kind} slot is in use (${limits[job.pool]} of ${limits[job.pool]})`;
+          job.note = `Every ${kind} slot is in use (${count[job.pool]} of ${limits[job.pool]})`;
         }
       }
     }
