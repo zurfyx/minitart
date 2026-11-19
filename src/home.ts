@@ -15,6 +15,8 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+const VM_LOG = /^minitart-(linux|macos)-[0-9a-f]{6}\.log$/;
+
 export class Home {
   readonly dir: string;
 
@@ -74,11 +76,11 @@ export class Home {
     }
   }
 
-  /** How many VM logs there are, and what they take. */
+  /** How many VM logs there are, and what they take. minitart's own log is not one. */
   logsUsage(): { files: number; bytes: number } {
     try {
       const dir = this.path('logs');
-      const names = readdirSync(dir).filter((name) => name.endsWith('.log'));
+      const names = readdirSync(dir).filter((name) => VM_LOG.test(name));
       let bytes = 0;
       for (const name of names) bytes += statSync(join(dir, name)).size;
       return { files: names.length, bytes };
@@ -92,7 +94,7 @@ export class Home {
     try {
       const dir = this.path('logs');
       const logs = readdirSync(dir)
-        .filter((name) => /^minitart-(linux|macos)-[0-9a-f]{6}\.log$/.test(name) && !skip.has(name))
+        .filter((name) => VM_LOG.test(name) && !skip.has(name))
         .map((name) => ({ name, modified: statSync(join(dir, name)).mtimeMs }))
         .sort((a, b) => b.modified - a.modified);
       for (const log of logs.slice(keep)) rmSync(join(dir, log.name), { force: true });

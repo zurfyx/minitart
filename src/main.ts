@@ -6,7 +6,7 @@ import { availableParallelism, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { demoWorld } from './demo.ts';
 import { applyFixes, blockedBy, firewallInstalled, runChecks, type Check } from './doctor.ts';
 import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
@@ -318,6 +318,23 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     resources: () => resources.view(),
     history,
     vmLogFile: (name, maxBytes) => home?.readLog(`${name}.log`, maxBytes) ?? null,
+    // Where the service writes: Homebrew's log folder, or the folder of `service install`.
+    ownLogs: () =>
+      // The demo writes no log of its own, and shows none of the Mac's.
+      (home
+        ? [
+            '/opt/homebrew/var/log/minitart.log',
+            '/usr/local/var/log/minitart.log',
+            home.path('logs', 'manager.log'),
+          ]
+        : []
+      ).flatMap((path) => {
+        try {
+          return [{ path, bytes: statSync(path).size }];
+        } catch {
+          return [];
+        }
+      }),
     logs: () => ({ ...(home?.logsUsage() ?? { files: 0, bytes: 0 }), kept: KEPT_VM_LOGS }),
     tailnet: () => tailnet,
     machine,

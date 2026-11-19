@@ -137,7 +137,8 @@ Everything else is rebuilt from GitHub and Tart on start.
   job's log, fetched from GitHub, for jobs minitart ran.
 - `GET /api/jobs?page=&repo=&result=`: the history, 50 jobs a page, newest first
   ([D24](decisions/D24-a-year-of-history-in-sqlite.md)).
-- `GET /api/storage`: what the history and the VM logs take, and how long jobs are kept.
+- `GET /api/storage`: what the history, the VM logs and minitart's own log take, and how
+  long jobs are kept.
 - `POST /api/settings`: which repos are served, VM counts and size, timings.
 - `POST /api/drain`: start no new jobs and let the running ones finish, or resume.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.

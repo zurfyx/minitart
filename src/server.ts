@@ -32,6 +32,8 @@ export interface ServerDeps {
   vmLogFile?: (name: string, maxBytes: number) => string | null;
   /** The VM logs kept on disk: how many, what they take, and how many are kept at most. */
   logs?: () => { files: number; bytes: number; kept: number };
+  /** minitart's own log files, where it writes what the Activity list shows, and their size. */
+  ownLogs?: () => { path: string; bytes: number }[];
   machine: Machine;
   port: number;
   /**
@@ -134,6 +136,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
           history: deps.history?.stats() ?? null,
           keepDays: Math.round(KEEP_MS / 86_400_000),
           logs: deps.logs?.() ?? null,
+          own: deps.ownLogs?.() ?? [],
         });
       }
 
