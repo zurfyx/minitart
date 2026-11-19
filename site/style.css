@@ -128,7 +128,7 @@ h1 {
 .status {
   max-width: 70ch;
   margin: 28px 0 0;
-  color: var(--warn);
+  color: var(--muted);
   font-size: 15px;
 }
 
@@ -142,6 +142,19 @@ h1 {
   height: auto;
   border: 1px solid var(--rule-strong);
   border-radius: 10px;
+}
+
+.command {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.shot.menu {
+  margin-top: 24px;
+}
+
+.shot.menu img {
+  width: min(100%, 437px);
 }
 
 .shot figcaption {

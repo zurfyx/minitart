@@ -13,8 +13,8 @@ with one Mac and a handful of private repos. [minitart.rovira.sh](https://minita
   <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
 </picture>
 
-> **Early.** Built for one Mac mini. Read [the security model](docs/security.md), and the
-> code, before you trust it with yours.
+> minitart runs its author's CI on a Mac mini. Read [the security
+> model](docs/security.md), and the code, before you trust it with yours.
 
 ## What you get
 
@@ -61,33 +61,66 @@ You need an Apple silicon Mac on macOS 26 or newer, Node 24 or newer, and Homebr
 short version is below; [docs/setup.md](docs/setup.md) is the full one, step by step, with
 how to tell each step worked and which three need you in person.
 
+### 1. Install: pick one
+
+**The command line and the dashboard.** Everything minitart is, run from Terminal and
+watched in the browser:
+
 ```bash
 brew install zurfyx/tap/minitart
-minitart doctor --fix        # installs Tart and Softnet, and does what needs your password
+```
 
+**The same, with a menu bar app.** One command installs minitart and a Mac app for it that
+lives in the menu bar:
+
+```bash
+brew install --cask zurfyx/tap/minitart-app
+```
+
+Its mark says how things are: a prompt when idle, the number of jobs running, an
+exclamation mark when minitart needs you. Its menu says what the dashboard's headline says,
+lists the jobs running, opens the dashboard, and offers to start minitart or to finish the
+setup when either is due.
+
+<img src="site/menu-bar.png" width="437" alt="minitart's menu bar app open: the mark with 6 on its screen, the headline, six jobs running and four waiting, Open Dashboard, Drain, Settings and Quit" />
+
+### 2. Get the Mac ready
+
+The same either way, in Terminal:
+
+```bash
+minitart doctor --fix        # installs Tart and Softnet, and does what needs your password
 minitart image build linux   # under a minute
 minitart image build macos   # downloads tens of gigabytes the first time
 minitart selftest            # boots a VM and checks what it can reach
-minitart start               # the manager, and the dashboard at 127.0.0.1:4141
 ```
 
 `doctor --fix` installs what is missing and asks for your password once, for three things:
 letting Softnet (the network filter) run as root, a firewall rule that keeps VMs off the
 Mac's own services, and stopping the Mac from sleeping. `minitart doctor` alone only looks,
-and prints the command for each.
+and prints the command for each. The menu bar app's **Finish setup in Terminal** runs the
+same `doctor --fix`.
 
-Then open <http://127.0.0.1:4141> on the Mac, click **Create the GitHub App**, and on
-GitHub choose "Only select repositories" and pick yours. Back in the dashboard, click
-**Serve** on each. Jobs with a minitart label start running.
-
-To keep it running across restarts:
+### 3. Start it
 
 ```bash
 brew services start minitart     # starts at login, restarts if it stops
 ```
 
+With the menu bar app, **Start minitart** in its menu does the same. `minitart start` runs it
+in the foreground instead, until you stop it.
+
+### 4. Connect GitHub
+
+Open <http://127.0.0.1:4141> on the Mac (or **Open Dashboard** in the menu), click **Create
+the GitHub App**, and on GitHub choose "Only select repositories" and pick yours. Back in the
+dashboard, click **Serve** on each. Jobs with a minitart label start running.
+
+### Keeping it up
+
 To upgrade, `minitart upgrade`: it waits for running jobs, upgrades minitart, Tart and
-Softnet together, and asks for your password once to put Softnet's permission back.
+Softnet together (and the menu bar app, if you have it), and asks for your password once to
+put Softnet's permission back.
 
 The Mac has to stay logged in. After a restart nothing runs until someone logs in, unless
 automatic login is on, and that needs FileVault off. Which you prefer is yours to choose;
