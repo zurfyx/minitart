@@ -88,7 +88,10 @@ dashboard's headline says, lists the jobs running, opens the dashboard, drains a
 and offers to start minitart, finish the setup or upgrade it when one is due. It opens at
 login; its Settings menu turns that off.
 
-<img src="site/menu-bar.png" width="437" alt="minitart's menu bar app open: the mark with 6 on its screen, the headline, six jobs running and four waiting, Open Dashboard, Drain, Settings and Quit" />
+<picture>
+  <source srcset="site/menu-bar-dark.png" media="(prefers-color-scheme: dark)" />
+  <img src="site/menu-bar.png" width="447" alt="minitart's menu bar app open: the mark with 6 on its screen, the headline, the jobs running with how long each has run, what waits, Open Dashboard, Drain, Settings and Quit" />
+</picture>
 
 ### 2. Get the Mac ready
 
