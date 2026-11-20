@@ -187,3 +187,18 @@ enum Terminal {
     NSWorkspace.shared.open(file)
   }
 }
+
+/// The app opens at login unless the owner turns it off (D26): a menu bar companion that is
+/// gone after a restart is not doing its job. It registers once, on its first launch from
+/// /Applications, so a copy built for development never becomes the login item, and turning
+/// it off in Settings is never undone.
+enum LoginItem {
+  static let asked = "openAtLoginRegistered"
+
+  static func registerOnFirstLaunch() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: asked), Bundle.main.bundlePath.hasPrefix("/Applications/") else { return }
+    defaults.set(true, forKey: asked)
+    try? SMAppService.mainApp.register()
+  }
+}

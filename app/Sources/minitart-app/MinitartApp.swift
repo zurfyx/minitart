@@ -15,6 +15,7 @@ struct MinitartApp: App {
       RenderMarks.run(into: arguments[flag + 1])
       exit(0)
     }
+    LoginItem.registerOnFirstLaunch()
   }
 
   var body: some Scene {
