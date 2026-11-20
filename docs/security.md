@@ -151,11 +151,10 @@ enters a VM.
   your tailnet lets reach that name can do everything someone at the Mac can: see every job
   and log, change which repos are served, create the GitHub App. There are no accounts in
   minitart; who gets in is your tailnet's access rules.
-- **Not the internet.** A name that Tailscale Funnel publishes is not answered to, a request
-  that Tailscale marks as arriving through Funnel is refused outright, and a name forwarded
-  as plain HTTP is not answered to either. Bare TCP forwarded to the dashboard, by Serve or
-  by Funnel, is not refused: it carries no name to check, and minitart cannot tell it from
-  the Mac. `doctor` flags it. Do not set it up.
+- **Not the internet.** It has no accounts: whoever reaches it can do everything you can.
+  Exposing it publicly, through Tailscale Funnel or any other tunnel, is the same mistake as
+  for any service on the Mac. minitart refuses requests Tailscale marks as coming through
+  Funnel, but it cannot see every tunnel.
 - Requests under any other `Host` are refused, so a web page cannot read the dashboard by
   pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
 - **The menu bar app** talks only to the dashboard at `127.0.0.1`. It reads `/api/state` and

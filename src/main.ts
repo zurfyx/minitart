@@ -265,6 +265,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
         runners: { have: home ? builtRunners(home) : {}, latest: newest },
         versions: { running: VERSION, latest: latestVersion },
         tailnet,
+        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
       });
     } finally {
       checking = false;
@@ -432,6 +433,7 @@ async function main(): Promise<number> {
         runners: { have: builtRunners(home), latest: await newestRunner() },
         versions: { running: VERSION, latest: await newestMinitart() },
         tailnet: await readTailnet(port),
+        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
       });
     // The Homebrew that installed minitart, not whichever comes first on the PATH.
     const install = installKind(fileURLToPath(import.meta.url));

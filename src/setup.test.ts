@@ -9,6 +9,7 @@ import {
   neverSleeps,
   runChecks,
   softnetIsSetuidRoot,
+  type DoctorInput,
 } from './doctor.ts';
 import { buildImage, parseRunnerRelease, type BuiltImage } from './image.ts';
 import { plist, stableNode } from './service.ts';
@@ -96,7 +97,7 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
   assert.ok(!atLeast('2.41.9', '2.42.0'));
   assert.ok(!atLeast('0.24.0', '0.24.1'));
 
-  const checks = await runChecks({
+  const input: DoctorInput = {
     network: 'softnet',
     settings,
     images: new Set(['minitart-base-linux', 'minitart-base-macos']),
@@ -128,13 +129,21 @@ test('doctor: versions, a stale runner, a full disk, and a Mac that will not log
         fix: 'tailscale serve --bg --https=8443 http://127.0.0.1:4141',
       },
     ],
-  });
+  };
+  const checks = await runChecks(input);
   const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
-  assert.equal(byId['tart']?.fix, 'brew upgrade tart');
+  assert.equal(byId['tart']?.fix, 'brew upgrade openai/tools/tart');
   assert.equal(
     byId['network']?.fix,
-    'brew unpin softnet && brew upgrade openai/tools/softnet && brew pin softnet',
+    'brew unpin softnet; brew upgrade openai/tools/softnet; brew pin softnet',
   );
+  // Installed with Homebrew, the way to a newer Tart or Softnet is minitart's own upgrade,
+  // which drains first and puts Softnet's pin and permission back.
+  const fromBrew = Object.fromEntries(
+    (await runChecks({ ...input, fromBrew: true })).map((check) => [check.id, check]),
+  );
+  assert.equal(fromBrew['tart']?.fix, 'minitart upgrade');
+  assert.equal(fromBrew['network']?.fix, 'minitart upgrade');
   assert.match(byId['runner-linux']?.detail ?? '', /2\.330\.0.*2\.338\.2/);
   assert.equal(byId['runner-linux']?.optional, true);
   assert.equal(byId['runner-macos'], undefined);
@@ -616,7 +625,7 @@ test('a Mac whose network is not closed starts no VM, and says which step is mis
   });
   assert.match(
     blockedBy(old, 'softnet') ?? '',
-    /Run: brew unpin softnet && brew upgrade openai\/tools\/softnet && brew pin softnet$/,
+    /Run: brew unpin softnet; brew upgrade openai\/tools\/softnet; brew pin softnet$/,
   );
 });
 
