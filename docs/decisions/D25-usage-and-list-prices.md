@@ -17,11 +17,13 @@ The dashboard has a Usage view. It shows, for the last 7, 30 or 90 days or a yea
 The providers are GitHub-hosted, Blacksmith, Depot, Namespace, WarpBuild and Avrea, all
 shown at first. A Providers menu by the table's heading, closed until opened, picks which
 are in the table and its notes. Each row has a menu for its Linux runner and one for its
-macOS runner, each runner with its price a minute; they start at a 2 vCPU x64 Linux runner,
-the size of GitHub's `ubuntu-latest`, and the provider's smallest macOS runner. A row of
-toggles and a plain table with no menus were both tried first: the toggles put controls on
-the page for something done once, and without menus the table no longer showed each
-provider's runners and prices.
+macOS runner, each runner written the same way for every provider: its vCPUs, its memory
+and, for macOS, the chip where the provider names it, from the provider's own pages, then
+its price a minute; they start at a 2 vCPU x64 Linux runner, the size of GitHub's
+`ubuntu-latest`, and the provider's smallest macOS runner. A row of toggles and a plain
+table with no menus were both tried first: the toggles put controls on the page for
+something done once, and without menus the table no longer showed each provider's runners
+and prices.
 
 ## Why
 
