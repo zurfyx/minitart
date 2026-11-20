@@ -1,5 +1,5 @@
-// What the Cost view works out (D25): the minutes run here, what other providers would have
-// charged for them at list price, and what this Mac costs. No page, no clock: tested in
+// What the Usage view works out (D25): the minutes run here, the same minutes at other
+// providers' list prices, for reference, and what this Mac costs. No page, no clock: tested in
 // cost.test.mjs.
 
 /** An average month, for "a month" figures. */
@@ -48,7 +48,7 @@ export function daysCounted(dates, oldestDay) {
 }
 
 /**
- * What the range's minutes would cost at each provider compared, at the runner chosen for
+ * The range's minutes at each provider's list price, at the runner chosen for
  * each kind. Providers in `compare`'s order; one not in the price list is left out.
  */
 export function compareProviders(sum, providers, compare) {

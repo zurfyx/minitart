@@ -18,7 +18,14 @@ deletes the VM when its job ends. A page served by the same process shows what i
 ```
 
 Nothing connects in. The manager and the runners only make outbound HTTPS requests, so the
-Mac needs no open port, no public address and no tunnel ([D02](decisions/D02-the-manager-polls.md)).
+Mac needs no open port, no public address and no tunnel
+([D02](decisions/D02-the-manager-polls.md)).
+
+The menu bar app (`app/`, [D26](decisions/D26-a-menu-bar-app.md)) is a second client of the
+dashboard on this Mac: it reads `GET /api/state` every three seconds and sends
+`POST /api/drain`, and when minitart does not answer it looks for its install and its
+service. The fields it reads (`app/Sources/MinitartCore/State.swift`) are a contract: rename
+or remove one only with the app.
 
 ## The life of a job
 
@@ -30,13 +37,14 @@ Mac needs no open port, no public address and no tunnel ([D02](decisions/D02-the
 3. **Plan** (`src/schedule.ts`, pure). Oldest job first: a job is covered by a VM already
    starting or waiting for its repo; otherwise it gets a new VM if its kind has a free slot.
 4. **Start.** If the Mac has the memory for one more VM right now
-   ([D22](decisions/D22-a-vm-needs-its-memory-first.md)); otherwise the job waits. `tart clone` the kind's image (copy-on-write, under a second), set CPU and
-   memory, `tart run` it headless on the isolated network, and wait for the guest agent.
+   ([D22](decisions/D22-a-vm-needs-its-memory-first.md)); otherwise the job waits.
+   `tart clone` the kind's image (copy-on-write, under a second), set CPU and memory,
+   `tart run` it headless on the isolated network, and wait for the guest agent.
 5. **Register.** The manager asks GitHub for a just-in-time runner config for that repo: a
    runner that exists for one job, named after the VM.
-6. **Run.** `tart exec` starts the runner in the guest. The config goes in on standard
-   input and reaches the runner through its environment, never as an argument. The runner
-   takes one job, and its output is the VM's log.
+6. **Run.** `tart exec` starts the runner in the guest. The config goes in on standard input
+   and reaches the runner through its environment, never as an argument. The runner takes
+   one job, and its output is the VM's log.
 7. **Delete.** When the runner exits, `tart stop`, `tart delete`. The job is added to the
    done list with GitHub's link to it.
 
@@ -45,42 +53,48 @@ three minutes: its runner registration is removed first, and the VM is stopped o
 GitHub has let go of it. A VM that does not boot, or whose runner has not reached GitHub
 within three minutes, is deleted and the job gets another; a kind whose VMs keep failing
 waits longer before each new try, up to five minutes. A VM still up five minutes after
-GitHub called its job done is stopped. On start, the manager deletes any job VM left by an earlier run: job
-VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched. That is one of the two
-times it runs `tart list` (the other is after a VM could not be deleted): on macOS 27 each
-listing leaks kernel memory, so the loop asks Tart about nothing it can read from disk.
+GitHub called its job done is stopped. On start, the manager deletes any job VM left by an
+earlier run: job VMs are named `minitart-<kind>-<6 hex>`, and nothing else is touched. That
+is one of the two times it runs `tart list` (the other is after a VM could not be deleted):
+on macOS 27 each listing leaks kernel memory, so the loop asks Tart about nothing it can
+read from disk.
 
 When the manager stops, it deletes every VM. A job that was running fails on GitHub as
 "runner lost" and can be re-run.
 
 ## Parts
 
-| File                              | What it is                                                                                    |
-| --------------------------------- | --------------------------------------------------------------------------------------------- |
-| `src/main.ts`                     | The command line: `start`, `doctor`, `upgrade`, `drain`, `image build`, `selftest`, `service` |
-| `src/manager.ts`                  | The loop above, and the state the dashboard shows                                             |
-| `src/schedule.ts`                 | Which jobs are minitart's, and which VMs to start (pure)                                      |
-| `src/tart.ts`                     | The `tart` command line, and the flags that isolate a VM                                      |
-| `src/github/`                     | The REST client, and the GitHub App: its JWT, tokens and manifest                             |
-| `src/server.ts`                   | The dashboard's HTTP server                                                                   |
-| `src/tailnet.ts`                  | The tailnet names Tailscale forwards to the dashboard                                         |
-| `src/settings.ts`                 | Defaults from the machine; validation of what the dashboard saves                             |
-| `src/doctor.ts`                   | Is this Mac set up the way the security model assumes                                         |
-| `src/memory.ts`                   | What macOS has to spare for a new VM                                                          |
-| `src/selftest.ts`                 | Boots a VM and checks what it can reach                                                       |
-| `src/image.ts`                    | Builds the image job VMs are cloned from, with `images/*.sh`                                  |
-| `src/service.ts`                  | Installs the LaunchAgent                                                                      |
-| `src/upgrade.ts`                  | `minitart upgrade`: drain, upgrade, put right, restart                                        |
-| `src/version.ts`                  | The version a release wrote, or `0.0.0-dev` for a checkout                                    |
-| `src/testing/`                    | A GitHub and a Tart in memory, for the tests and `--demo`                                     |
-| `firewall/`                       | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                |
-| `src/resources.ts`                | CPU, memory and disk over the last hour, for the charts                                       |
-| `src/pricing.ts`                  | Other providers' list prices, with their sources and the date read                            |
-| `src/history.ts`                  | The jobs that ran, a year of them, in SQLite                                                  |
-| `app/`                            | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                            |
-| `dashboard/`                      | The page: plain HTML, CSS and three scripts, no build                                         |
-| `Formula/`, `scripts/release.mjs` | The Homebrew formula's template, and the release tooling                                      |
-| `site/`                           | minitart.rovira.sh                                                                            |
+| File                                                                  | What it is                                                                                                                      |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                                                         | The command line: `start`, `doctor`, `upgrade`, `drain`, `resume`, `image build`, `selftest`, `service install` and `uninstall` |
+| `src/manager.ts`                                                      | The loop above, and the state the dashboard shows                                                                               |
+| `src/schedule.ts`                                                     | Which jobs are minitart's, and which VMs to start (pure)                                                                        |
+| `src/tart.ts`                                                         | The `tart` command line, and the flags that isolate a VM                                                                        |
+| `src/github/`                                                         | The REST client, and the GitHub App: its JWT, tokens and manifest                                                               |
+| `src/server.ts`                                                       | The dashboard's HTTP server                                                                                                     |
+| `src/tailnet.ts`                                                      | The tailnet names Tailscale forwards to the dashboard                                                                           |
+| `src/settings.ts`                                                     | Defaults from the machine; validation of what the dashboard saves                                                               |
+| `src/doctor.ts`                                                       | Is this Mac set up the way the security model assumes                                                                           |
+| `src/memory.ts`                                                       | What macOS has to spare for a new VM                                                                                            |
+| `src/selftest.ts`                                                     | Boots a VM and checks what it can reach                                                                                         |
+| `src/image.ts`                                                        | Builds the image job VMs are cloned from, with `images/*.sh`                                                                    |
+| `src/service.ts`                                                      | Installs the LaunchAgent                                                                                                        |
+| `src/upgrade.ts`                                                      | `minitart upgrade`: drain, upgrade (the menu bar app too, when installed), put right, restart                                   |
+| `src/version.ts`                                                      | The version a release wrote, or `0.0.0-dev` for a checkout                                                                      |
+| `src/testing/`                                                        | A GitHub and a Tart in memory, for the tests and `--demo`                                                                       |
+| `firewall/`                                                           | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                                                  |
+| `src/resources.ts`                                                    | CPU, memory and disk over the last hour, for the charts                                                                         |
+| `src/pricing.ts`                                                      | Other providers' list prices, with their sources and the date read                                                              |
+| `src/history.ts`                                                      | The jobs that ran, a year of them, in SQLite                                                                                    |
+| `src/home.ts`                                                         | `~/.minitart`: its files, kept to the owner, and old VM logs pruned                                                             |
+| `src/demo.ts`                                                         | The made-up jobs and VMs of `--demo`                                                                                            |
+| `app/`                                                                | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                                                              |
+| `dashboard/`                                                          | The page: plain HTML, CSS and four scripts (`app.js`, `view.js`, `charts.js`, `cost.js`), no build                              |
+| `test/headline-cases.json`                                            | The headline cases the dashboard and the menu bar app are both held to                                                          |
+| `Formula/`, `Casks/`, `scripts/release*.mjs`, `scripts/update-tap.sh` | The formula's and the app cask's templates, and the release tooling                                                             |
+| `scripts/pr-checklist.mjs`                                            | The pr-checklist job ([D13](decisions/D13-a-pull-request-shows-its-work.md))                                                    |
+| `.github/workflows/`                                                  | `ci.yml`, `pr.yml`, `release.yml`, `release-app.yml`                                                                            |
+| `site/`                                                               | minitart.rovira.sh                                                                                                              |
 
 There is no build step and no runtime dependency: Node runs the TypeScript files as they are
 ([D07](decisions/D07-typescript-run-as-it-is.md)).
@@ -107,6 +121,7 @@ The App subscribes to no events and its webhook is inactive.
 | `GET /repos/{repo}/actions/runs?status={status}`           | Every poll, per watched repo, once for each status of a run that has not completed |
 | `GET /repos/{repo}/actions/runs`                           | Every poll, per watched repo: the newest 100, for a run the lists by status miss   |
 | `GET /repos/{repo}/actions/runs/{id}/jobs`                 | Every poll, per active run                                                         |
+| `GET /repos/{repo}/actions/runs/{id}`                      | Once per run not seen in the lists: who triggered it                               |
 | `POST /repos/{repo}/actions/runners/generate-jitconfig`    | Once per VM                                                                        |
 | `DELETE /repos/{repo}/actions/runners/{id}`                | For a VM that got no job                                                           |
 | `GET /repos/{repo}/actions/jobs/{id}/logs`                 | When a log is opened                                                               |
@@ -143,7 +158,8 @@ Everything else is rebuilt from GitHub and Tart on start.
   ([D25](decisions/D25-usage-and-list-prices.md)).
 - `GET /api/storage`: what the history, the VM logs and minitart's own log take, and how
   long jobs are kept.
-- `POST /api/settings`: which repos are served, VM counts and size, timings.
+- `POST /api/settings`: which repos are served, VM counts and size, timings, and the Usage
+  view's choices: the providers and runners compared, and what this Mac costs.
 - `POST /api/drain`: start no new jobs and let the running ones finish, or resume.
 - `GET /setup/manifest`, `GET /setup/callback`: creating the GitHub App.
 - `GET /manifest.webmanifest` and the icons: what makes the page an app a browser can

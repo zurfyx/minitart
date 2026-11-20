@@ -5,8 +5,8 @@ Status: `DECIDED`
 ## Decision
 
 minitart authenticates as a GitHub App that belongs to the owner. The dashboard creates it
-with GitHub's App manifest flow: one click on the Mac, one on GitHub. The owner then installs
-it on "Only select repositories".
+with GitHub's App manifest flow: one click on the Mac, one on GitHub. The owner then
+installs it on "Only select repositories".
 
 **A repo is served when two lists agree**: the App is installed on it, and the owner has
 turned it on in the dashboard (`repos` in the settings). A fresh install serves nothing. A
@@ -26,9 +26,10 @@ The App's private key is stored in `~/.minitart/app.json`, mode 0600, and never 
   that one click would put every repo of the account, present and future, on the Mac. The
   list in minitart is visible, short, and off by default; the two can only disagree in the
   safe direction, since a repo needs both.
-- **Least privilege that a personal access token cannot match.** The App cannot read code or
-  secrets. Its tokens last an hour. A classic token with `repo` scope can do everything the
-  owner can.
+- **Least privilege that a personal access token cannot match.** Its tokens cannot read code
+  or secrets directly (though its key, if stolen, reaches both through Administration and
+  through runners that are handed jobs: [security.md](../security.md)). Its tokens last an
+  hour. A classic token with `repo` scope can do everything the owner can.
 - **A file, not the keychain**: a process running as the owner can read a keychain item
   through the tool that stored it, without a prompt. The keychain would add a step and no
   protection. What protects the key is that jobs run in VMs.

@@ -90,6 +90,11 @@ export interface DoctorInput {
   freeDiskGb?: number | null;
   /** The tailnet names Tailscale forwards to the dashboard. */
   tailnet?: readonly TailnetName[];
+  /**
+   * Whether minitart came from Homebrew: then `minitart upgrade` is the way to a newer Tart or
+   * Softnet, since it drains first and puts Softnet's pin and permission back.
+   */
+  fromBrew?: boolean;
 }
 
 /** Softnet creates a network interface, which takes root: the binary must be setuid root. */
@@ -118,7 +123,14 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
         : tartOk
           ? `Tart ${version}`
           : `Tart ${version} is older than ${MIN_TART}, which fixed bugs minitart would hit`,
-    fix: version === null ? 'brew install openai/tools/tart' : tartOk ? null : 'brew upgrade tart',
+    fix:
+      version === null
+        ? 'brew install openai/tools/tart'
+        : tartOk
+          ? null
+          : input.fromBrew
+            ? 'minitart upgrade'
+            : 'brew upgrade openai/tools/tart',
     // Tart brings Softnet with it: it is one of Tart's own dependencies. Only a Tart that
     // is not there is installed: one that is there and did not answer is left alone.
     ...(version === null && !(input.tartInstalled ?? onPath)('tart')
@@ -155,7 +167,11 @@ export async function runChecks(input: DoctorInput): Promise<Check[]> {
         softnet === null
           ? 'brew install openai/tools/softnet'
           : !current
-            ? 'brew upgrade softnet'
+            ? input.fromBrew
+              ? 'minitart upgrade'
+              : // Pinned when doctor --fix installed it (D16), and a pinned formula is not
+                // upgraded; doctor --fix then gives the new binary its permission back.
+                'brew unpin softnet; brew upgrade openai/tools/softnet; brew pin softnet'
             : setuid
               ? null
               : `sudo chown root ${softnet.path} && sudo chmod u+s ${softnet.path}`,

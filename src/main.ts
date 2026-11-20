@@ -79,7 +79,7 @@ function loadSettings(home: Home, warn: (text: string) => void = console.warn): 
   }
 }
 
-/** The demo's settings: its repos served, and a Mac with a price, for the Cost view. */
+/** The demo's settings: its repos served, and a Mac with a price, for the Usage view. */
 function demoSettings(): Settings {
   const defaults = defaultSettings(machine);
   return {
@@ -265,6 +265,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
         runners: { have: home ? builtRunners(home) : {}, latest: newest },
         versions: { running: VERSION, latest: latestVersion },
         tailnet,
+        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
       });
     } finally {
       checking = false;
@@ -432,6 +433,7 @@ async function main(): Promise<number> {
         runners: { have: builtRunners(home), latest: await newestRunner() },
         versions: { running: VERSION, latest: await newestMinitart() },
         tailnet: await readTailnet(port),
+        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
       });
     // The Homebrew that installed minitart, not whichever comes first on the PATH.
     const install = installKind(fileURLToPath(import.meta.url));

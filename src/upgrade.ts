@@ -110,15 +110,17 @@ export function upgradeSteps(
     { what: 'Asking Homebrew what is new', command: [brew, 'update', '--quiet'] },
     { what: 'Upgrading minitart', command: [brew, 'upgrade', 'zurfyx/tap/minitart'] },
     // Tart and Softnet change with it, and are put right with it. Softnet is kept pinned, so
-    // that only this command replaces its binary, which costs it its permission. Each on its
-    // own line: one that is not installed fails alone.
-    { what: 'Upgrading Tart', command: [brew, 'upgrade', 'openai/tools/tart'], optional: true },
+    // that only this command replaces its binary, which costs it its permission. Tart depends
+    // on Softnet, and Homebrew will not upgrade it while a newer Softnet is pinned, so Softnet
+    // is unpinned and upgraded first. Each on its own line: one that is not installed fails
+    // alone.
     { what: 'Unpinning Softnet', command: [brew, 'unpin', 'softnet'], optional: true },
     {
       what: 'Upgrading Softnet',
       command: [brew, 'upgrade', 'openai/tools/softnet'],
       optional: true,
     },
+    { what: 'Upgrading Tart', command: [brew, 'upgrade', 'openai/tools/tart'], optional: true },
     { what: 'Pinning Softnet', command: [brew, 'pin', 'softnet'], optional: true },
     ...(options.app
       ? [

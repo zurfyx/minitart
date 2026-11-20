@@ -4,13 +4,15 @@ Status: `DECIDED`
 
 ## Decision
 
-`minitart service install` writes a LaunchAgent (`sh.rovira.minitart`) that starts the
-manager at login and restarts it if it stops. It runs as the user who installed it, in that
-user's session. minitart creates no user and installs no system daemon.
+The manager runs as a LaunchAgent: Homebrew's (`brew services start minitart`), or, from a
+checkout, the one `minitart service install` writes (`sh.rovira.minitart`). Either starts it
+at login and restarts it if it stops. It runs as the user who installed it, in that user's
+session. minitart creates no user; its one system daemon only loads the firewall rule at
+boot ([D21](D21-what-a-job-reaches-on-the-mac-itself.md)).
 
-Which user is the owner's choice. Their own account is the simple one. A macOS user made
-for the purpose works the same way: everything minitart keeps (`~/.minitart`, Tart's
-images) is under the home of whoever runs it, and nothing assumes an administrator.
+Which user is the owner's choice. Their own account is the simple one. A macOS user made for
+the purpose works the same way: everything minitart keeps (`~/.minitart`, Tart's images) is
+under the home of whoever runs it, and nothing assumes an administrator.
 
 ## Why
 

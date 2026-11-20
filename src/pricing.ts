@@ -1,4 +1,4 @@
-// What other providers charge a minute, for the Cost view (D25). List prices, read from each
+// What other providers charge a minute, for the Usage view (D25). List prices, read from each
 // provider's own page on the date below: they change, so each entry names where it came from,
 // and a change to a price is a change to this file.
 

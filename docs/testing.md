@@ -1,10 +1,12 @@
 # Testing
 
-Three layers. The first two run everywhere, on every push. The third needs this Mac.
+Three layers, and the menu bar app's own tests. The first two layers run on every push; the
+third needs this Mac.
 
 ## 1. Unit tests: `pnpm test`
 
-`node --test` over `src/**/*.test.ts` and `scripts/**/*.test.mjs`. No VM, no network.
+`node --test` over `src/**/*.test.ts`, `scripts/**/*.test.mjs` and
+`dashboard/**/*.test.mjs`. No VM, no network.
 
 The files named `src/prior-art.*.test.ts` hold scenarios taken from the test suites of the
 projects that did this before: Runscaler, ephemerd, Sand, Graftery, KnobanLabs'
@@ -22,8 +24,15 @@ rate limit, a public repo, a full pool, leftovers from a crash.
 What is security-relevant has a test that names it: the runner config is never an argument;
 the App's key is never sent or shown; a VM always gets the network the manager was started
 with; settings from a request are validated, not coerced; the dashboard refuses another
-`Host`, another `Origin`, and any connection from another machine; a job log is served only for a
-job minitart ran.
+`Host`, another `Origin`, and any connection from another machine; a job log is served only
+for a job minitart ran.
+
+## The menu bar app: `cd app && swift test`
+
+XCTest over `MinitartCore`, what the app shows, without AppKit. It needs macOS, so CI runs
+it in the `app` job on GitHub's macOS runners, with a build by `scripts/app.sh`. The
+headline is held to `test/headline-cases.json` by both this suite and
+`dashboard/view.test.mjs`: a change to the headline changes that file, and both pass.
 
 ## 2. Static: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`
 

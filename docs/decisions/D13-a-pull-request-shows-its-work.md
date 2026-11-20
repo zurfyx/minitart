@@ -1,4 +1,4 @@
-# D13: A pull request says it was looked at, reviewed and tested at its head commit
+# D13: A pull request says it was looked at, reviewed and tested at its head commit; CI checks it says so
 
 Status: `DECIDED`
 

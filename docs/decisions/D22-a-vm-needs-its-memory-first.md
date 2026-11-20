@@ -1,6 +1,6 @@
 # D22: A VM is started only when the Mac has the memory for it
 
-Status: `PROPOSED`
+Status: `DECIDED`
 
 ## Decision
 
@@ -10,8 +10,8 @@ marked disposable by its owner (`vm_stat`). Memory that programs are using does 
 including the part macOS calls inactive, which it could only free by compressing or swapping
 it. A VM is started only if there is room for its whole size and macOS is not under
 pressure. Every VM that has no job yet has its whole size set aside, since it has taken
-almost none of it so far. Otherwise the job waits on GitHub,
-and the queue and the top of the dashboard say why. It is asked again every few seconds.
+almost none of it so far. Otherwise the job waits on GitHub, and the queue and the top of
+the dashboard say why. It is asked again every few seconds.
 
 This is on top of the settings' own limit: the VMs that may run at once must fit, together,
 in the Mac's memory.

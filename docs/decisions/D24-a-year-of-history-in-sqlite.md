@@ -1,14 +1,13 @@
-# D24: The jobs that ran are kept a year, in SQLite
+# D24: The jobs that ran are kept a year, in SQLite that Node has built in
 
 Status: `DECIDED`
 
 ## Decision
 
 Every job minitart runs is a row in `~/.minitart/history.db`: which VM, repo and job, who it
-ran for, how it
-ended, and when its VM was cloned, when GitHub queued it, when its runner took it and when
-it ended. A row is kept for a year from when its job ended. The database is SQLite as Node
-has it built in (`node:sqlite`): no dependency, no server.
+ran for, how it ended, and when its VM was cloned, when GitHub queued it, when its runner
+took it and when it ended. A row is kept for a year from when its job ended. The database is
+SQLite as Node has it built in (`node:sqlite`): no dependency, no server.
 
 The page is sent what it shows, not the history: every job that ended in the last hour (the
 timeline), at least the newest 20 (the list), and today's figures, which minitart counts by
@@ -48,18 +47,18 @@ may read and back them up by hand.
   sqlite3 ~/.minitart/history.db ".backup history-copy.db"
   ```
 
-- The database keeps a write-ahead log (`history.db-wal` beside it), so a reader never
-  holds up minitart recording a job, and minitart waits up to two seconds for a writer.
-- A row is a job, not a VM: VM names are six random hex digits and come round again within
-  a year. The same job added twice (an import run again) is one row.
+- The database keeps a write-ahead log (`history.db-wal` beside it), so a reader never holds
+  up minitart recording a job, and minitart waits up to two seconds for a writer.
+- A row is a job, not a VM: VM names are six random hex digits and come round again within a
+  year. The same job added twice (an import run again) is one row.
 - A `history.db` that cannot be opened does not stop minitart: it warns, keeps the jobs in
   memory until it restarts, and the file can be moved aside.
 - `node:sqlite` is marked as still in development by Node. Node 26, which Homebrew installs,
-  runs it without a warning. If its interface changes, `src/history.ts` is the one file
-  that uses it.
+  runs it without a warning. If its interface changes, `src/history.ts` is the one file that
+  uses it.
 - There is no limit on its size, only on age, and the owner sees what it takes: the Jobs
-  view says how many jobs, since when and how much disk, and pages through all of them;
-  This Mac's Storage lists it beside the VM logs, minitart's own log and Tart's images.
+  view says how many jobs, since when and how much disk, and pages through all of them; This
+  Mac's Storage lists it beside the VM logs, minitart's own log and Tart's images.
 - Charts of CPU and memory are not in it: they are an hour, in memory (D23).
 - Who a job ran for came in 0.1.14. The column is added to a history from before, whose jobs
   say nothing of it.

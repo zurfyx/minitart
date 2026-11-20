@@ -9,9 +9,10 @@ packet from the VM only to a globally routable IPv4 address or to the VM's own g
 drops everything else, including every frame that is not IPv4 or ARP. minitart adds
 `--net-softnet-block=100.64.0.0/10`.
 
-minitart starts VMs on no other network. Without Softnet, VMs fail to start. The flag
-`--unsafe-shared-network` exists for trying minitart out, warns on start, and shows in the
-dashboard for as long as it is on.
+minitart starts VMs on no other network. Without Softnet, or without the firewall rule of
+[D21](D21-what-a-job-reaches-on-the-mac-itself.md), no VM is started, and the dashboard says
+which step is missing. The flag `--unsafe-shared-network` exists for trying minitart out,
+warns on start, and shows in the dashboard for as long as it is on.
 
 `minitart selftest` checks the result from inside a VM.
 
@@ -28,12 +29,15 @@ network it protects. The one named block is for the range Tailscale uses, so tha
 the owner cares about most does not depend on Softnet's definition of "globally routable".
 
 It is Tart's own mechanism rather than firewall rules on the Mac because it travels with the
-VM: there is no host configuration to drift, and nothing to restore after a macOS update.
+VM. The one rule on the host is for the Mac itself
+([D21](D21-what-a-job-reaches-on-the-mac-itself.md)), in an anchor that macOS's own pf.conf
+loads, so an update does not undo it.
 
 ## Consequences
 
-- Softnet's binary must be setuid root (it creates a network interface). That is a one-time
-  `sudo`, and a Homebrew upgrade of Softnet needs it again; `minitart doctor` says so.
+- Softnet's binary must be setuid root (it creates a network interface). That takes `sudo`,
+  and an upgrade of Softnet needs it again. Softnet is pinned, so only `minitart upgrade`
+  replaces it, and that runs `doctor --fix`, which puts the bit back.
 - A job cannot reach anything on the home network, including things it might legitimately
   want (a local cache, a device farm). There is no setting for exceptions; a need for one is
   a new decision.

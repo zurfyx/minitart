@@ -9,9 +9,9 @@ name: Release app
 #             minitart's, and the formula's tap update reads it)
 #   tap       makes the Homebrew tap's minitart-app cask match the newest app release
 #
-# The secrets live in the release-app environment, which only protected branches reach. Until
-# the Developer ID certificate is in it, the release says so and publishes nothing; running
-# this workflow by hand afterwards catches up.
+# The secrets live in the release-app environment, which only protected branches reach. If
+# the Developer ID certificate is ever missing from it, the release says so and publishes
+# nothing; running this workflow by hand once it is back catches up.
 #
 # Every action is pinned to a full commit sha; zizmor audits this file in CI.
 
@@ -59,7 +59,7 @@ jobs:
           DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
         run: |
           if [ -z "$DEVELOPER_ID_P12" ]; then
-            echo "::notice::The release-app environment has no Developer ID certificate yet (D26): nothing is released."
+            echo "::notice::The release-app environment has no Developer ID certificate (D26): nothing is released."
             echo "go=false" >> "$GITHUB_OUTPUT"
           else
             echo "go=true" >> "$GITHUB_OUTPUT"

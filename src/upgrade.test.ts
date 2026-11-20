@@ -121,10 +121,11 @@ test('an upgrade changes the software, puts right what needs the password, and r
     [
       '/opt/homebrew/bin/brew update --quiet',
       '/opt/homebrew/bin/brew upgrade zurfyx/tap/minitart',
-      // Each on its own: one that is not installed, or not pinned, fails alone.
-      '(may fail) /opt/homebrew/bin/brew upgrade openai/tools/tart',
+      // Each on its own: one that is not installed, or not pinned, fails alone. Softnet is
+      // unpinned and upgraded before Tart, which Homebrew would not upgrade past a pinned one.
       '(may fail) /opt/homebrew/bin/brew unpin softnet',
       '(may fail) /opt/homebrew/bin/brew upgrade openai/tools/softnet',
+      '(may fail) /opt/homebrew/bin/brew upgrade openai/tools/tart',
       '(may fail) /opt/homebrew/bin/brew pin softnet',
       // The new minitart's doctor, and before the restart: Softnet's permission comes first.
       // What doctor still finds wrong (a full disk, say) never leaves minitart stopped.

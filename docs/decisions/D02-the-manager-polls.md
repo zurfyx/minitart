@@ -8,7 +8,9 @@ The manager finds work by asking: every few seconds, for each served repo, it li
 workflow runs that have not completed and their jobs. It starts a VM for a queued job that
 asks for a minitart label. A run is listed whatever GitHub calls it short of completed:
 requested, queued, in progress, waiting or pending. Whether one of its jobs is ready is the
-job's own status, never the run's. There is no webhook, no open port and no tunnel.
+job's own status, never the run's. The newest 100 runs are read unfiltered too, since GitHub
+has left a queued run out of every list by status. There is no webhook, no open port and no
+tunnel.
 
 Reads are conditional (ETag). An answer that has not changed returns 304 and does not count
 against the rate limit.
@@ -26,10 +28,10 @@ repo at a time, which is what the polling does.
 ## Consequences
 
 - A job starts a poll interval plus a boot later than it could: about ten to forty seconds.
-- It costs nothing in money, and next to nothing in GitHub's rate limit. An idle repo is
-  five requests a poll, one per status, each answered 304, and a 304 is not counted: measured, ten
-  conditional requests in a row left the counter where it was, and three unconditional ones
-  moved it by three. What counts is change: a few requests per job, against an App's 5,000
-  an hour.
+- It costs nothing in money, and next to nothing in GitHub's rate limit. An idle repo is six
+  requests a poll, one per status and one unfiltered, each answered 304, and a 304 is not
+  counted: measured, ten conditional requests in a row left the counter where it was, and
+  three unconditional ones moved it by three. What counts is change: a few requests per job,
+  against an App's 5,000 an hour.
 - A VM is started for a job, not handed to it: the runner takes the oldest matching job in
   its repo. If something else took the job, the VM waits three minutes and is deleted.

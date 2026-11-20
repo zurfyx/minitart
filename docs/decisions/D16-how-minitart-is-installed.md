@@ -1,13 +1,13 @@
-# D16: minitart is installed with Homebrew, released from every green main, and upgrades itself
+# D16: minitart is installed with Homebrew, released from every green main, and upgraded by `minitart upgrade`
 
 Status: `DECIDED`
 
 ## Decision
 
 **Installed with Homebrew**, from the owner's tap: `brew install zurfyx/tap/minitart`. The
-formula copies the source tree and adds a `minitart` command that runs it with Node. There is
-still no build ([D07](D07-typescript-run-as-it-is.md)). `brew services` keeps it running. A
-checkout run with `node src/main.ts` stays a supported way to run it.
+formula copies the source tree and adds a `minitart` command that runs it with Node. There
+is still no build ([D07](D07-typescript-run-as-it-is.md)). `brew services` keeps it running.
+A checkout run with `node src/main.ts` stays a supported way to run it.
 
 Tart and Softnet are not dependencies of the formula. `minitart doctor --fix` installs them
 from their own tap when they are missing, so the install is two lines and nothing in them
@@ -51,8 +51,8 @@ wrongly. A new minor or major is started by tagging it by hand, once.
 
 ## Consequences
 
-- Homebrew formulae cannot ask for a password while installing, so a plain `brew upgrade`
-  of Softnet (after unpinning it) still leaves the permission to be put back:
+- Homebrew formulae cannot ask for a password while installing, so a plain `brew upgrade` of
+  Softnet (after unpinning it) still leaves the permission to be put back:
   `minitart doctor --fix`.
 - While minitart drains, queued jobs wait on GitHub. A restart ends the drain.
 - The release bot is a GitHub App installed on this repo and on the tap, and its key is a

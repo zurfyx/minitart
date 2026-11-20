@@ -36,16 +36,25 @@ IPv6.
 That is an allowlist. Nothing about your network is listed in minitart, so nothing needs
 updating when your network changes: a new VPN, a new subnet, a new overlay network like
 Tailscale all use addresses that are not globally routable, and are out of reach on the day
-they appear. minitart adds one explicit block, `100.64.0.0/10`, the range Tailscale uses,
-so that does not rest on a definition.
+they appear. minitart adds one explicit block, `100.64.0.0/10`, the range Tailscale uses, so
+that does not rest on a definition.
 
 **minitart does not start a VM on any other network.** If Softnet is missing or cannot run,
 no VM is started and the dashboard says why. The one exception is the flag
 `--unsafe-shared-network`, for trying minitart out before Softnet is set up: it prints a
 warning on start and the dashboard shows it on every page load.
 
-Softnet needs root to create its network interface, so its binary is setuid root. That is
-set once, with `sudo`, and `minitart doctor` prints the command.
+Softnet needs root to create its network interface, so its binary is setuid root. That takes
+`sudo`, and again after every Softnet upgrade. When `doctor --fix` installs Softnet it pins
+it, so a routine `brew upgrade` leaves it alone; `minitart upgrade` replaces it on purpose
+and runs `doctor --fix` again. A Softnet that was already there is not pinned until the
+first `minitart upgrade`, and from a checkout it is upgraded by hand; either way `doctor`
+says when the bit is missing.
+
+`minitart doctor --fix` runs these as root, asking for the Mac's password: make Softnet
+setuid root; install the firewall rule below (its pf anchor, and a LaunchDaemon that loads
+it at boot); and `pmset -a sleep 0`. It runs the firewall script from minitart's Homebrew
+folder, which your account can write to.
 
 ### The gateway
 
@@ -60,8 +69,13 @@ So the setup closes it, with macOS's own firewall (`firewall/install.sh`, run on
 to it. That is an allowlist too. A service you turn on next year is not reachable from a job
 without being listed anywhere.
 
-Until the rules are installed minitart starts no VM, as it starts none without Softnet:
-jobs wait on GitHub, and the dashboard says which step is missing.
+The rule covers the 32 VM interfaces macOS creates first, `bridge100` to `bridge131`.
+minitart runs at most 28 VMs at once (2 macOS, 26 Linux), which leaves four for an image
+build of each kind, `selftest`, and one VM of your own. A VM on a later interface would not
+be behind the rule.
+
+Until the rules are installed minitart starts no VM, as it starts none without Softnet: jobs
+wait on GitHub, and the dashboard says which step is missing.
 
 `minitart doctor` says whether the rules are installed, and `minitart selftest` is the
 proof: from inside a VM it tries the gateway on the ports a Mac commonly serves and on every
@@ -83,20 +97,24 @@ the way a job VM boots and, from inside it, tries to connect to:
 
 - the internet (must succeed);
 - your router, on the ports routers answer on (must time out);
-- this Mac, at every address it has, on common service ports (must time out).
+- this Mac, at every address it has outside its VM networks, on common service ports (must
+  time out);
+- this Mac at the VM's gateway, on the ports a Mac commonly serves and every port your
+  programs listen on (nothing may accept the connection: it must be refused or time out).
 
-A connection that is _refused_ counts as a failure of the test: a refusal means the packet
-arrived. Run it after setting up, and again after changing how the Mac is networked.
+Except at the gateway, a connection that is _refused_ counts as a failure of the test: a
+refusal means the packet arrived. Run it after setting up, and again after changing how the
+Mac is networked.
 
 ## Which repos, and who can run code
 
-- **A repo is served when two lists agree.** The GitHub App must be installed on it, and
-  the owner must have turned it on in the dashboard. GitHub enforces the first: the App's
-  token cannot register a runner anywhere else. The second is there because the first is
-  easy to get wrong: GitHub's install page offers "All repositories" first, and one click
-  there would otherwise put every repo of the account, present and future, on this Mac. A
-  repo the App can see and nobody turned on is listed as "Not served", and its queue is not
-  even read.
+- **A repo is served when two lists agree.** The GitHub App must be installed on it, and the
+  owner must have turned it on in the dashboard. GitHub enforces the first: the App's token
+  cannot register a runner anywhere else. The second is there because the first is easy to
+  get wrong: GitHub's install page offers "All repositories" first, and one click there
+  would otherwise put every repo of the account, present and future, on this Mac. A repo the
+  App can see and nobody turned on is listed as "Not served", and its queue is not even
+  read.
 - **Public repos are skipped** unless you turn that off. On a public repo, anyone can open a
   pull request that changes a workflow, and that workflow would run on your Mac. The VM and
   the network would still hold, but a stranger would be choosing what your Mac runs.
@@ -116,9 +134,13 @@ keychain hands an item to the tool that stored it without asking), so the keycha
 a step and no protection. What protects the key is that jobs do not run as you: they run in
 a VM.
 
-With the key, someone could register runners on the repos the App is installed on and read
-those repos' workflow logs. They could not read code or secrets: the App has no such
-permission.
+With the key, someone could register runners on the repos the App is installed on, read
+their workflow logs, and change their settings (Administration: write has no narrower form),
+which includes adding a deploy key or a collaborator, making a private repo public, or
+deleting it. A runner they register with minitart's labels can be handed those repos' jobs,
+and with them each job's secrets and checkout token. The App's tokens cannot read code or
+secrets directly, but those powers reach both; that is why the key never leaves the Mac or
+enters a VM.
 
 ## The dashboard
 
@@ -129,12 +151,19 @@ permission.
   your tailnet lets reach that name can do everything someone at the Mac can: see every job
   and log, change which repos are served, create the GitHub App. There are no accounts in
   minitart; who gets in is your tailnet's access rules.
-- **Never the internet.** A name that Tailscale Funnel publishes is not answered to, and a
-  request that Tailscale marks as arriving through Funnel is refused outright. `doctor` also
-  flags bare TCP forwarded to the dashboard: that carries no name to check, so do not set it
-  up.
+- **Not the internet.** It has no accounts: whoever reaches it can do everything you can.
+  Exposing it publicly, through Tailscale Funnel or any other tunnel, is the same mistake as
+  for any service on the Mac. minitart refuses requests Tailscale marks as coming through
+  Funnel, but it cannot see every tunnel.
 - Requests under any other `Host` are refused, so a web page cannot read the dashboard by
   pointing a name of its own at `127.0.0.1`. Changes also need a same-origin `Origin`.
+- **The menu bar app** talks only to the dashboard at `127.0.0.1`. It reads `/api/state` and
+  posts `/api/drain`. Its other actions are commands you could type: start minitart's
+  service, or open Terminal on `minitart doctor --fix`, `minitart upgrade`, or
+  `brew install zurfyx/tap/minitart && minitart doctor --fix`, where you type the password.
+  It holds no key and listens on nothing. The `Origin` check stops web pages, not programs:
+  a process running as you can do anything the dashboard can, as it could already by reading
+  `~/.minitart`.
 - Job, workflow and repo names come from GitHub and are written to the page as text, never
   as HTML. The page loads nothing from anywhere else.
 
@@ -142,13 +171,20 @@ permission.
 
 - **A hypervisor escape.** If a job breaks out of Apple's Virtualization framework,
   everything above is void. Such bugs are rare and valuable. Keep macOS updated.
-- **A bug in Softnet or Tart.** Same, for the network. `selftest` catches a misconfiguration,
-  not a flaw.
+- **A bug in Softnet or Tart.** Same, for the network. `selftest` catches a
+  misconfiguration, not a flaw.
 - **The image's supply chain.** Job VMs start from an image built on your Mac from an
   upstream image (Cirrus Labs' Ubuntu and macOS images by default), plus GitHub's runner,
   whose download is checked against the checksum GitHub publishes. A bad upstream image is a
   bad VM, not a bad Mac.
-- **Denial of service.** A job can use all the CPU and disk its VM has.
+- **Denial of service.** A job can use all the CPU, memory and disk its VM has. A VM is
+  started only when macOS has its whole memory to spare and is not under pressure
+  ([D22](decisions/D22-a-vm-needs-its-memory-first.md)).
+- **minitart's own releases.** The formula and the menu bar app are published from `main`,
+  which changes only through reviewed pull requests. The tap bot's key and the app's
+  Developer ID and notarization keys live in GitHub environments only protected branches
+  reach; none of them is on your Mac. Someone who could push to `main` or to the tap could
+  ship code that runs as you, and as root at the next `doctor --fix`.
 - **What your workflows do with their own secrets.**
 
 ## Reporting a problem
