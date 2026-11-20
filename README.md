@@ -5,17 +5,14 @@ machine and deletes it when the job ends. A job reaches the internet and nothing
 not your files, not your keychain, not your home network.
 
 It is a very small manager, with a dashboard, on top of three things other people maintain:
-Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It is for one person
-with one Mac and a handful of private repos.
-[minitart.rovira.sh](https://minitart.rovira.sh)
+Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It works best on one
+Mac with a handful of active private repos. See [the security model](docs/security.md) for
+how it keeps your Mac and your network out of a job's reach.
 
 <picture>
   <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
   <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
 </picture>
-
-> minitart runs its author's CI on a Mac mini. Read [the security model](docs/security.md),
-> and the code, before you trust it with yours.
 
 ## What you get
 
