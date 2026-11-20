@@ -16,6 +16,13 @@ test('the price list: each provider from its own page, its runners named once, p
       assert.equal(new Set(kind.map((runner) => runner.id)).size, kind.length, provider.id);
       for (const runner of kind) {
         assert.ok(runner.usd > 0 && runner.usd < 1, `${provider.id} ${runner.id}`);
+        // Every runner has its size, and every name is written the one way.
+        assert.ok(runner.memoryGb >= runner.cores, `${provider.id} ${runner.id}`);
+        assert.match(
+          runner.name,
+          /^(Linux \d+ vCPU, \d+ GB, (x64|arm64)|macOS \d+ vCPU, \d+ GB(, .+)?)$/,
+          `${provider.id} ${runner.id}`,
+        );
       }
     }
     // The defaults compare like with like: the size of GitHub's ubuntu-latest, and the
@@ -24,4 +31,12 @@ test('the price list: each provider from its own page, its runners named once, p
     const smallest = Math.min(...provider.macos.map((runner) => runner.cores));
     assert.equal(provider.macos[0]?.cores, smallest, provider.id);
   }
+});
+
+test('runner names say the same things in the same order', () => {
+  const github = PROVIDERS.find((one) => one.id === 'github');
+  assert.equal(github?.linux[0]?.name, 'Linux 2 vCPU, 8 GB, x64');
+  assert.equal(github?.macos[0]?.name, 'macOS 3 vCPU, 7 GB, M1');
+  const namespace = PROVIDERS.find((one) => one.id === 'namespace');
+  assert.equal(namespace?.macos[0]?.name, 'macOS 4 vCPU, 7 GB', 'no chip where none is named');
 });
