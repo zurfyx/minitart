@@ -6,8 +6,8 @@ not your files, not your keychain, not your home network.
 
 It is a very small manager, with a dashboard, on top of three things other people maintain:
 Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It works best on one
-Mac with a handful of private repos. How it keeps a job away from everything else on the Mac
-is written down in [the security model](docs/security.md).
+Mac with a handful of private repos. See [the security model](docs/security.md) for how it
+keeps your Mac and your network out of a job's reach.
 
 <picture>
   <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
