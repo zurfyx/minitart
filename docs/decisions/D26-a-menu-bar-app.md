@@ -27,8 +27,9 @@ The app is a window onto the minitart on the same Mac, and nothing more:
   in Terminal (`minitart doctor --fix`, for the steps that need the Mac's password, which
   the app never asks for itself).
 - **It reads** `GET /api/state` every three seconds and acts through `POST /api/drain`. Its
-  settings are the count and opening at login; minitart's own settings stay in the
-  dashboard.
+  settings are the count and opening at login, both on to begin with: it registers as a login
+  item on its first launch from /Applications, and turning it off is never undone.
+  minitart's own settings stay in the dashboard.
 
 It watches this Mac only, `127.0.0.1:4141`. Watching another Mac is the tailnet dashboard's
 job (D20).

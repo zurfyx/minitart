@@ -85,7 +85,8 @@ brew install --cask zurfyx/tap/minitart-app
 Its mark says how things are: a prompt when idle, the number of jobs running, an exclamation
 mark when minitart needs you, and a pause sign while it drains. Its menu says what the
 dashboard's headline says, lists the jobs running, opens the dashboard, drains and resumes,
-and offers to start minitart, finish the setup or upgrade it when one is due.
+and offers to start minitart, finish the setup or upgrade it when one is due. It opens at
+login; its Settings menu turns that off.
 
 <img src="site/menu-bar.png" width="437" alt="minitart's menu bar app open: the mark with 6 on its screen, the headline, six jobs running and four waiting, Open Dashboard, Drain, Settings and Quit" />
 
