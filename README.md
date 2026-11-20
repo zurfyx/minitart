@@ -5,10 +5,9 @@ machine and deletes it when the job ends. A job reaches the internet and nothing
 not your files, not your keychain, not your home network.
 
 It is a very small manager, with a dashboard, on top of three things other people maintain:
-Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It is at its best on
-one Mac serving a handful of private repos, and it does not stop you there: serve as many
-repos as the Mac keeps up with. How it keeps a job away from everything else on the Mac is
-written down in [the security model](docs/security.md).
+Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It works best on one
+Mac with a handful of private repos. How it keeps a job away from everything else on the Mac
+is written down in [the security model](docs/security.md).
 
 <picture>
   <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
