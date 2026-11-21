@@ -523,6 +523,48 @@ test('a VM whose run has finished on GitHub, and whose runner hangs, is stopped'
   assert.equal(manager.snapshot().done[0]?.conclusion, 'success');
 });
 
+test('a failed job whose runner hangs after GitHub ended it is failed, not lost', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test');
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+  await manager.tick();
+  // GitHub ends the job as failed; the runner never says so, and hangs until it is stopped.
+  github.complete(job, 'failure');
+  await manager.tick();
+  advance(6 * 60_000);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.equal(manager.snapshot().done[0]?.conclusion, 'failure');
+});
+
+test('the runner’s other words for how a job ended are read, and only those', async () => {
+  for (const [word, recorded] of [
+    ['SucceededWithIssues', 'failure'], // GitHub's own word wins over the runner's
+    ['Abandoned', 'lost'], // the runner lost its job to GitHub
+    ['constructor', 'lost'], // not a word it says: no result, and GitHub failed the job
+  ] as const) {
+    const { github, tart, manager, settle } = setup();
+    const job = github.queue('octo/app', ['minitart-linux'], 'test');
+    await manager.tick();
+    await settle();
+    const [name] = tart.runners();
+    assert.ok(name);
+    github.take(name);
+    tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+    tart.print(name, `2026-11-18 10:00:09Z: Job test completed with result: ${word}`);
+    github.complete(job, 'failure');
+    tart.exit(name, 0);
+    await settle();
+    assert.equal(manager.snapshot().done[0]?.conclusion, recorded, word);
+  }
+});
+
 test('a VM that stops instead of booting says what tart said', async () => {
   const { github, tart, manager, settle } = setup();
   github.queue('octo/app', ['minitart-macos']);

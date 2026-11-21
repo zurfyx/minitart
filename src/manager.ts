@@ -200,14 +200,29 @@ const RUNNER_LISTENING = new RegExp(`^${STAMP}Listening for Jobs$`);
 const CONNECT_TIMEOUT_MS = 3 * 60_000;
 /** A VM still up this long after GitHub called its job done is stuck. */
 const LINGER_MS = 5 * 60_000;
-const RUNNER_ENDED = new RegExp(
-  `^${STAMP}Job .+ completed with result: (Succeeded|Failed|Canceled)$`,
-);
-const RESULTS: Record<string, string> = {
+const RUNNER_ENDED = new RegExp(`^${STAMP}Job .+ completed with result: (\\w+)$`);
+/**
+ * The runner's words for how a job ended, as GitHub's. `Abandoned` is the runner losing its
+ * job to GitHub, which is what lost means here.
+ */
+const RESULTS: Readonly<Record<string, string>> = {
   Succeeded: 'success',
+  SucceededWithIssues: 'success',
   Failed: 'failure',
   Canceled: 'cancelled',
+  Skipped: 'skipped',
+  Abandoned: 'lost',
 };
+/** The reason a VM is stopped when its job has ended on GitHub and its runner hangs. */
+const LINGERED = 'its job ended and its runner did not exit';
+
+/** What a line the runner printed says about how its job ended, if it says so. */
+function runnerResult(line: string): string | null | undefined {
+  const word = RUNNER_ENDED.exec(line)?.[1];
+  if (word === undefined) return undefined;
+  // A word it never says is no result; never a property every object has.
+  return Object.hasOwn(RESULTS, word) ? (RESULTS[word] ?? null) : null;
+}
 
 export class Manager {
   readonly #deps: ManagerDeps;
@@ -383,7 +398,7 @@ export class Manager {
         job.completedAt !== null &&
         now - Date.parse(job.completedAt) > LINGER_MS
       ) {
-        this.#stopVm(vm, 'its job ended and its runner did not exit');
+        this.#stopVm(vm, LINGERED);
       }
     }
     // A job whose whole run has finished is no longer in the list at all: a VM still
@@ -401,7 +416,7 @@ export class Manager {
       } else if (vm.missingSince === null) {
         vm.missingSince = now;
       } else if (now - vm.missingSince > LINGER_MS) {
-        this.#stopVm(vm, 'its job ended and its runner did not exit');
+        this.#stopVm(vm, LINGERED);
       }
     }
 
@@ -823,8 +838,8 @@ export class Manager {
         this.#deps.vmLog?.(vm.name, note);
       }
       // Still read how the job ended: without it, a job that failed would count as lost.
-      const ended = RUNNER_ENDED.exec(line);
-      if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
+      const said = runnerResult(line);
+      if (said !== undefined) vm.result = said;
       return;
     }
     vm.log.push(line);
@@ -839,8 +854,8 @@ export class Manager {
       if (vm.status === 'waiting') this.#setStatus(vm, 'running');
     }
     if (RUNNER_LISTENING.test(line)) vm.listening = true;
-    const ended = RUNNER_ENDED.exec(line);
-    if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
+    const said = runnerResult(line);
+    if (said !== undefined) vm.result = said;
     this.#changed();
   }
 
@@ -858,12 +873,13 @@ export class Manager {
         ? refOf(job)
         : (vm.job ?? { id: null, name: 'unknown job', workflow: '', url: '' });
       // GitHub's word for how the job ended; the runner's own only until GitHub has one. A
-      // job GitHub failed whose runner never said it ended was lost with its VM (the VM died,
-      // minitart stopped, the Mac slept), not failed by its own steps.
-      const conclusion =
-        job?.conclusion === 'failure' && vm.result === null
-          ? 'lost'
-          : (job?.conclusion ?? vm.result ?? 'lost');
+      // job GitHub failed whose runner never said it ended, or said it lost it, was lost with
+      // its VM (the VM died, minitart stopped, the Mac slept). Not when GitHub had ended the
+      // job first and its runner hung: that job ended as GitHub says.
+      const lostWithVm =
+        job?.conclusion === 'failure' &&
+        (vm.result === 'lost' || (vm.result === null && vm.stopReason !== LINGERED));
+      const conclusion = lostWithVm ? 'lost' : (job?.conclusion ?? vm.result ?? 'lost');
       const queuedAt = job ? Date.parse(job.createdAt) : Number.NaN;
       const entry: DoneView = {
         vm: vm.name,
