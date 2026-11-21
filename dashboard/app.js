@@ -186,7 +186,7 @@ function render() {
   $('stat-queued').textContent = String(figures.queued);
   $('stat-passed').replaceChildren(
     String(figures.passed),
-    h('small', {}, ` of ${figures.finished}`),
+    h('small', {}, ` of ${figures.ran}${figures.lost ? ` · ${figures.lost} lost` : ''}`),
   );
   $('stat-wait').replaceChildren(
     figures.medianWaitMs === null ? '–' : duration(figures.medianWaitMs),

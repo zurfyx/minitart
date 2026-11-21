@@ -165,7 +165,8 @@ export function demoWorld(machine: Machine): {
         url: '',
         actor: ACTORS[n % ACTORS.length] ?? 'mona',
       },
-      conclusion: n % 11 === 3 ? 'failure' : n % 29 === 7 ? 'cancelled' : 'success',
+      conclusion:
+        n % 11 === 3 ? 'failure' : n % 29 === 7 ? 'cancelled' : n % 47 === 5 ? 'lost' : 'success',
       startedAt: at(took + 0.6),
       jobAt: at(took),
       queuedAt: at(took + 0.3 + (n % 5) * 0.4),

@@ -11,7 +11,10 @@ export const KEEP_MS = 365 * 24 * 60 * 60_000;
 
 export interface Today {
   passed: number;
+  /** Every job that ended, the lost ones too. */
   finished: number;
+  /** The jobs lost with their VM, not failed by their own steps. */
+  lost: number;
   /** How long a job waited for its VM: from GitHub queueing it to its runner taking it. */
   medianWaitMs: number | null;
 }
@@ -85,6 +88,7 @@ function summarise(entries: readonly DoneView[]): Today {
   return {
     passed: entries.filter((entry) => entry.conclusion === 'success').length,
     finished: entries.length,
+    lost: entries.filter((entry) => entry.conclusion === 'lost').length,
     medianWaitMs: median(
       entries.flatMap((entry) =>
         entry.jobAt !== undefined && entry.queuedAt !== undefined

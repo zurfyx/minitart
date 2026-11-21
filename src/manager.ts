@@ -87,7 +87,10 @@ export interface DoneView {
   repo: string;
   pool: Pool;
   job: JobRef;
-  /** `success`, `failure`, `cancelled`, or `lost` when the VM ended before its job did. */
+  /**
+   * `success`, `failure`, `cancelled`, or `lost` when the VM ended before its job did: its
+   * runner never said how the job ended, whatever GitHub then called it.
+   */
   conclusion: string;
   /** When the VM was cloned. */
   startedAt: number;
@@ -543,7 +546,7 @@ export class Manager {
         this.#recent = {
           at: now,
           done: this.#recent?.done ?? [],
-          today: this.#recent?.today ?? { passed: 0, finished: 0, medianWaitMs: null },
+          today: this.#recent?.today ?? { passed: 0, finished: 0, lost: 0, medianWaitMs: null },
         };
       }
     }
@@ -819,6 +822,9 @@ export class Manager {
         vm.log.push(note);
         this.#deps.vmLog?.(vm.name, note);
       }
+      // Still read how the job ended: without it, a job that failed would count as lost.
+      const ended = RUNNER_ENDED.exec(line);
+      if (ended?.[1] !== undefined) vm.result = RESULTS[ended[1]] ?? null;
       return;
     }
     vm.log.push(line);
@@ -851,8 +857,13 @@ export class Manager {
       const ref = job
         ? refOf(job)
         : (vm.job ?? { id: null, name: 'unknown job', workflow: '', url: '' });
-      // GitHub's word for how the job ended; the runner's own only until GitHub has one.
-      const conclusion = job?.conclusion ?? vm.result ?? 'lost';
+      // GitHub's word for how the job ended; the runner's own only until GitHub has one. A
+      // job GitHub failed whose runner never said it ended was lost with its VM (the VM died,
+      // minitart stopped, the Mac slept), not failed by its own steps.
+      const conclusion =
+        job?.conclusion === 'failure' && vm.result === null
+          ? 'lost'
+          : (job?.conclusion ?? vm.result ?? 'lost');
       const queuedAt = job ? Date.parse(job.createdAt) : Number.NaN;
       const entry: DoneView = {
         vm: vm.name,
