@@ -297,6 +297,19 @@ export function createDashboardServer(deps: ServerDeps): Server {
     if (result !== undefined && !/^[a-z_]{1,32}$/.test(result)) {
       return send(response, 400, 'result must be a word such as success or failure');
     }
+    // The last `days` days by the Mac's calendar, today included, or every job kept.
+    const daysAsked = query.get('days') || undefined;
+    const days = daysAsked === undefined ? undefined : Number(daysAsked);
+    if (days !== undefined && (!Number.isInteger(days) || days < 1 || days > 366)) {
+      return send(response, 400, 'days must be a whole number from 1 to 366');
+    }
+    let since: number | undefined;
+    if (days !== undefined) {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - (days - 1));
+      since = start.getTime();
+    }
     const history = deps.history;
     const found = history
       ? history.page({
@@ -304,6 +317,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
           limit: JOBS_PER_PAGE,
           ...(repo === undefined ? {} : { repo }),
           ...(result === undefined ? {} : { conclusion: result }),
+          ...(since === undefined ? {} : { since }),
         })
       : { total: 0, jobs: [] };
     json(response, 200, {
@@ -313,7 +327,11 @@ export function createDashboardServer(deps: ServerDeps): Server {
       per: JOBS_PER_PAGE,
       repos: history?.repos() ?? [],
       // How many ended each way, of the repo asked for: the result filter shows them.
-      results: history?.results(repo) ?? {},
+      results:
+        history?.results({
+          ...(repo === undefined ? {} : { repo }),
+          ...(since === undefined ? {} : { since }),
+        }) ?? {},
     });
   }
 

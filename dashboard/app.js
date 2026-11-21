@@ -602,6 +602,9 @@ $('drain').addEventListener('click', () => {
 // back button and an installed app's reload all land where they were.
 
 /** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
+/** The Jobs view's ranges, in days: today, and back from it. */
+const JOB_RANGES = [1, 7, 30, 90];
+
 function route() {
   const [name, query = ''] = location.hash.replace(/^#/, '').split('?');
   const view = ['now', 'jobs', 'usage', 'mac'].includes(name) ? name : 'now';
@@ -614,13 +617,16 @@ function route() {
     repo: params.get('repo') ?? '',
     result: params.get('result') ?? '',
     days: RANGES.includes(days) ? days : 30,
+    // The Jobs view's range: a few days back, or every job kept.
+    jobDays: JOB_RANGES.includes(days) ? days : 0,
   };
 }
 
-function jobsHash({ page, repo, result }) {
+function jobsHash({ page, repo, result, jobDays }) {
   const params = new URLSearchParams();
   if (repo) params.set('repo', repo);
   if (result) params.set('result', result);
+  if (jobDays) params.set('days', String(jobDays));
   if (page > 1) params.set('page', String(page));
   const query = params.toString();
   return `#jobs${query ? `?${query}` : ''}`;
@@ -656,6 +662,7 @@ async function loadJobs() {
   const params = new URLSearchParams({ page: String(wanted.page) });
   if (wanted.repo) params.set('repo', wanted.repo);
   if (wanted.result) params.set('result', wanted.result);
+  if (wanted.jobDays) params.set('days', String(wanted.jobDays));
   const asked = params.toString();
   jobsAsked = asked;
   try {
@@ -707,6 +714,9 @@ function drawJobs(wanted) {
     option.text = `${option.dataset['label']} · ${n.toLocaleString()}`;
   }
   resultSelect.value = wanted.result;
+  /** @type {HTMLSelectElement} */ (form.elements.namedItem('days')).value = wanted.jobDays
+    ? String(wanted.jobDays)
+    : '';
   const first = (jobPage.page - 1) * jobPage.per + 1;
   const last = Math.min(jobPage.total, jobPage.page * jobPage.per);
   $('jobs-count').textContent =
@@ -762,6 +772,7 @@ $('job-filters').addEventListener('change', (event) => {
     page: 1,
     repo: /** @type {HTMLSelectElement} */ (form.elements.namedItem('repo')).value,
     result: /** @type {HTMLSelectElement} */ (form.elements.namedItem('result')).value,
+    jobDays: Number(/** @type {HTMLSelectElement} */ (form.elements.namedItem('days')).value) || 0,
   });
 });
 
