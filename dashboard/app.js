@@ -601,10 +601,10 @@ $('drain').addEventListener('click', () => {
 // Views: Now, Jobs and This Mac, one at a time, named in the address so that a link, the
 // back button and an installed app's reload all land where they were.
 
-/** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
 /** The Jobs view's ranges, in days: today, and back from it. */
 const JOB_RANGES = [1, 7, 30, 90];
 
+/** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
 function route() {
   const [name, query = ''] = location.hash.replace(/^#/, '').split('?');
   const view = ['now', 'jobs', 'usage', 'mac'].includes(name) ? name : 'now';
@@ -744,7 +744,13 @@ function drawJobs(wanted) {
               : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
           );
         })
-      : [empty(wanted.repo || wanted.result ? 'No job matches.' : 'No job has run yet.')]),
+      : [
+          empty(
+            wanted.repo || wanted.result || wanted.jobDays
+              ? 'No job matches.'
+              : 'No job has run yet.',
+          ),
+        ]),
   );
 
   const link = (page, text, rel) =>
