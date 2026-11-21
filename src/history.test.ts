@@ -107,8 +107,16 @@ for (const [kind, make] of [
     history.add(job(3, 10, { conclusion: 'lost' })); // octo/app
     history.add(job(5, 5)); // octo/app
     assert.deepEqual(history.results(), { success: 2, failure: 1, lost: 1 });
-    assert.deepEqual(history.results('octo/app'), { success: 2, lost: 1 });
-    assert.deepEqual(history.results('octo/none'), {});
+    assert.deepEqual(history.results({ repo: 'octo/app' }), { success: 2, lost: 1 });
+    // Since a time: the jobs that ended 15 minutes ago or later.
+    assert.deepEqual(history.results({ since: NOW - 15 * MIN }), { success: 1, lost: 1 });
+    assert.deepEqual(history.results({ repo: 'octo/app', since: NOW - 15 * MIN }), {
+      success: 1,
+      lost: 1,
+    });
+    assert.deepEqual(history.results({ repo: 'octo/none' }), {});
+    // A page of the same range has the same jobs.
+    assert.equal(history.page({ offset: 0, limit: 10, since: NOW - 15 * MIN }).total, 2);
   });
 
   test(`${kind}: pages, newest first, of one repo or one result, with how many in all`, () => {

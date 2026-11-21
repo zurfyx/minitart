@@ -138,9 +138,19 @@ test('the page and its state are served, with a policy that allows no outside sc
     'repo=..%2Fx',
     'repo=a',
     'result=DROP%20TABLE',
+    'days=0',
+    'days=367',
+    'days=7.5',
+    'days=x',
   ]) {
     assert.equal((await fetch(`${origin}/api/jobs?${bad}`)).status, 400, bad);
   }
+  // A range by the Mac's calendar, with the counts of each result in it.
+  const today = (await (await fetch(`${origin}/api/jobs?days=1`)).json()) as {
+    total: number;
+    results: Record<string, number>;
+  };
+  assert.deepEqual([today.total, today.results], [0, {}]);
   const usage = (await (await fetch(`${origin}/api/usage?days=7`)).json()) as {
     days: number;
     usage: unknown[];

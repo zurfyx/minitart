@@ -153,7 +153,8 @@ Everything else is rebuilt from GitHub and Tart on start.
 - `GET /api/vms/{name}/log`: what a VM printed, from memory while it runs and from
   `~/.minitart/logs` after it ends (the newest 50 VMs). `GET /api/jobs/{id}/log`: a finished
   job's log, fetched from GitHub, for jobs minitart ran.
-- `GET /api/jobs?page=&repo=&result=`: the history, 50 jobs a page, newest first
+- `GET /api/jobs?page=&repo=&result=&days=`: the history, 50 jobs a page, newest first, of
+  one repo, one result and the last few days if asked, with how many ended each way
   ([D24](decisions/D24-a-year-of-history-in-sqlite.md)).
 - `GET /api/usage?days=`: each day's minutes by kind, and the price list
   ([D25](decisions/D25-usage-and-list-prices.md)).
