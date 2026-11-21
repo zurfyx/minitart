@@ -100,6 +100,17 @@ for (const [kind, make] of [
     });
   });
 
+  test(`${kind}: how many jobs ended each way, of every repo or of one`, () => {
+    const history = make();
+    history.add(job(1, 30)); // octo/app
+    history.add(job(2, 20, { conclusion: 'failure' })); // octo/api
+    history.add(job(3, 10, { conclusion: 'lost' })); // octo/app
+    history.add(job(5, 5)); // octo/app
+    assert.deepEqual(history.results(), { success: 2, failure: 1, lost: 1 });
+    assert.deepEqual(history.results('octo/app'), { success: 2, lost: 1 });
+    assert.deepEqual(history.results('octo/none'), {});
+  });
+
   test(`${kind}: pages, newest first, of one repo or one result, with how many in all`, () => {
     const history = make();
     for (let n = 1; n <= 7; n++) {

@@ -63,6 +63,8 @@ export interface History {
   /** Each day's work since `since`, by kind, oldest first. Days with none are left out. */
   usage(since: number): UsageDay[];
   page(query: JobQuery): { total: number; jobs: DoneView[] };
+  /** How many jobs kept ended each way, of one repo if asked. */
+  results(repo?: string): Record<string, number>;
   /** Every repo with a job kept, by name. */
   repos(): string[];
   stats(): HistoryStats;
@@ -153,6 +155,15 @@ export class MemoryHistory implements History {
       total: matching.length,
       jobs: matching.slice(query.offset, query.offset + query.limit),
     };
+  }
+
+  results(repo?: string): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const entry of this.#entries) {
+      if (repo !== undefined && entry.repo !== repo) continue;
+      counts[entry.conclusion] = (counts[entry.conclusion] ?? 0) + 1;
+    }
+    return counts;
   }
 
   repos(): string[] {
@@ -357,6 +368,19 @@ export class SqliteHistory implements History {
       .prepare(`SELECT * FROM jobs ${clause} ORDER BY ended_at DESC, id DESC LIMIT ? OFFSET ?`)
       .all(...values, query.limit, query.offset) as unknown as Row[];
     return { total: Number(count.n), jobs: rows.map(fromRow) };
+  }
+
+  results(repo?: string): Record<string, number> {
+    const rows = (
+      repo === undefined
+        ? this.#db.prepare('SELECT conclusion, count(*) AS n FROM jobs GROUP BY conclusion').all()
+        : this.#db
+            .prepare(
+              'SELECT conclusion, count(*) AS n FROM jobs WHERE repo = ? GROUP BY conclusion',
+            )
+            .all(repo)
+    ) as { conclusion: string; n: number }[];
+    return Object.fromEntries(rows.map((row) => [row.conclusion, Number(row.n)]));
   }
 
   repos(): string[] {

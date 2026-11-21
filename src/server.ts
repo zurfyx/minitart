@@ -312,6 +312,8 @@ export function createDashboardServer(deps: ServerDeps): Server {
       pages: Math.max(1, Math.ceil(found.total / JOBS_PER_PAGE)),
       per: JOBS_PER_PAGE,
       repos: history?.repos() ?? [],
+      // How many ended each way, of the repo asked for: the result filter shows them.
+      results: history?.results(repo) ?? {},
     });
   }
 

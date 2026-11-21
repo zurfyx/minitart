@@ -15,13 +15,15 @@ order:
 5. Jobs are running or starting, and nothing waits.
 6. Idle, and how many jobs ran today.
 
-Four figures sit beside it: jobs running, jobs queued, jobs passed today, and how long a job
-waited for a VM, as the median of today's. Passed today counts out of the jobs that ran to
-their end, and says beside it how many were lost: a job whose VM ended before its runner
-said how the job ended (the VM died, minitart stopped, the Mac slept) is recorded as lost
-even when GitHub calls it failed, since it usually says nothing about the job's own code (a
-job that shuts down or exhausts its own VM is lost too). A failure inside the job that the
-environment caused (a download that timed out) is the job's.
+Four figures sit beside it: jobs running, jobs queued, jobs today, and how long a job waited
+for a VM, as the median of today's. Jobs today is what minitart did, not how the code fared:
+every job that ended, and beside it how many were lost, when any were. A job whose VM ended
+before its runner said how the job ended (the VM died, minitart stopped, the Mac slept) is
+recorded as lost even when GitHub calls it failed, since it usually says nothing about the
+job's own code (a job that shuts down or exhausts its own VM is lost too). A failure inside
+the job that the environment caused (a download that timed out) is the job's. How many
+passed, failed, were cancelled or lost is in the Jobs view, beside each result in its
+filter.
 
 Under it, the last hour of the Mac:
 
