@@ -62,8 +62,10 @@ export function stats(state) {
     linux: running.filter((vm) => vm.pool === 'linux').length,
     macos: running.filter((vm) => vm.pool === 'macos').length,
     queued: state.queued.length,
-    passed: state.today.passed,
-    finished: state.today.finished,
+    // Every job that ended today, and the ones the Mac lost (their VM ended first): what
+    // minitart did, not how the code fared. An older minitart sends no `lost`.
+    today: state.today.finished,
+    lost: state.today.lost ?? 0,
     medianWaitMs: state.today.medianWaitMs,
   };
 }

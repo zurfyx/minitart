@@ -96,7 +96,7 @@ test('stats: running counts VMs with a job; today’s figures are minitart’s o
   const figures = stats(
     state({
       vms: [vm('running'), vm('booting')],
-      today: { passed: 3, finished: 4, medianWaitMs: 30_000 },
+      today: { passed: 3, finished: 5, lost: 1, medianWaitMs: 30_000 },
     }),
   );
   assert.deepEqual(figures, {
@@ -104,10 +104,13 @@ test('stats: running counts VMs with a job; today’s figures are minitart’s o
     linux: 1,
     macos: 0,
     queued: 0,
-    passed: 3,
-    finished: 4,
+    today: 5,
+    lost: 1,
     medianWaitMs: 30_000,
   });
+  // An older minitart sends no `lost`: every job counts as run.
+  const older = stats(state({ today: { passed: 3, finished: 4, medianWaitMs: null } }));
+  assert.deepEqual([older.today, older.lost], [4, 0]);
 });
 
 test('lanes: one per slot, a VM in the first lane of its kind free when it was cloned', () => {

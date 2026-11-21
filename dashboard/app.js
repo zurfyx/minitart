@@ -184,9 +184,9 @@ function render() {
     figures.running ? h('small', {}, ` · ${figures.linux} Linux, ${figures.macos} macOS`) : '',
   );
   $('stat-queued').textContent = String(figures.queued);
-  $('stat-passed').replaceChildren(
-    String(figures.passed),
-    h('small', {}, ` of ${figures.finished}`),
+  $('stat-today').replaceChildren(
+    String(figures.today),
+    figures.lost ? h('small', {}, ` · ${figures.lost} lost`) : '',
   );
   $('stat-wait').replaceChildren(
     figures.medianWaitMs === null ? '–' : duration(figures.medianWaitMs),
@@ -696,7 +696,17 @@ function drawJobs(wanted) {
     ...jobPage.repos.map((name) => h('option', { value: name }, name)),
   );
   repoSelect.value = wanted.repo;
-  /** @type {HTMLSelectElement} */ (form.elements.namedItem('result')).value = wanted.result;
+  const resultSelect = /** @type {HTMLSelectElement} */ (form.elements.namedItem('result'));
+  // Each result with how many of the repo's jobs ended that way, whichever result is shown.
+  const counts = jobPage.results ?? {};
+  for (const option of resultSelect.options) {
+    option.dataset['label'] ??= option.text;
+    const n = option.value
+      ? (counts[option.value] ?? 0)
+      : Object.values(counts).reduce((sum, one) => sum + one, 0);
+    option.text = `${option.dataset['label']} · ${n.toLocaleString()}`;
+  }
+  resultSelect.value = wanted.result;
   const first = (jobPage.page - 1) * jobPage.per + 1;
   const last = Math.min(jobPage.total, jobPage.page * jobPage.per);
   $('jobs-count').textContent =

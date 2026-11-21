@@ -60,7 +60,8 @@ on macOS 27 each listing leaks kernel memory, so the loop asks Tart about nothin
 read from disk.
 
 When the manager stops, it deletes every VM. A job that was running fails on GitHub as
-"runner lost" and can be re-run.
+"runner lost" and can be re-run. minitart records a job as lost, not failed, whenever its VM
+ended before its runner said how the job ended.
 
 ## Parts
 

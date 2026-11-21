@@ -83,12 +83,32 @@ for (const [kind, make] of [
     delete four.queuedAt;
     history.add(four);
     history.add(job(5, 24 * 60)); // yesterday
+    const six = job(6, 2, { conclusion: 'lost' });
+    delete six.queuedAt;
+    history.add(six);
     assert.deepEqual(history.today(NOW - 60 * MIN), {
       passed: 3,
-      finished: 4,
+      finished: 5,
+      lost: 1,
       medianWaitMs: 30_000,
     });
-    assert.deepEqual(history.today(NOW), { passed: 0, finished: 0, medianWaitMs: null });
+    assert.deepEqual(history.today(NOW), {
+      passed: 0,
+      finished: 0,
+      lost: 0,
+      medianWaitMs: null,
+    });
+  });
+
+  test(`${kind}: how many jobs ended each way, of every repo or of one`, () => {
+    const history = make();
+    history.add(job(1, 30)); // octo/app
+    history.add(job(2, 20, { conclusion: 'failure' })); // octo/api
+    history.add(job(3, 10, { conclusion: 'lost' })); // octo/app
+    history.add(job(5, 5)); // octo/app
+    assert.deepEqual(history.results(), { success: 2, failure: 1, lost: 1 });
+    assert.deepEqual(history.results('octo/app'), { success: 2, lost: 1 });
+    assert.deepEqual(history.results('octo/none'), {});
   });
 
   test(`${kind}: pages, newest first, of one repo or one result, with how many in all`, () => {

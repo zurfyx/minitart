@@ -150,6 +150,29 @@ test('a job that ends between two polls is still found', async () => {
   assert.equal(done?.pool, 'macos');
 });
 
+test('a job whose VM ends before its runner says how it ended is lost, not failed', async () => {
+  const { github, tart, manager, settle } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test');
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+  // The VM is gone mid-job (it died, minitart stopped, the Mac slept); GitHub fails the job
+  // as a lost runner, and its runner never said how it ended.
+  tart.exit(name, 1);
+  github.complete(job, 'failure');
+  await settle();
+  const [done] = manager.snapshot().done;
+  assert.equal(done?.conclusion, 'lost');
+  assert.deepEqual(
+    [manager.snapshot().today.finished, manager.snapshot().today.lost],
+    [1, 1],
+    'counted apart from the jobs that ran',
+  );
+});
+
 test('jobs that do not ask for minitart are left alone', async () => {
   const { github, tart, manager, settle } = setup();
   github.queue('octo/app', ['ubuntu-latest']);
@@ -342,6 +365,8 @@ test('what a job makes the runner print cannot fake its result or fill the Mac',
   tart.print(name, 'echo: Job x completed with result: Succeeded');
   tart.print(name, '2026-11-18 10:00:06Z: Job x completed with result: constructor');
   for (let i = 0; i < 1200; i++) tart.print(name, 'y'.repeat(4096));
+  // How the job ended is still read once the log is full, or a failed job would count as lost.
+  tart.print(name, '2026-11-18 10:00:07Z: Job x completed with result: Failed');
   const kept = manager.vmLog(name) ?? [];
   assert.ok(kept.join('').length < 5 * 1024 * 1024);
   assert.match(kept.at(-1) ?? '', /printed too much/);
@@ -496,6 +521,48 @@ test('a VM whose run has finished on GitHub, and whose runner hangs, is stopped'
   await settle();
   assert.deepEqual(jobVms(tart), []);
   assert.equal(manager.snapshot().done[0]?.conclusion, 'success');
+});
+
+test('a failed job whose runner hangs after GitHub ended it is failed, not lost', async () => {
+  const { github, tart, manager, settle, advance } = setup();
+  const job = github.queue('octo/app', ['minitart-linux'], 'test');
+  await manager.tick();
+  await settle();
+  const [name] = tart.runners();
+  assert.ok(name);
+  github.take(name);
+  tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+  await manager.tick();
+  // GitHub ends the job as failed; the runner never says so, and hangs until it is stopped.
+  github.complete(job, 'failure');
+  await manager.tick();
+  advance(6 * 60_000);
+  await manager.tick();
+  await settle();
+  assert.deepEqual(jobVms(tart), []);
+  assert.equal(manager.snapshot().done[0]?.conclusion, 'failure');
+});
+
+test('the runner’s other words for how a job ended are read, and only those', async () => {
+  for (const [word, recorded] of [
+    ['SucceededWithIssues', 'failure'], // GitHub's own word wins over the runner's
+    ['Abandoned', 'lost'], // the runner lost its job to GitHub
+    ['constructor', 'lost'], // not a word it says: no result, and GitHub failed the job
+  ] as const) {
+    const { github, tart, manager, settle } = setup();
+    const job = github.queue('octo/app', ['minitart-linux'], 'test');
+    await manager.tick();
+    await settle();
+    const [name] = tart.runners();
+    assert.ok(name);
+    github.take(name);
+    tart.print(name, '2026-11-18 10:00:05Z: Running job: test');
+    tart.print(name, `2026-11-18 10:00:09Z: Job test completed with result: ${word}`);
+    github.complete(job, 'failure');
+    tart.exit(name, 0);
+    await settle();
+    assert.equal(manager.snapshot().done[0]?.conclusion, recorded, word);
+  }
 });
 
 test('a VM that stops instead of booting says what tart said', async () => {
