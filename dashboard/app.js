@@ -226,7 +226,7 @@ function render() {
           'span',
           { class: 'took' },
           h('span', { class: 'num' }, duration(job.endedAt - (job.jobAt ?? job.startedAt))),
-          h('span', { class: 'ended' }, ago(state.now - job.endedAt)),
+          h('span', { class: 'ended num' }, ago(state.now - job.endedAt)),
         ),
         job.job.id !== null
           ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
