@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { demoWorld } from './demo.ts';
+import { demoSettings, demoWorld } from './demo.ts';
 import { applyFixes, blockedBy, firewallInstalled, runChecks, type Check } from './doctor.ts';
 import { AppAuth, appIdentity, parseAppCredentials, type AppCredentials } from './github/app.ts';
 import { GitHubClient } from './github/client.ts';
@@ -78,16 +78,6 @@ function loadSettings(home: Home, warn: (text: string) => void = console.warn): 
     );
     return defaults;
   }
-}
-
-/** The demo's settings: its repos served, and a Mac with a price, for the Usage view. */
-function demoSettings(): Settings {
-  const defaults = defaultSettings(machine);
-  return {
-    ...defaults,
-    repos: ['octo/app', 'octo/api', 'octo/site'],
-    cost: { ...defaults.cost, macUsd: 1999, lifeMonths: 36, watts: 25, kwhUsd: 0.3 },
-  };
 }
 
 function loadApp(home: Home): AppCredentials | null {
@@ -228,7 +218,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     github: () => github,
     tart,
     network: flags.network,
-    settings: home ? loadSettings(home, (text) => early.push(text)) : demoSettings(),
+    settings: home ? loadSettings(home, (text) => early.push(text)) : demoSettings(machine),
     saveSettings: (settings) => {
       home?.writeJson('settings.json', settings);
       // The health line follows a settings change without waiting a minute.

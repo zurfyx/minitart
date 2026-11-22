@@ -72,7 +72,8 @@ ended before its runner said how the job ended.
 | `src/schedule.ts`                                                     | Which jobs are minitart's, and which VMs to start (pure)                                                                        |
 | `src/tart.ts`                                                         | The `tart` command line, and the flags that isolate a VM                                                                        |
 | `src/github/`                                                         | The REST client, and the GitHub App: its JWT, tokens and manifest                                                               |
-| `src/server.ts`                                                       | The dashboard's HTTP server                                                                                                     |
+| `src/server.ts`                                                       | The dashboard's HTTP server: who may ask, and the files                                                                         |
+| `src/api.ts`                                                          | What the dashboard's API answers, apart from HTTP, for the server and the demo (D28)                                            |
 | `src/tailnet.ts`                                                      | The tailnet names Tailscale forwards to the dashboard                                                                           |
 | `src/settings.ts`                                                     | Defaults from the machine; validation of what the dashboard saves                                                               |
 | `src/doctor.ts`                                                       | Is this Mac set up the way the security model assumes                                                                           |
@@ -91,6 +92,7 @@ ended before its runner said how the job ended.
 | `src/history.ts`                                                      | The jobs that ran, a year of them, in SQLite                                                                                    |
 | `src/home.ts`                                                         | `~/.minitart`: its files, kept to the owner, and old VM logs pruned                                                             |
 | `src/demo.ts`                                                         | The made-up jobs and VMs of `--demo`                                                                                            |
+| `src/demo-page.ts`, `scripts/build-demo.mjs`, `demo/`                 | The demo at demo.minitart.rovira.sh: the dashboard and the made-up Mac, run in the browser (D28)                                |
 | `app/`                                                                | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                                                              |
 | `dashboard/`                                                          | The page: plain HTML, CSS and four scripts (`app.js`, `view.js`, `charts.js`, `cost.js`), no build                              |
 | `test/headline-cases.json`                                            | The headline cases the dashboard and the menu bar app are both held to                                                          |

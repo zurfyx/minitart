@@ -58,6 +58,7 @@ How expensive is this to get wrong?
 | [D25](D25-usage-and-list-prices.md)         | A Usage view: minutes run here, and other providers' list prices as a reference                         | LOW    | `DECIDED` |
 | [D26](D26-a-menu-bar-app.md)                | A menu bar app, a cask that installs minitart with it, released apart and notarized                     | MED    | `DECIDED` |
 | [D27](D27-the-charts-are-kept.md)           | The charts are kept, a minute a row, forever unless the owner sets a limit                              | LOW    | `DECIDED` |
+| [D28](D28-a-demo-in-the-browser.md)         | A demo of the dashboard, run in the visitor's browser, on Vercel                                        | LOW    | `DECIDED` |
 | [D16](D16-how-minitart-is-installed.md)     | minitart is installed with Homebrew, released from every green main, and upgraded by `minitart upgrade` | MED    | `DECIDED` |
 
 ## Tier 3: how the repo is worked on

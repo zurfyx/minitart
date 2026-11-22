@@ -2,7 +2,6 @@
 // job ends. Everything it knows is in memory and rebuilt from GitHub and Tart on start; the
 // only things it keeps on disk are the settings and the list of finished jobs.
 
-import { randomBytes } from 'node:crypto';
 import { GitHubError, type GitHub, type Job, type Repo } from './github/types.ts';
 import { LABELS, plan, route, type Waiting } from './schedule.ts';
 import type { History, Today } from './history.ts';
@@ -716,7 +715,7 @@ export class Manager {
   #launch(github: GitHub, repo: string, pool: Pool): void {
     const now = this.#now();
     const vm: Vm = {
-      name: `minitart-${pool}-${randomBytes(3).toString('hex')}`,
+      name: `minitart-${pool}-${randomHex(3)}`,
       repo,
       pool,
       status: 'cloning',
@@ -1033,4 +1032,11 @@ function gb(mb: number): string {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** `bytes` random bytes in hex, from the Web Crypto Node and browsers share (the demo, D28). */
+function randomHex(bytes: number): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
 }
