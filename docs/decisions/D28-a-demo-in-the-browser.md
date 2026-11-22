@@ -12,7 +12,8 @@ changing a setting changes only theirs, and it is gone when they close the page.
 
 The API's answers live in `src/api.ts`, apart from HTTP. The server (`server.ts`) still says
 who may ask, and asks `api.ts` for the answer; the demo page (`src/demo-page.ts`) asks it in
-the browser. So the demo cannot drift from what minitart serves.
+the browser (`src/demo-browser.ts`, which `demo-page.ts` puts in the page). So the demo
+cannot drift from what minitart serves.
 
 `scripts/build-demo.mjs` builds it, on Vercel, into a folder of static files: the dashboard
 as it is, and the demo's TypeScript with its types stripped by Node's own
@@ -37,9 +38,12 @@ from it widens what the security model keeps closed.
 - What the demo page imports must run in a browser: no Node module called, only Web APIs both
   have (`crypto.getRandomValues`, `fetch`, `EventTarget`). Some files it imports also hold
   code that needs Node, such as the SQLite history; each such import of a Node module is
-  pointed at a stand-in that throws if it is called. The build's test loads every module
+  pointed at a stand-in that throws if it is called. The build's tests load every module
   built, so one that calls a stand-in as it loads, or imports a name none provides, fails
-  it; an import the build cannot read stops the build.
+  them, and an import the build cannot read stops the build. They also run the built demo
+  for ten minutes of a mocked clock: VMs take jobs, jobs are kept, the charts are kept, the
+  page's `fetch` and `EventSource` answer as the server does, and nothing logs an error, so
+  shared code that reaches for Node while it runs fails them too.
 - The page's `fetch` and `EventSource` are replaced before the dashboard starts. The
   dashboard itself is not changed for the demo.
 - Creating the GitHub App is not in the demo: its made-up GitHub already has repos, so the
