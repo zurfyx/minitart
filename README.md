@@ -11,7 +11,7 @@ how it keeps your Mac and your network out of a job's reach.
 
 <picture>
   <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
-  <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, CPU and memory charts, and the jobs" />
+  <img src="site/dashboard-light.png" alt="The minitart dashboard: what needs you, a timeline of the last hour's VMs, and charts of the Mac's CPU, memory, network and disk" />
 </picture>
 
 ## What you get
@@ -29,7 +29,7 @@ how it keeps your Mac and your network out of a job's reach.
 - **Nothing to configure by hand.** No file to write. VM counts start from what the Mac can
   hold and change in the dashboard, which saves them as plain JSON you can back up.
 - **A dashboard**: one line that says what needs you, a timeline of the last hour's VMs, the
-  Mac's CPU, memory and disk, and every job of the past year, with its log while GitHub
+  Mac's CPU, memory, network and disk, and every job of the past year, with its log while GitHub
   keeps it. On the Mac itself, or on your Tailscale tailnet if you want it there, and as an
   app in the Dock or on a phone. A History view goes back over the Mac's CPU, memory,
   network and disk as far as they are kept, and a Usage view counts the minutes run, with
