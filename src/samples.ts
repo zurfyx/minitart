@@ -14,6 +14,7 @@ export const SERIES = [
   'netVmsUp',
   'netOtherDown',
   'netOtherUp',
+  'diskUsed',
 ] as const;
 export type Series = (typeof SERIES)[number];
 

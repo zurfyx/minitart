@@ -219,6 +219,19 @@ export function demoWorld(machine: Machine): {
       netVmsUp: Math.round(up),
       netOtherDown: Math.round(250_000 + wobble * 150_000),
       netOtherUp: Math.round(80_000 + wobble * 40_000),
+      // The Mac holds some 292 GB; each VM writes as its job goes, and gives it back when it is deleted.
+      diskUsed: Math.round(
+        292 * 1024 +
+          vms.reduce(
+            (sum, vm) =>
+              sum +
+              (vm.jobAt === null || time < vm.jobAt
+                ? 0.4
+                : Math.min(9, 0.4 + ((time - vm.jobAt) / 60_000) * 2)),
+            0,
+          ) *
+            1024,
+      ),
     };
   };
   for (let time = now - (POINTS - 1) * STEP_MS; time <= now; time += STEP_MS) {

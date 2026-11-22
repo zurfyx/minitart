@@ -34,6 +34,11 @@ export interface ResourcePoint {
   netVmsUp: number;
   netOtherDown: number;
   netOtherUp: number;
+  /**
+   * Megabytes in use on the disk VMs are on. Not split by who: a VM starts as a copy that
+   * shares its blocks with its image, and macOS has no cheap way to say what one VM's own are.
+   */
+  diskUsed: number;
 }
 
 export interface DiskView {
@@ -181,6 +186,7 @@ export class Resources {
     net: { at: number; bytes: Map<string, { in: number; out: number }> };
   } | null = null;
   #disk: DiskView | null = null;
+  #diskUsed = 0;
   #sampling = false;
 
   constructor(deps: ResourcesDeps) {
@@ -286,15 +292,31 @@ export class Resources {
       netVmsUp: rate(moved.vmsUp),
       netOtherDown: rate(moved.portsDown - moved.vmsDown),
       netOtherUp: rate(moved.portsUp - moved.vmsUp),
+      diskUsed: await this.#diskUsedMb(),
     });
     this.#trim();
+  }
+
+  /** The data volume's space in use, in megabytes; the last known when it cannot be read. */
+  async #diskUsedMb(): Promise<number> {
+    try {
+      const volume = await this.#volume();
+      this.#diskUsed = Math.round(((volume.blocks - volume.bavail) * volume.bsize) / 1024 ** 2);
+    } catch {
+      // Kept as it was: a point that says the disk emptied would be wrong.
+    }
+    return this.#diskUsed;
+  }
+
+  #volume(): Promise<{ bsize: number; blocks: number; bavail: number }> {
+    // `/` is the sealed system volume; what fills up is the data volume beside it.
+    return this.#deps.statfs('/System/Volumes/Data').catch(() => this.#deps.statfs('/'));
   }
 
   async #sampleDisk(): Promise<void> {
     let volume;
     try {
-      // `/` is the sealed system volume; what fills up is the data volume beside it.
-      volume = await this.#deps.statfs('/System/Volumes/Data').catch(() => this.#deps.statfs('/'));
+      volume = await this.#volume();
     } catch {
       return;
     }

@@ -138,6 +138,8 @@ test('a point splits CPU and memory between minitart’s job VMs and everything 
     netVmsUp: 0,
     netOtherDown: 0,
     netOtherUp: 0,
+    // 1000 GB less the 700 GB free, in megabytes.
+    diskUsed: 300 * 1024,
   });
   assert.equal(world.lsofCalls, 2, 'each process is asked about once');
 });

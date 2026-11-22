@@ -61,6 +61,7 @@ async function setup(
           netVmsUp: 10_000,
           netOtherDown: 5_000,
           netOtherUp: 1_000,
+          diskUsed: 300_000,
         },
       ],
       disk: null,

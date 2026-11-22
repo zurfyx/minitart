@@ -2,7 +2,7 @@
 // of its own beyond which log is open. Everything from GitHub (job, workflow and repo names)
 // is text someone else wrote, so it only ever reaches the page as text nodes.
 
-import { areaChart, columns, h, legend, meter, timeline } from './charts.js';
+import { areaChart, columns, h, meter, timeline } from './charts.js';
 import {
   compareProviders,
   dayLabel,
@@ -235,6 +235,7 @@ function render() {
     ),
   ];
   $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
+  drawReposToday();
   // The Usage view's numbers can come before the state it also needs: drawn once both are in.
   if (costData && !costDrawn && route().view === 'usage') drawCost();
 
@@ -333,6 +334,43 @@ function render() {
   );
 }
 
+/**
+ * Each repo served, or with a job today: how many of its jobs ended today, how many failed
+ * or were lost, and how many run now. A row opens the repo's jobs of today.
+ */
+function drawReposToday() {
+  const today = new Map((state.today.repos ?? []).map((one) => [one.repo, one]));
+  const names = [
+    ...new Set([...state.settings.repos, ...today.keys(), ...state.vms.map((vm) => vm.repo)]),
+  ].sort((a, b) => a.localeCompare(b));
+  $('repos-today').replaceChildren(
+    ...(names.length
+      ? names.map((name) => {
+          const counts = today.get(name);
+          const running = state.vms.filter(
+            (vm) => vm.repo === name && vm.status === 'running',
+          ).length;
+          const facts = counts
+            ? [
+                `${counts.jobs} ${counts.jobs === 1 ? 'job' : 'jobs'}`,
+                ...(counts.failed ? [`${counts.failed} failed`] : []),
+                ...(counts.lost ? [`${counts.lost} lost`] : []),
+              ].join(' · ')
+            : 'No jobs yet';
+          return row(
+            h(
+              'span',
+              { class: 'main' },
+              h('a', { href: jobsHash({ page: 1, repo: name, result: '', jobDays: 1 }) }, name),
+              h('span', { class: 'meta' }, facts),
+            ),
+            h('span', { class: 'muted num' }, running ? `${running} running` : ''),
+          );
+        })
+      : [empty('No repo is served yet.')]),
+  );
+}
+
 /** Whether the pointer or the keyboard is on `root`: then it is not redrawn under them. */
 function inUse(root) {
   return root.matches(':hover') || root.contains(document.activeElement);
@@ -381,6 +419,19 @@ function niceMax(peak) {
   if (!(peak > 0)) return 1;
   const power = 10 ** Math.floor(Math.log10(peak));
   return [1, 2, 5, 10].map((one) => one * power).find((one) => one >= peak) ?? 10 * power;
+}
+
+/** A disk chart's scale: the values' range with room around it, in round gigabytes. */
+function diskRange(values, totalMb) {
+  const known = values.filter((value) => value > 0);
+  if (!known.length) return { min: 0, max: totalMb, ticks: [0, totalMb / 2, totalMb] };
+  const low = Math.min(...known);
+  const high = Math.max(...known);
+  const pad = Math.max(8 * 1024, (high - low) * 0.5);
+  const step = 4 * 1024;
+  const min = Math.max(0, Math.floor((low - pad) / step) * step);
+  const max = Math.min(totalMb, Math.ceil((high + pad) / step) * step);
+  return { min, max, ticks: [min, (min + max) / 2, max] };
 }
 
 /** Gigabytes from megabytes, as the charts write them. */
@@ -458,29 +509,32 @@ function drawResources() {
     });
   }
 
-  drawStorage();
-  const disk = resources.disk;
-  if (!disk) {
-    $('disk-free').textContent = '';
-    $('disk').replaceChildren(empty('Not measured yet.'));
-    return;
-  }
-  const used = disk.totalBytes - disk.freeBytes;
-  const size = (bytes) => `${Math.round(bytes / GB)} GB`;
-  $('disk-free').textContent = `${size(disk.freeBytes)} free of ${size(disk.totalBytes)}`;
-  $('disk').replaceChildren(
-    meter(
-      [
-        { value: used, color: 'other' },
-        { value: disk.freeBytes, color: 'free' },
+  // Space in use on the disk VMs are on: not split by who, since a VM shares its image's
+  // blocks until it writes. The VMs show as rises while they run and drops when deleted.
+  const diskTotalMb = resources.disk ? resources.disk.totalBytes / 1024 ** 2 : null;
+  $('disk-now').textContent =
+    last?.diskUsed !== undefined && diskTotalMb
+      ? `${gb(diskTotalMb - last.diskUsed)} free of ${gb(diskTotalMb)}`
+      : '';
+  if (!inUse($('disk-chart')) && diskTotalMb) {
+    areaChart($('disk-chart'), {
+      ...span,
+      times,
+      series: [
+        { name: 'In use', values: points.map((point) => point.diskUsed ?? 0), color: 'other' },
       ],
-      `${size(used)} used, ${size(disk.freeBytes)} free`,
-    ),
-    legend([
-      ['other', `Used, ${size(used)}`],
-      ['free', `Free, ${size(disk.freeBytes)}`],
-    ]),
-  );
+      // The hour's range, not the whole disk: a VM's few gigabytes would not show on a terabyte.
+      ...diskRange(
+        points.map((point) => point.diskUsed ?? 0),
+        diskTotalMb,
+      ),
+      format: gb,
+      height: 150,
+      label: `Disk in use over the last hour${last?.diskUsed !== undefined ? `, ${gb(last.diskUsed)} now` : ''}`,
+    });
+  }
+
+  drawStorage();
 }
 
 async function loadResources() {

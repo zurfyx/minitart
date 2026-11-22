@@ -16,6 +16,8 @@ export interface Today {
   finished: number;
   /** The jobs lost with their VM, not failed by their own steps. */
   lost: number;
+  /** Each repo that had a job end, by name: how many ended, failed and were lost. */
+  repos: { repo: string; jobs: number; failed: number; lost: number }[];
   /** How long a job waited for its VM: from GitHub queueing it to its runner taking it. */
   medianWaitMs: number | null;
 }
@@ -129,6 +131,15 @@ function summarise(entries: readonly DoneView[]): Today {
     passed: entries.filter((entry) => entry.conclusion === 'success').length,
     finished: entries.length,
     lost: entries.filter((entry) => entry.conclusion === 'lost').length,
+    repos: [...new Set(entries.map((entry) => entry.repo))].sort().map((repo) => {
+      const own = entries.filter((entry) => entry.repo === repo);
+      return {
+        repo,
+        jobs: own.length,
+        failed: own.filter((entry) => entry.conclusion === 'failure').length,
+        lost: own.filter((entry) => entry.conclusion === 'lost').length,
+      };
+    }),
     medianWaitMs: median(
       entries.flatMap((entry) =>
         entry.jobAt !== undefined && entry.queuedAt !== undefined
@@ -330,7 +341,9 @@ const SCHEMA = `
     net_other_down INTEGER NOT NULL,
     net_other_down_max INTEGER NOT NULL,
     net_other_up INTEGER NOT NULL,
-    net_other_up_max INTEGER NOT NULL
+    net_other_up_max INTEGER NOT NULL,
+    disk_used INTEGER NOT NULL,
+    disk_used_max INTEGER NOT NULL
   ) STRICT;
 `;
 

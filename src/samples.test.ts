@@ -13,6 +13,7 @@ const point = (at: number, cpu: number): ResourcePoint => ({
   netVmsUp: 0,
   netOtherDown: 0,
   netOtherUp: 0,
+  diskUsed: 300_000,
 });
 
 test('a minute keeps its average and its peak', () => {

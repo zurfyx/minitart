@@ -91,12 +91,18 @@ for (const [kind, make] of [
       passed: 3,
       finished: 5,
       lost: 1,
+      // Each repo with a job today, by name.
+      repos: [
+        { repo: 'octo/api', jobs: 3, failed: 1, lost: 1 },
+        { repo: 'octo/app', jobs: 2, failed: 0, lost: 0 },
+      ],
       medianWaitMs: 30_000,
     });
     assert.deepEqual(history.today(NOW), {
       passed: 0,
       finished: 0,
       lost: 0,
+      repos: [],
       medianWaitMs: null,
     });
   });

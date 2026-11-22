@@ -561,7 +561,13 @@ export class Manager {
         this.#recent = {
           at: now,
           done: this.#recent?.done ?? [],
-          today: this.#recent?.today ?? { passed: 0, finished: 0, lost: 0, medianWaitMs: null },
+          today: this.#recent?.today ?? {
+            passed: 0,
+            finished: 0,
+            lost: 0,
+            repos: [],
+            medianWaitMs: null,
+          },
         };
       }
     }
