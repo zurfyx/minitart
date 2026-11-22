@@ -18,6 +18,7 @@ import { Manager, type LogLine } from './manager.ts';
 import { KEEP_MS, MemoryHistory, openHistory, type History } from './history.ts';
 import { readMemory, type Memory } from './memory.ts';
 import { liveResources, STEP_MS } from './resources.ts';
+import { asPoint, Minutes } from './samples.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
 import { installService, LABEL, plistPath, uninstallService } from './service.ts';
@@ -213,11 +214,13 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   const pruneHistory = () => {
     try {
       history.prune(Date.now() - KEEP_MS);
+      // The charts' minutes are kept forever, unless the owner set how many days.
+      const days = manager.settings.keepChartsDays;
+      if (days !== null) history.pruneSamples(Date.now() - days * 24 * 60 * 60_000);
     } catch (error) {
       console.error(error);
     }
   };
-  pruneHistory();
   const manager = new Manager({
     // The demo has no Mac to isolate anything from.
     blocked: () => (demo ? null : blockedBy(health, flags.network)),
@@ -301,13 +304,31 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
         availableMb: () => memory?.availableMb ?? null,
         images: () => [manager.settings.linux.image, manager.settings.macos.image],
       });
-  const sampleResources = () => resources.sample().catch((error: unknown) => console.error(error));
+  // The hour before a restart, from the minutes kept, so the charts do not start empty.
+  try {
+    const now = Date.now();
+    resources.seed?.(history.samples(now - 60 * 60_000, now).map(asPoint));
+  } catch (error) {
+    console.error(error);
+  }
+  // Each minute of points is kept, its average and its peak, for the History view.
+  const minutes = new Minutes();
+  const sampleResources = () =>
+    resources
+      .sample()
+      .then(() => {
+        const newest = resources.view().points.at(-1);
+        const minute = newest ? minutes.add(newest) : null;
+        if (minute) history.addSample(minute);
+      })
+      .catch((error: unknown) => console.error(error));
   void sampleResources();
   const everyTenSeconds = setInterval(() => void sampleResources(), STEP_MS);
   await check();
   const prune = () =>
     home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
   prune();
+  pruneHistory();
   const everyMinute = setInterval(() => {
     // A check that throws is tried again in a minute; it must not stop the manager.
     check().catch((error: unknown) => console.error(error));

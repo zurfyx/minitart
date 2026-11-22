@@ -66,6 +66,8 @@ export interface Settings {
    */
   repos: string[];
   cost: CostSettings;
+  /** How many days of the charts' minutes are kept; null keeps them all. */
+  keepChartsDays: number | null;
 }
 
 const GB = 1024 ** 3;
@@ -99,6 +101,7 @@ export function defaultSettings(machine: Machine): Settings {
     idleSeconds: 180,
     allowPublicRepos: false,
     repos: [],
+    keepChartsDays: null,
     cost: {
       // Each provider at what a workflow gets by default there; the owner picks others.
       compare: PROVIDERS.map((one) => ({
@@ -156,6 +159,10 @@ export function mergeSettings(
       'allowPublicRepos',
     ),
     repos: repoNames(given(input['repos'], base.repos), 'repos'),
+    keepChartsDays: (() => {
+      const days = given(input['keepChartsDays'], base.keepChartsDays);
+      return days === null ? null : integer(days, 'keepChartsDays', 1, 36_500);
+    })(),
     cost:
       input['cost'] === undefined
         ? base.cost

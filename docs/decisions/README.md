@@ -57,6 +57,7 @@ How expensive is this to get wrong?
 | [D24](D24-a-year-of-history-in-sqlite.md)   | The jobs that ran are kept a year, in SQLite that Node has built in                                     | LOW    | `DECIDED` |
 | [D25](D25-usage-and-list-prices.md)         | A Usage view: minutes run here, and other providers' list prices as a reference                         | LOW    | `DECIDED` |
 | [D26](D26-a-menu-bar-app.md)                | A menu bar app, a cask that installs minitart with it, released apart and notarized                     | MED    | `DECIDED` |
+| [D27](D27-the-charts-are-kept.md)           | The charts are kept, a minute a row, forever unless the owner sets a limit                              | LOW    | `DECIDED` |
 | [D16](D16-how-minitart-is-installed.md)     | minitart is installed with Homebrew, released from every green main, and upgraded by `minitart upgrade` | MED    | `DECIDED` |
 
 ## Tier 3: how the repo is worked on

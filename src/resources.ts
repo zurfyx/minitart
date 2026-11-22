@@ -26,6 +26,14 @@ export interface ResourcePoint {
   /** Megabytes in use: by minitart's job VMs, and by everything else. */
   memVms: number;
   memOther: number;
+  /**
+   * Bytes a second, down and up: minitart's VMs (their own network interfaces), and the
+   * rest of the Mac (its network ports, less what the VMs sent and got through them).
+   */
+  netVmsDown: number;
+  netVmsUp: number;
+  netOtherDown: number;
+  netOtherUp: number;
 }
 
 export interface DiskView {
@@ -87,6 +95,54 @@ export function vmOfFiles(lsof: string, tartHome: string): string | null {
   return null;
 }
 
+/**
+ * The bytes each network interface has received and sent, from `netstat -ibn`: its link row,
+ * the one with `<Link#n>`, whose last columns are always `Ibytes Opkts Oerrs Obytes Coll`.
+ */
+export function interfaceBytes(netstat: string): Map<string, { in: number; out: number }> {
+  const found = new Map<string, { in: number; out: number }>();
+  for (const line of netstat.split('\n')) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 8 || !fields[2]?.startsWith('<Link#')) continue;
+    const name = (fields[0] ?? '').replace(/\*$/, '');
+    const inBytes = Number(fields.at(-5));
+    const outBytes = Number(fields.at(-2));
+    if (!name || !Number.isFinite(inBytes) || !Number.isFinite(outBytes)) continue;
+    found.set(name, { in: inBytes, out: outBytes });
+  }
+  return found;
+}
+
+/** The interfaces Softnet gives job VMs, the ones the firewall rule names (D21). */
+const VM_INTERFACE = /^bridge1\d\d$/;
+/** The Mac's own network ports: Ethernet, Wi-Fi, Thunderbolt. */
+const PORT_INTERFACE = /^en\d+$/;
+
+/**
+ * Bytes down and up since the last counts, for the VMs and for the Mac's ports. An
+ * interface not counted before (a VM just started), or whose count went back (made again),
+ * counts from its next point.
+ */
+export function networkSince(
+  before: ReadonlyMap<string, { in: number; out: number }>,
+  now: ReadonlyMap<string, { in: number; out: number }>,
+): { vmsDown: number; vmsUp: number; portsDown: number; portsUp: number } {
+  const sum = { vmsDown: 0, vmsUp: 0, portsDown: 0, portsUp: 0 };
+  for (const [name, count] of now) {
+    const last = before.get(name);
+    if (!last || count.in < last.in || count.out < last.out) continue;
+    if (VM_INTERFACE.test(name)) {
+      // What the Mac got from a VM is what the VM sent: its upload.
+      sum.vmsUp += count.in - last.in;
+      sum.vmsDown += count.out - last.out;
+    } else if (PORT_INTERFACE.test(name)) {
+      sum.portsDown += count.in - last.in;
+      sum.portsUp += count.out - last.out;
+    }
+  }
+  return sum;
+}
+
 /** `du -sk` lines: kilobytes, a tab, the path. */
 export function duSizes(du: string): Map<string, number> {
   const sizes = new Map<string, number>();
@@ -118,13 +174,24 @@ export class Resources {
   readonly #points: ResourcePoint[] = [];
   /** Which VM each VM process runs: a name, or '' for one that is not a job VM. */
   readonly #names = new Map<number, string>();
-  #last: { at: number; cpu: { busy: number; total: number }; vms: Map<number, number> } | null =
-    null;
+  #last: {
+    at: number;
+    cpu: { busy: number; total: number };
+    vms: Map<number, number>;
+    net: Map<string, { in: number; out: number }>;
+  } | null = null;
   #disk: DiskView | null = null;
   #sampling = false;
 
   constructor(deps: ResourcesDeps) {
     this.#deps = deps;
+  }
+
+  /** Points kept from before a restart, oldest first: the chart starts from them. */
+  seed(points: readonly ResourcePoint[]): void {
+    const first = this.#points[0]?.at ?? Infinity;
+    this.#points.unshift(...points.filter((point) => point.at < first));
+    if (this.#points.length > POINTS) this.#points.splice(0, this.#points.length - POINTS);
   }
 
   view(): ResourcesView {
@@ -168,11 +235,14 @@ export class Resources {
       if (name !== null) this.#names.set(vm.pid, isJobVm(name) ? name : '');
     }
     const jobVms = processes.filter((vm) => this.#names.get(vm.pid));
+    const netstat = await this.#deps.run('netstat', ['-ibn']);
+    const net = netstat === null ? new Map() : interfaceBytes(netstat);
     const last = this.#last;
     this.#last = {
       at,
       cpu,
       vms: new Map(jobVms.map((vm) => [vm.pid, vm.cpuSeconds])),
+      net,
     };
     if (last === null || cpu.total <= last.cpu.total || at <= last.at) return;
 
@@ -187,12 +257,20 @@ export class Resources {
     const memVms = jobVms.reduce((sum, vm) => sum + vm.rssBytes, 0) / 1024 ** 2;
     const available = this.#deps.availableMb();
     const used = available === null ? null : this.#deps.memoryBytes / 1024 ** 2 - available;
+    // What the VMs sent and got also crossed the Mac's ports: the rest is the Mac's own.
+    const moved = networkSince(last.net, net);
+    const seconds = (at - last.at) / 1000;
+    const rate = (bytes: number) => Math.round(Math.max(0, bytes) / seconds);
     this.#points.push({
       at,
       cpuVms: round(cpuVms),
       cpuOther: round(Math.max(0, total - cpuVms)),
       memVms: Math.round(memVms),
       memOther: used === null ? 0 : Math.round(Math.max(0, used - memVms)),
+      netVmsDown: rate(moved.vmsDown),
+      netVmsUp: rate(moved.vmsUp),
+      netOtherDown: rate(moved.portsDown - moved.vmsDown),
+      netOtherUp: rate(moved.portsUp - moved.vmsUp),
     });
     if (this.#points.length > POINTS) this.#points.splice(0, this.#points.length - POINTS);
   }

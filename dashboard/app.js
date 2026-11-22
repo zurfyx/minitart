@@ -309,6 +309,13 @@ function render() {
     form.elements.poll.value = settings.pollSeconds;
     form.elements.idle.value = settings.idleSeconds;
     form.elements.public.checked = settings.allowPublicRepos;
+    const keep = form.elements.keepCharts;
+    const days = settings.keepChartsDays === null ? '' : String(settings.keepChartsDays);
+    // A number of days set in the file by hand is shown as it is.
+    if (![...keep.options].some((option) => option.value === days)) {
+      keep.append(h('option', { value: days }, `${days} days`));
+    }
+    keep.value = days;
   }
 
   $('activity').replaceChildren(
@@ -363,6 +370,19 @@ function drawTimeline() {
   });
 }
 
+/** Megabits a second from bytes a second, as the network chart writes them. */
+function mbps(bytes) {
+  const value = (bytes * 8) / 1e6;
+  return `${value >= 10 || value === 0 ? Math.round(value) : value.toFixed(1)} Mbit/s`;
+}
+
+/** A round top for a chart of `peak`: 1, 2 or 5 times a power of ten. */
+function niceMax(peak) {
+  if (!(peak > 0)) return 1;
+  const power = 10 ** Math.floor(Math.log10(peak));
+  return [1, 2, 5, 10].map((one) => one * power).find((one) => one >= peak) ?? 10 * power;
+}
+
 /** Gigabytes from megabytes, as the charts write them. */
 function gb(mb) {
   const value = mb / 1024;
@@ -414,6 +434,27 @@ function drawResources() {
       format: gb,
       height: 150,
       label: `Memory over the last hour${last ? `, ${gb(last.memVms + last.memOther)} now` : ''}`,
+    });
+  }
+
+  // Down, by who: what a job fetches is what CI waits on. Up is in the heading.
+  const down = (point) => (point.netVmsDown ?? 0) + (point.netOtherDown ?? 0);
+  const up = (point) => (point.netVmsUp ?? 0) + (point.netOtherUp ?? 0);
+  $('network-now').textContent = last ? `${mbps(down(last))} down · ${mbps(up(last))} up now` : '';
+  if (!inUse($('network'))) {
+    const top = niceMax((Math.max(0, ...points.map(down)) * 8) / 1e6) * (1e6 / 8);
+    areaChart($('network'), {
+      ...span,
+      times,
+      series: series(
+        (point) => point.netVmsDown ?? 0,
+        (point) => point.netOtherDown ?? 0,
+      ),
+      max: top,
+      ticks: [0, top / 2, top],
+      format: mbps,
+      height: 150,
+      label: `Network down over the last hour${last ? `, ${mbps(down(last))} now` : ''}`,
     });
   }
 
@@ -567,6 +608,9 @@ settingsForm.addEventListener('submit', (event) => {
   if (value('idle') !== now.idleSeconds) patch.idleSeconds = value('idle');
   const allowPublic = settingsForm.elements.public.checked;
   if (allowPublic !== now.allowPublicRepos) patch.allowPublicRepos = allowPublic;
+  const keep = settingsForm.elements.keepCharts.value;
+  const keepDays = keep === '' ? null : Number(keep);
+  if (keepDays !== now.keepChartsDays) patch.keepChartsDays = keepDays;
   if (Object.keys(patch).length === 0) {
     delete settingsForm.dataset.dirty;
     $('settings-note').textContent = 'Nothing to save.';
@@ -808,6 +852,16 @@ function bytes(value) {
   return `${(value / GB).toFixed(value < 10 * GB ? 1 : 0)} GB`;
 }
 
+/** The charts' minutes kept, and for how long. */
+function chartsKept(history) {
+  const minutes = history.samples ?? 0;
+  const since = history.samplesOldestAt
+    ? ` since ${new Date(history.samplesOldestAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : '';
+  const days = state?.settings.keepChartsDays ?? null;
+  return `${minutes.toLocaleString()} ${minutes === 1 ? 'minute' : 'minutes'} of charts${since}, kept ${days === null ? 'forever' : `${days} days`}`;
+}
+
 function drawStorage() {
   const history = storage?.history ?? null;
   const since = history?.oldestAt
@@ -846,8 +900,8 @@ function drawStorage() {
   if (history) {
     lines.push(
       line(
-        'Job history',
-        `${count}, each kept ${storage.keepDays} days · ~/.minitart/history.db`,
+        'History',
+        `${count}, each kept ${storage.keepDays} days; ${chartsKept(history)} · ~/.minitart/history.db`,
         history.bytes === null ? 'in memory' : bytes(history.bytes),
       ),
     );

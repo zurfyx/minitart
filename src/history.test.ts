@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
+import { MINUTE_MS, SERIES, type MinuteSample } from './samples.ts';
 import { MemoryHistory, openHistory, SqliteHistory, type History } from './history.ts';
 import type { DoneView } from './manager.ts';
 
@@ -98,6 +99,43 @@ for (const [kind, make] of [
       lost: 0,
       medianWaitMs: null,
     });
+  });
+
+  test(`${kind}: the charts' minutes, kept, gathered into steps, and pruned`, () => {
+    const history = make();
+    const minute = (at: number, cpu: number) => {
+      const sample = { at } as MinuteSample;
+      for (const series of SERIES) {
+        sample[series] = cpu;
+        sample[`${series}Max`] = cpu * 2;
+      }
+      return sample;
+    };
+    history.addSample(minute(0, 10));
+    history.addSample(minute(MINUTE_MS, 30));
+    history.addSample(minute(MINUTE_MS, 99)); // a minute already kept stays as it was
+    history.addSample(minute(5 * MINUTE_MS, 50));
+    assert.deepEqual(
+      history.samples(0, 10 * MINUTE_MS).map((one) => [one.at, one.cpuVms, one.cpuVmsMax]),
+      [
+        [0, 10, 20],
+        [MINUTE_MS, 30, 60],
+        [5 * MINUTE_MS, 50, 100],
+      ],
+    );
+    // Five minutes a step: the averages averaged, the peak kept.
+    assert.deepEqual(
+      history
+        .samples(0, 10 * MINUTE_MS, 5 * MINUTE_MS)
+        .map((one) => [one.at, one.cpuVms, one.netVmsUpMax]),
+      [
+        [0, 20, 60],
+        [5 * MINUTE_MS, 50, 100],
+      ],
+    );
+    assert.deepEqual([history.stats().samples, history.stats().samplesOldestAt], [3, 0]);
+    assert.equal(history.pruneSamples(MINUTE_MS), 1);
+    assert.equal(history.samples(0, 10 * MINUTE_MS).length, 2);
   });
 
   test(`${kind}: how many jobs ended each way, of every repo or of one`, () => {

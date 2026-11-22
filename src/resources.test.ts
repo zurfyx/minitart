@@ -62,6 +62,8 @@ function mac() {
     failPs: false,
     du: '' as string | null,
     statfsPaths: [] as string[],
+    /** Each interface's bytes received and sent, as `netstat -ibn` counts them. */
+    net: new Map<string, { in: number; out: number }>([['en0', { in: 0, out: 0 }]]),
   };
   const deps: ResourcesDeps = {
     cores: 10,
@@ -87,6 +89,16 @@ function mac() {
         world.lsofCalls++;
         const vm = world.processes.get(Number(args.at(-1)));
         return vm ? `p1\nn/t/vms/${vm.name}/disk.img\n` : null;
+      }
+      if (command === 'netstat') {
+        const header = 'Name  Mtu Network  Address  Ipkts Ierrs  Ibytes  Opkts Oerrs  Obytes  Coll';
+        const rows = [...world.net].map(([name, bytes]) =>
+          // A port has a hardware address; a VM's bridge does too; loopback has none.
+          name === 'lo0'
+            ? `${name} 16384 <Link#1> 10 0 ${bytes.in} 10 0 ${bytes.out} 0`
+            : `${name} 1500 <Link#4> 36:aa:bb:cc:dd:ee 10 0 ${bytes.in} 10 0 ${bytes.out} 0`,
+        );
+        return [header, ...rows, 'en0 1500 192.168.1 192.168.1.5 10 - 99 10 - 99 -'].join('\n');
       }
       if (command === 'du') {
         // As `du` does: a path that is not there fails the call.
@@ -122,8 +134,35 @@ test('a point splits CPU and memory between minitart’s job VMs and everything 
     memVms: 6 * 1024,
     // 64 GB, less the 40 GB macOS has to spare, less the job VM's 6.
     memOther: 18 * 1024,
+    netVmsDown: 0,
+    netVmsUp: 0,
+    netOtherDown: 0,
+    netOtherUp: 0,
   });
   assert.equal(world.lsofCalls, 2, 'each process is asked about once');
+});
+
+test('network: the VMs on their own interfaces, the rest of the Mac on its ports', async () => {
+  const { world, resources } = mac();
+  world.net.set('bridge100', { in: 0, out: 0 });
+  world.net.set('lo0', { in: 0, out: 0 });
+  await resources.sample();
+  world.now += STEP_MS;
+  world.busy += 10;
+  world.total += 100;
+  // In ten seconds: the VM got 50 MB and sent 2 MB; the Mac's port carried those and 1 MB
+  // down and 0.5 MB up of its own. Loopback is nobody's network.
+  world.net.set('bridge100', { in: 2_000_000, out: 50_000_000 });
+  world.net.set('en0', { in: 51_000_000, out: 2_500_000 });
+  world.net.set('lo0', { in: 9e9, out: 9e9 });
+  // A VM started in between counts from its next point.
+  world.net.set('bridge101', { in: 7e9, out: 7e9 });
+  await resources.sample();
+  const point = resources.view().points.at(-1);
+  assert.deepEqual(
+    [point?.netVmsDown, point?.netVmsUp, point?.netOtherDown, point?.netOtherUp],
+    [5_000_000, 200_000, 100_000, 50_000],
+  );
 });
 
 test('a VM first seen now counts from its next point, and one that is gone is forgotten', async () => {

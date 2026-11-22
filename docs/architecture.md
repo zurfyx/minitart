@@ -84,7 +84,8 @@ ended before its runner said how the job ended.
 | `src/version.ts`                                                      | The version a release wrote, or `0.0.0-dev` for a checkout                                                                      |
 | `src/testing/`                                                        | A GitHub and a Tart in memory, for the tests and `--demo`                                                                       |
 | `firewall/`                                                           | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                                                  |
-| `src/resources.ts`                                                    | CPU, memory and disk over the last hour, for the charts                                                                         |
+| `src/resources.ts`                                                    | CPU, memory, network and disk over the last hour, for the charts                                                                |
+| `src/samples.ts`                                                      | Each minute of the charts, its average and peak, kept in `history.db` (D27)                                                     |
 | `src/pricing.ts`                                                      | Other providers' list prices, with their sources and the date read                                                              |
 | `src/history.ts`                                                      | The jobs that ran, a year of them, in SQLite                                                                                    |
 | `src/home.ts`                                                         | `~/.minitart`: its files, kept to the owner, and old VM logs pruned                                                             |
@@ -131,13 +132,13 @@ The App subscribes to no events and its webhook is inactive.
 
 `~/.minitart/`, readable by the owner only:
 
-| File            | What                                                                   |
-| --------------- | ---------------------------------------------------------------------- |
-| `app.json`      | The App's id and private key. The one secret.                          |
-| `settings.json` | The repos that are served, and what the owner changed in the dashboard |
-| `images.json`   | The runner version each image was built with, and when                 |
-| `history.db`    | Every job that ran, a year of them, in SQLite (D24)                    |
-| `logs/`         | The manager's log and each VM's output                                 |
+| File            | What                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `app.json`      | The App's id and private key. The one secret.                                                               |
+| `settings.json` | The repos that are served, and what the owner changed in the dashboard                                      |
+| `images.json`   | The runner version each image was built with, and when                                                      |
+| `history.db`    | Every job that ran, a year of them (D24), and the charts' minutes, kept forever by default (D27), in SQLite |
+| `logs/`         | The manager's log and each VM's output                                                                      |
 
 Everything else is rebuilt from GitHub and Tart on start.
 
@@ -147,8 +148,10 @@ Everything else is rebuilt from GitHub and Tart on start.
 
 - `GET /api/state`, and `GET /api/events` (server-sent events): running, queued, done,
   repos, health, activity.
-- `GET /api/resources`: the last hour of CPU and memory, a point every ten seconds, and the
-  disk (`src/resources.ts`, [D23](decisions/D23-what-the-dashboard-leads-with.md)). Apart
+- `GET /api/resources`: the last hour of CPU, memory and network, a point every ten seconds,
+  and the disk (`src/resources.ts`, [D23](decisions/D23-what-the-dashboard-leads-with.md)).
+  Each minute of points is kept too (`src/samples.ts`,
+  [D27](decisions/D27-the-charts-are-kept.md)). Apart
   from the state, which is sent on every change.
 - `GET /api/vms/{name}/log`: what a VM printed, from memory while it runs and from
   `~/.minitart/logs` after it ends (the newest 50 VMs). `GET /api/jobs/{id}/log`: a finished
