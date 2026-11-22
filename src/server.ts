@@ -25,7 +25,8 @@ export interface ServerDeps extends Omit<ApiDeps, 'machineName'> {
   isLocal?: (address: string | undefined) => boolean;
 }
 
-const STATIC: Record<string, [file: string, type: string]> = {
+/** The page's files, by the path each is served at. The demo's build copies them too (D28). */
+export const STATIC: Record<string, [file: string, type: string]> = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/charts.js': ['charts.js', 'text/javascript; charset=utf-8'],
@@ -65,7 +66,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
   /** The pending "create the GitHub App" round trip: its secret and when it expires. */
   let setup: { state: string; expiresAt: number } | null = null;
   // What each address of the API answers; this server says who may ask.
-  const api = createApi({ ...deps, machineName: deps.machineName ?? hostname() });
+  const api = createApi({ ...deps, machineName: () => deps.machineName ?? hostname() });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const host = (request.headers.host ?? '').toLowerCase();

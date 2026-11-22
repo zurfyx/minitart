@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "",
-  "buildCommand": "node ../scripts/build-demo.mjs dist",
+  "buildCommand": "node --disable-warning=ExperimentalWarning ../scripts/build-demo.mjs dist",
   "outputDirectory": "dist",
   "headers": [
     {

@@ -8,32 +8,37 @@
 //
 //   node scripts/build-demo.mjs <folder>
 
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { STATIC } from '../src/server.ts';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const ENTRY = 'src/demo-page.ts';
 /** Where the stand-ins for Node's modules go, in the folder built. */
 const NODE = 'node';
 
-/** Every import and export `from` in a module, and dynamic imports of a literal. */
-const SPECIFIER =
-  /(\b(?:import|export)\s*(?:[\w*{}\s,$]*?\sfrom\s*)?|\bimport\s*\(\s*)(['"])([^'"]+)\2/g;
-/** The names a module imports from one of Node's: `import { a, b as c } from 'node:x'`. */
-const NAMED = /import\s*\{([^}]*)\}\s*from\s*['"](node:[^'"]+)['"]/g;
+/**
+ * Every import, and export `from`, at the start of a line: `import x, { y } from '…'`,
+ * `import '…'`, `export * from '…'`. Not text in a string or a comment that looks like one.
+ */
+const SPECIFIER = /^(\s*(?:import|export)\b[^'";]*?\bfrom\s*|\s*import\s*)(['"])([^'"\n]+)\2/gm;
+/** An import of a literal while the module runs, which the build would not follow. */
+const DYNAMIC = /\bimport\s*\(\s*['"]/;
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
 export function build(out) {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
 
-  // The dashboard, as the server serves it (server.ts), but the page starts the demo.
+  // The dashboard's files, at the paths the server serves them (server.ts), but its page
+  // starts the demo, and it is not offered as an app to install.
   const dashboard = join(ROOT, 'dashboard');
-  for (const name of readdirSync(dashboard)) {
-    if (name.endsWith('.test.mjs') || name === 'index.html' || name === 'manifest.webmanifest')
-      continue;
-    cpSync(join(dashboard, name), join(out, name), { recursive: true });
+  for (const [path, [file]] of Object.entries(STATIC)) {
+    if (path === '/' || path === '/manifest.webmanifest') continue;
+    mkdirSync(dirname(join(out, path)), { recursive: true });
+    cpSync(join(dashboard, file), join(out, path));
   }
   writeFileSync(join(out, 'index.html'), page(readFileSync(join(dashboard, 'index.html'), 'utf8')));
   cpSync(join(ROOT, 'demo', 'demo.css'), join(out, 'demo.css'));
@@ -47,17 +52,12 @@ export function build(out) {
     if (done.has(file)) continue;
     done.add(file);
     const code = stripTypeScriptTypes(readFileSync(join(ROOT, file), 'utf8'), { mode: 'strip' });
-    for (const [, names, module] of code.matchAll(NAMED)) {
-      const wanted = node.get(module) ?? new Set();
-      for (const name of names.split(',')) {
-        const imported = name.trim().split(/\s+as\s+/)[0];
-        if (imported) wanted.add(imported);
-      }
-      node.set(module, wanted);
-    }
+    if (DYNAMIC.test(code)) throw new Error(`${file}: an import() of a literal is not followed`);
     const js = code.replace(SPECIFIER, (match, start, quote, specifier) => {
       if (specifier.startsWith('node:')) {
-        node.set(specifier, node.get(specifier) ?? new Set());
+        const wanted = node.get(specifier) ?? new Set();
+        for (const name of imported(file, start, specifier)) wanted.add(name);
+        node.set(specifier, wanted);
         const stub = posix.join(NODE, `${specifier.slice(5).replaceAll('/', '-')}.js`);
         return `${start}${quote}${relativeTo(file, stub)}${quote}`;
       }
@@ -75,14 +75,39 @@ export function build(out) {
   mkdirSync(join(out, NODE), { recursive: true });
   for (const [module, names] of node) {
     const stub = [...names]
-      .map(
-        (name) =>
-          `export function ${name}() {\n  throw new Error('${module} ${name} is not in the demo');\n}\n`,
-      )
+      .map((name) => {
+        const body = `() {\n  throw new Error('${module} ${name} is not in the demo');\n}\n`;
+        return name === 'default'
+          ? `export default function${body}`
+          : `export function ${name}${body}`;
+      })
       .join('');
     writeFileSync(join(out, NODE, `${module.slice(5).replaceAll('/', '-')}.js`), stub);
   }
   return { modules: [...done], node: [...node.keys()] };
+}
+
+/**
+ * The names an import takes from one of Node's modules: `x` (its default), `* as x` (all of
+ * it), `{ a, b as c }`. Any other form stops the build, rather than build a page that fails.
+ */
+function imported(file, statement, module) {
+  const clause = /^\s*import\s+([^;]*?)\s*from\s*$/.exec(statement)?.[1];
+  if (clause === undefined) throw new Error(`${file}: only import … from '${module}' is handled`);
+  const names = new Set();
+  const named = /\{([^}]*)\}/.exec(clause);
+  for (const name of named ? named[1].split(',') : []) {
+    const one = name.trim().split(/\s+as\s+/)[0];
+    if (one) names.add(one);
+  }
+  const rest = clause.replace(/\{[^}]*\}/, '').replace(/\*\s*as\s+[\w$]+/, '');
+  // A default import, or all of it: a module of stand-ins has a default too.
+  if (/[\w$]/.test(rest) || /\*\s*as/.test(clause)) names.add('default');
+  for (const name of names) {
+    if (name !== 'default' && !IDENTIFIER.test(name))
+      throw new Error(`${file}: ${name} from '${module}' is not a name`);
+  }
+  return names;
 }
 
 /** The path from `file` to `target`, both from the folder's root, as an import names it. */
@@ -116,7 +141,7 @@ function page(html) {
   return html;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const out = process.argv[2];
   if (!out) {
     console.error('usage: node scripts/build-demo.mjs <folder>');

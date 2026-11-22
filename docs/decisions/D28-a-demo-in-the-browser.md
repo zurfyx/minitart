@@ -37,9 +37,13 @@ from it widens what the security model keeps closed.
 - What the demo page imports must run in a browser: no Node module called, only Web APIs both
   have (`crypto.getRandomValues`, `fetch`, `EventTarget`). Some files it imports also hold
   code that needs Node, such as the SQLite history; each such import of a Node module is
-  pointed at a stand-in that throws if it is called. The build's test checks that what is
-  built loads without Node.
+  pointed at a stand-in that throws if it is called. The build's test loads every module
+  built, so one that calls a stand-in as it loads, or imports a name none provides, fails
+  it; an import the build cannot read stops the build.
 - The page's `fetch` and `EventSource` are replaced before the dashboard starts. The
   dashboard itself is not changed for the demo.
-- Creating the GitHub App and a job's log from GitHub are not in the demo: there is no App.
+- Creating the GitHub App is not in the demo: its made-up GitHub already has repos, so the
+  page never offers it. A job's log comes from the made-up GitHub, as everything else does.
+- The Vercel project builds with `../scripts/build-demo.mjs`, outside its root: Vercel's
+  setting that includes files outside the root directory must stay on (it is by default).
 - The demo's subdomain needs a DNS record at the domain's DNS host, pointing to Vercel.

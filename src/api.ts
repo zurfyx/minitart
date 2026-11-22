@@ -30,8 +30,8 @@ export interface ApiDeps {
   /** minitart's own log files, where it writes what the Activity list shows, and their size. */
   ownLogs?: () => { path: string; bytes: number }[];
   machine: Machine;
-  /** The Mac's name as the page shows it. */
-  machineName: string;
+  /** The Mac's name as the page shows it, read each time: the Mac can be renamed. */
+  machineName: () => string;
   /**
    * The tailnet names Tailscale forwards to the server (D20). One with something against it
    * (Funnel, plain HTTP) is never answered to.
@@ -60,7 +60,7 @@ export function createApi(deps: ApiDeps): Api {
     ...deps.manager.snapshot(),
     health: deps.health(),
     app: appView(deps.app()),
-    machine: { name: deps.machineName, ...deps.machine },
+    machine: { name: deps.machineName(), ...deps.machine },
     // For the menu bar app (D26): which minitart this is, and where else it is served.
     version: VERSION,
     tailnet: (deps.tailnet?.() ?? [])

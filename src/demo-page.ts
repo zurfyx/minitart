@@ -37,7 +37,7 @@ const api = createApi({
   history,
   logs: () => ({ files: 0, bytes: 0, kept: 50 }),
   machine,
-  machineName: 'mac-mini.local',
+  machineName: () => 'mac-mini.local',
 });
 
 // Each minute of points is kept for the History view, as minitart does (D27).
@@ -57,16 +57,23 @@ setInterval(() => void sample(), STEP_MS);
 // The dashboard's requests to the API are answered here; anything else goes out as it would.
 const sent = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => {
-  const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+  const request = new Request(
+    input instanceof Request ? input : new URL(input, location.href),
+    init,
+  );
+  const url = new URL(request.url);
   if (url.origin !== location.origin || !url.pathname.startsWith('/api/')) return sent(input, init);
-  const method = (init?.method ?? 'GET').toUpperCase();
-  const reply =
-    method === 'GET'
-      ? await api.get(url.pathname, url.searchParams)
-      : method === 'POST'
-        ? api.post(url.pathname, typeof init?.body === 'string' ? init.body : '')
-        : null;
-  if (reply === null) return new Response('Not in the demo', { status: 404 });
+  let reply;
+  try {
+    // As the server answers: GET and POST, anything else is not allowed.
+    if (request.method === 'GET') reply = await api.get(url.pathname, url.searchParams);
+    else if (request.method === 'POST') reply = api.post(url.pathname, await request.text());
+    else return new Response('Method not allowed', { status: 405 });
+  } catch (error) {
+    console.error(error);
+    return new Response('Something went wrong', { status: 500 });
+  }
+  if (reply === null) return new Response('Not found', { status: 404 });
   return 'json' in reply
     ? new Response(JSON.stringify(reply.json), {
         status: reply.status,
@@ -92,13 +99,19 @@ class DemoEvents extends EventTarget {
       this.dispatchEvent(event);
     };
     let timer: ReturnType<typeof setTimeout> | null = null;
-    this.#stop = manager.onChange(() => {
+    const later = (ms: number) => {
       timer ??= setTimeout(() => {
         timer = null;
         push();
-      }, 250);
-    });
-    setTimeout(push, 0);
+      }, ms);
+    };
+    // The state at once, as a server's first message, then a few times a second at most.
+    later(0);
+    const unsubscribe = manager.onChange(() => later(250));
+    this.#stop = () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
   }
 
   close(): void {
