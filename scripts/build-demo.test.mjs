@@ -45,7 +45,7 @@ test('the demo builds into modules a browser can load, with nothing of Node left
   const page = readFileSync(join(out, 'index.html'), 'utf8');
   assert.match(page, /src="\/src\/demo-page\.js"/);
   assert.doesNotMatch(page, /src="\/app\.js"/, 'the dashboard starts after the demo');
-  assert.match(page, /A demo: a made-up Mac/);
+  assert.match(page, /A demo with simulated jobs/);
 });
 
 /** Lets what the timers started run: the demo's work is promises between them. */

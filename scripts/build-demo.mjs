@@ -132,7 +132,7 @@ function page(html) {
     '  <body>\n',
     `  <body>
     <p class="demo-banner">
-      A demo: a made-up Mac running made-up jobs, in your browser.
+      A demo with simulated jobs.
       <a href="https://minitart.rovira.sh">What minitart is</a>
       <a href="https://github.com/zurfyx/minitart">GitHub</a>
     </p>

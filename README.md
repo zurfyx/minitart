@@ -9,8 +9,7 @@ Apple's hypervisor, [Tart](https://tart.run) and GitHub's own runner. It works b
 Mac with a handful of active private repos. See [the security model](docs/security.md) for
 how it keeps your Mac and your network out of a job's reach.
 
-**[Try the demo](https://demo.minitart.rovira.sh)**: the dashboard on a made-up Mac, run in
-your browser.
+**[Try the demo](https://demo.minitart.rovira.sh)**
 
 <picture>
   <source srcset="site/dashboard-dark.png" media="(prefers-color-scheme: dark)" />
