@@ -5,7 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import type { DoneView } from './manager.ts';
-import { MINUTE_MS, SERIES, type MinuteSample } from './samples.ts';
+import { MINUTE_MS, SERIES, wholeMinutes, type MinuteSample } from './samples.ts';
 
 /** How long a finished job is kept. */
 export const KEEP_MS = 365 * 24 * 60 * 60_000;
@@ -230,7 +230,7 @@ export class MemoryHistory implements History {
   samples(from: number, to: number, stepMs = MINUTE_MS): MinuteSample[] {
     return gather(
       this.#samples.filter((one) => one.at >= from && one.at < to),
-      stepMs,
+      wholeMinutes(stepMs),
     );
   }
 
@@ -311,25 +311,26 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS jobs_by_end ON jobs (ended_at);
   CREATE INDEX IF NOT EXISTS jobs_by_job ON jobs (job_id);
   CREATE INDEX IF NOT EXISTS jobs_by_repo ON jobs (repo, ended_at);
-  -- The charts, a minute a row: each series' average and peak (samples.ts).
+  -- The charts, a minute a row: each series' average and peak (samples.ts), in tenths, as
+  -- whole numbers: a third of the room of decimals.
   CREATE TABLE IF NOT EXISTS samples (
     at INTEGER PRIMARY KEY,
-    cpu_vms REAL NOT NULL,
-    cpu_vms_max REAL NOT NULL,
-    cpu_other REAL NOT NULL,
-    cpu_other_max REAL NOT NULL,
-    mem_vms REAL NOT NULL,
-    mem_vms_max REAL NOT NULL,
-    mem_other REAL NOT NULL,
-    mem_other_max REAL NOT NULL,
-    net_vms_down REAL NOT NULL,
-    net_vms_down_max REAL NOT NULL,
-    net_vms_up REAL NOT NULL,
-    net_vms_up_max REAL NOT NULL,
-    net_other_down REAL NOT NULL,
-    net_other_down_max REAL NOT NULL,
-    net_other_up REAL NOT NULL,
-    net_other_up_max REAL NOT NULL
+    cpu_vms INTEGER NOT NULL,
+    cpu_vms_max INTEGER NOT NULL,
+    cpu_other INTEGER NOT NULL,
+    cpu_other_max INTEGER NOT NULL,
+    mem_vms INTEGER NOT NULL,
+    mem_vms_max INTEGER NOT NULL,
+    mem_other INTEGER NOT NULL,
+    mem_other_max INTEGER NOT NULL,
+    net_vms_down INTEGER NOT NULL,
+    net_vms_down_max INTEGER NOT NULL,
+    net_vms_up INTEGER NOT NULL,
+    net_vms_up_max INTEGER NOT NULL,
+    net_other_down INTEGER NOT NULL,
+    net_other_down_max INTEGER NOT NULL,
+    net_other_up INTEGER NOT NULL,
+    net_other_up_max INTEGER NOT NULL
   ) STRICT;
 `;
 
@@ -387,16 +388,22 @@ export class SqliteHistory implements History {
   addSample(sample: MinuteSample): void {
     this.#addSample.run(
       sample.at,
-      ...SERIES.flatMap((series) => [sample[series], sample[`${series}Max`]]),
+      ...SERIES.flatMap((series) => [
+        Math.round(sample[series] * 10),
+        Math.round(sample[`${series}Max`] * 10),
+      ]),
     );
   }
 
   samples(from: number, to: number, stepMs = MINUTE_MS): MinuteSample[] {
     // Steps are whole minutes; SQL gathers them, with only numbers as parameters.
-    const step = Math.max(MINUTE_MS, Math.round(stepMs / MINUTE_MS) * MINUTE_MS);
+    const step = wholeMinutes(stepMs);
     const picks = SERIES.flatMap((series, index) => {
       const column = SAMPLE_COLUMNS[index * 2];
-      return [`round(avg(${column}), 1) AS ${series}`, `max(${column}_max) AS ${series}Max`];
+      return [
+        `round(avg(${column})) / 10.0 AS ${series}`,
+        `max(${column}_max) / 10.0 AS ${series}Max`,
+      ];
     });
     const rows = this.#db
       .prepare(

@@ -148,7 +148,8 @@ Everything else is rebuilt from GitHub and Tart on start.
 
 - `GET /api/state`, and `GET /api/events` (server-sent events): running, queued, done,
   repos, health, activity.
-- `GET /api/resources`: the last hour of CPU, memory and network, a point every ten seconds,
+- `GET /api/resources`: the last hour of CPU, memory and network, a point every ten seconds
+  (a point a minute from before a restart),
   and the disk (`src/resources.ts`, [D23](decisions/D23-what-the-dashboard-leads-with.md)).
   Each minute of points is kept too (`src/samples.ts`,
   [D27](decisions/D27-the-charts-are-kept.md)). Apart

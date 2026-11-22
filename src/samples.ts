@@ -62,6 +62,19 @@ export class Minutes {
     this.#points.push(point);
     return done;
   }
+
+  /** The minute being gathered, as it is so far: for a stop, so that it is not lost. */
+  flush(): MinuteSample | null {
+    if (this.#at === null || !this.#points.length) return null;
+    const done = summarise(this.#at, this.#points);
+    this.#points = [];
+    return done;
+  }
+}
+
+/** A step of whole minutes, at least one: what both histories gather by. */
+export function wholeMinutes(stepMs: number): number {
+  return Math.max(MINUTE_MS, Math.round(stepMs / MINUTE_MS) * MINUTE_MS);
 }
 
 function round(value: number): number {

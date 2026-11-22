@@ -394,6 +394,13 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     clearInterval(everyHalfMinute);
     clearInterval(everyFewSeconds);
     clearInterval(everyTenSeconds);
+    // The minute being gathered is kept as far as it went.
+    try {
+      const minute = minutes.flush();
+      if (minute) history.addSample(minute);
+    } catch (error) {
+      console.error(error);
+    }
     demo?.stop();
     server.close();
     server.closeAllConnections();

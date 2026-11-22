@@ -25,8 +25,8 @@ keep them and go back in time, as the Jobs view does for jobs, and for a network
 
 A minute a row, not every point: a year of ten-second points is about 3 million rows, some
 130 MB, finer than any chart of a day or more can show. A minute is about 525,000 rows a
-year, some 25 MB. Both the average and the peak are kept, because CI load comes in bursts
-that an average flattens.
+year, some 36 MB as whole tenths, measured (some 80 MB as decimals). Both the average and
+the peak are kept, because CI load comes in bursts that an average flattens.
 
 Forever, because the owner asked for it and it costs little; a limit is there for a Mac with
 little disk. Jobs stay kept a year (D24).

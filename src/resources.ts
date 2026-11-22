@@ -178,7 +178,7 @@ export class Resources {
     at: number;
     cpu: { busy: number; total: number };
     vms: Map<number, number>;
-    net: Map<string, { in: number; out: number }>;
+    net: { at: number; bytes: Map<string, { in: number; out: number }> };
   } | null = null;
   #disk: DiskView | null = null;
   #sampling = false;
@@ -191,6 +191,16 @@ export class Resources {
   seed(points: readonly ResourcePoint[]): void {
     const first = this.#points[0]?.at ?? Infinity;
     this.#points.unshift(...points.filter((point) => point.at < first));
+    this.#trim();
+  }
+
+  /** An hour back from the newest point, and never more points than that hour holds. */
+  #trim(): void {
+    const newest = this.#points.at(-1)?.at;
+    if (newest === undefined) return;
+    const from = newest - POINTS * STEP_MS;
+    const old = this.#points.findIndex((point) => point.at > from);
+    if (old > 0) this.#points.splice(0, old);
     if (this.#points.length > POINTS) this.#points.splice(0, this.#points.length - POINTS);
   }
 
@@ -235,9 +245,13 @@ export class Resources {
       if (name !== null) this.#names.set(vm.pid, isJobVm(name) ? name : '');
     }
     const jobVms = processes.filter((vm) => this.#names.get(vm.pid));
+    // The byte counts carry their own time: asking lsof about a new VM can take a while.
     const netstat = await this.#deps.run('netstat', ['-ibn']);
-    const net = netstat === null ? new Map() : interfaceBytes(netstat);
     const last = this.#last;
+    const net =
+      netstat === null
+        ? (last?.net ?? { at, bytes: new Map() })
+        : { at: this.#deps.now(), bytes: interfaceBytes(netstat) };
     this.#last = {
       at,
       cpu,
@@ -258,9 +272,10 @@ export class Resources {
     const available = this.#deps.availableMb();
     const used = available === null ? null : this.#deps.memoryBytes / 1024 ** 2 - available;
     // What the VMs sent and got also crossed the Mac's ports: the rest is the Mac's own.
-    const moved = networkSince(last.net, net);
-    const seconds = (at - last.at) / 1000;
-    const rate = (bytes: number) => Math.round(Math.max(0, bytes) / seconds);
+    const moved = networkSince(last.net.bytes, net.bytes);
+    const seconds = (net.at - last.net.at) / 1000;
+    // Counts not read again (netstat failed) are no traffic to share out: the point says 0.
+    const rate = (bytes: number) => (seconds > 0 ? Math.round(Math.max(0, bytes) / seconds) : 0);
     this.#points.push({
       at,
       cpuVms: round(cpuVms),
@@ -272,7 +287,7 @@ export class Resources {
       netOtherDown: rate(moved.portsDown - moved.vmsDown),
       netOtherUp: rate(moved.portsUp - moved.vmsUp),
     });
-    if (this.#points.length > POINTS) this.#points.splice(0, this.#points.length - POINTS);
+    this.#trim();
   }
 
   async #sampleDisk(): Promise<void> {
