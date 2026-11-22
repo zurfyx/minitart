@@ -139,6 +139,11 @@ for (const [kind, make] of [
         [5 * MINUTE_MS, 50, 100],
       ],
     );
+    // From a time with seconds in it, as the last hour is asked for: steps stay on the minute.
+    assert.deepEqual(
+      history.samples(MINUTE_MS - 23_456, 10 * MINUTE_MS).map((one) => one.at),
+      [MINUTE_MS, 5 * MINUTE_MS],
+    );
     assert.deepEqual([history.stats().samples, history.stats().samplesOldestAt], [3, 0]);
     assert.equal(history.pruneSamples(MINUTE_MS), 1);
     assert.equal(history.samples(0, 10 * MINUTE_MS).length, 2);

@@ -203,7 +203,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   try {
     history = home
       ? openHistory(home.dir, (text) => early.push(text))
-      : new MemoryHistory(demo?.history ?? []);
+      : new MemoryHistory(demo?.history ?? [], demo?.samples ?? []);
   } catch (error) {
     // A damaged file must not stop the jobs: they run, and are remembered until a restart.
     early.push(

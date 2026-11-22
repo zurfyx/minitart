@@ -120,6 +120,13 @@ function author(login) {
     : h('span', { class: 'author' }, login);
 }
 
+/** An empty state where a chart was: it is not drawn back over it when the page resizes. */
+function emptyChart(id, text) {
+  const root = $(id);
+  root.redraw = null;
+  root.replaceChildren(empty(text));
+}
+
 function empty(text) {
   return h('p', { class: 'empty' }, text);
 }
@@ -525,7 +532,7 @@ function drawResources() {
       ? `${gb(diskTotalMb - last.diskUsed)} free of ${gb(diskTotalMb)}`
       : '';
   if (!diskTotalMb || !points.some((point) => point.diskUsed > 0)) {
-    $('disk-chart').replaceChildren(empty('Not measured yet.'));
+    emptyChart('disk-chart', 'Not measured yet.');
   } else if (!inUse($('disk-chart'))) {
     areaChart($('disk-chart'), {
       ...span,
@@ -713,13 +720,16 @@ $('drain').addEventListener('click', () => {
 // Views: Now, Jobs and This Mac, one at a time, named in the address so that a link, the
 // back button and an installed app's reload all land where they were.
 
+/** The History view's ranges, in days. */
+const HISTORY_RANGES = [1, 7, 30, 90, 365];
+
 /** The Jobs view's ranges, in days: today, and back from it. */
 const JOB_RANGES = [1, 7, 30, 90];
 
 /** The view and, for Jobs, the page and filters, from `#jobs?page=2&repo=octo/app`. */
 function route() {
   const [name, query = ''] = location.hash.replace(/^#/, '').split('?');
-  const view = ['now', 'jobs', 'usage', 'mac'].includes(name) ? name : 'now';
+  const view = ['now', 'jobs', 'history', 'usage', 'mac'].includes(name) ? name : 'now';
   const params = new URLSearchParams(query);
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
   const days = Number(params.get('days'));
@@ -731,6 +741,9 @@ function route() {
     days: RANGES.includes(days) ? days : 30,
     // The Jobs view's range: a few days back, or every job kept.
     jobDays: JOB_RANGES.includes(days) ? days : 0,
+    // The History view's: a day by default, and where it ends, now unless stepped back.
+    historyDays: HISTORY_RANGES.includes(days) ? days : 1,
+    historyEnd: Number.parseInt(params.get('end') ?? '', 10) || null,
   };
 }
 
@@ -757,11 +770,208 @@ function showView() {
   // Jobs says what the history takes, and This Mac lists it.
   if (view === 'jobs' || view === 'mac') void loadStorage();
   if (view === 'usage') void loadCost();
+  if (view === 'history') void loadHistory();
   // Charts drawn while hidden have no width: draw them again now that they show.
   if (view === 'now') {
     timelineDrawn = '';
     if (state) drawTimeline();
     drawResources();
+  }
+}
+
+/** The History view's range on screen, and what was last asked for. */
+let historyData = null;
+let historyAsked = '';
+
+async function loadHistory() {
+  const { historyDays, historyEnd } = route();
+  const params = new URLSearchParams({ days: String(historyDays) });
+  if (historyEnd) params.set('end', String(historyEnd));
+  const asked = params.toString();
+  historyAsked = asked;
+  // Another range ends where this one does, so a step back stays back.
+  for (const link of document.querySelectorAll('#history-range a')) {
+    link.href = historyHash(Number(link.dataset.days), historyEnd);
+    if (Number(link.dataset.days) === historyDays) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  try {
+    const response = await fetch(`/api/history?${asked}`);
+    const body = response.ok ? await response.json() : null;
+    if (historyAsked !== asked) return;
+    if (!body) {
+      emptyChart('history-vms', 'Could not read the history.');
+      return;
+    }
+    historyData = body;
+    drawHistory();
+  } catch {
+    if (historyAsked === asked) emptyChart('history-vms', 'Could not reach minitart.');
+  }
+}
+
+function historyHash(days, end) {
+  const params = new URLSearchParams({ days: String(days) });
+  if (end) params.set('end', String(end));
+  return `#history?${params}`;
+}
+
+function drawHistory() {
+  const data = historyData;
+  if (!data) return;
+  // A step with nothing kept is left as a gap, not drawn across.
+  const span = {
+    from: data.from,
+    to: data.to,
+    dates: data.stepMs >= 24 * 60 * 60_000 ? 'days' : true,
+    gapMs: data.stepMs * 1.5,
+  };
+  const day = (at, withYear) =>
+    new Date(at).toLocaleString([], {
+      day: 'numeric',
+      month: 'short',
+      ...(withYear ? { year: 'numeric' } : {}),
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  const minutes = Math.round(data.stepMs / 60_000);
+  const date = (at) =>
+    new Date(at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  // A point a day runs from a midnight to the day before the last one's.
+  $('history-span').textContent =
+    minutes >= 1440
+      ? `${date(data.from)} to ${date(data.to - 1)} · a point a day`
+      : `${day(data.from, true)} to ${day(data.to)} · a point every ${minutes >= 60 ? `${minutes / 60} h` : `${minutes} min`}`;
+
+  // Earlier, as far back as anything is kept; later, up to now.
+  const length = data.days * 24 * 60 * 60_000;
+  const earlier = data.oldestAt !== null && data.from > data.oldestAt;
+  // The last step holds now, so a range ending at it or after is the latest.
+  const atNow = data.to >= Date.now();
+  $('history-pager').replaceChildren(
+    earlier
+      ? h('a', { href: historyHash(data.days, data.from) }, '← Earlier')
+      : h('span', { class: 'muted' }, '← Earlier'),
+    atNow
+      ? h('span')
+      : h(
+          'a',
+          {
+            href: historyHash(data.days, data.to + length >= Date.now() ? null : data.to + length),
+          },
+          'Later →',
+        ),
+  );
+
+  // VMs up, by kind, from the jobs kept.
+  const vmTimes = data.vms.map((step) => step.at);
+  const busiest = Math.max(0, ...data.vms.map((step) => step.most));
+  $('history-vms-peak').textContent = busiest ? `busiest: ${busiest} at once` : '';
+  // Drawn as each step's average, so its top is the highest average, not the most at once.
+  const vmTop = Math.max(1, Math.ceil(Math.max(0, ...data.vms.map((s) => s.linux + s.macos))));
+  if (!data.vms.length) emptyChart('history-vms', 'Nothing kept for this range yet.');
+  else
+    areaChart($('history-vms'), {
+      ...span,
+      times: vmTimes,
+      series: [
+        {
+          name: 'Linux',
+          values: data.vms.map((step) => step.linux),
+          peaks: data.vms.map((step) => step.linuxMost),
+          color: 'linux',
+        },
+        {
+          name: 'macOS',
+          values: data.vms.map((step) => step.macos),
+          peaks: data.vms.map((step) => step.macosMost),
+          color: 'macos',
+        },
+      ],
+      max: vmTop,
+      ticks: [0, vmTop / 2, vmTop],
+      format: (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1)),
+      height: 160,
+      label: `VMs up from ${day(data.from)} to ${day(data.to)}`,
+    });
+
+  const samples = data.samples;
+  const times = samples.map((one) => one.at);
+  const none = !samples.length;
+  const chart = (id, options) => {
+    if (none) {
+      emptyChart(id, 'Nothing kept for this range yet.');
+      return;
+    }
+    areaChart($(id), { ...span, times, height: 150, ...options });
+  };
+  const pair = (vms, other) => [
+    {
+      name: 'Everything else',
+      values: samples.map((one) => one[other]),
+      peaks: samples.map((one) => one[`${other}Max`]),
+      color: 'other',
+    },
+    {
+      name: 'minitart VMs',
+      values: samples.map((one) => one[vms]),
+      peaks: samples.map((one) => one[`${vms}Max`]),
+      color: 'vm',
+    },
+  ];
+  const peakOf = (key) => Math.max(0, ...samples.map((one) => one[`${key}Max`]));
+  $('history-cpu-now').textContent = none ? '' : `peak ${Math.round(peakOf('cpuVms'))}% by the VMs`;
+  chart('history-cpu', {
+    series: pair('cpuVms', 'cpuOther'),
+    max: 100,
+    ticks: [0, 50, 100],
+    format: (value) => `${Math.round(value)}%`,
+    label: 'CPU over the range',
+  });
+  const memoryGb = data.memoryBytes ? Math.round(data.memoryBytes / GB) : null;
+  $('history-memory-now').textContent = none
+    ? ''
+    : `peak ${gb(peakOf('memVms'))} by the VMs${memoryGb ? `, of ${memoryGb} GB` : ''}`;
+  chart('history-memory', {
+    series: pair('memVms', 'memOther'),
+    max: (memoryGb ?? 64) * 1024,
+    ticks: [0, ((memoryGb ?? 64) / 2) * 1024, (memoryGb ?? 64) * 1024],
+    format: gb,
+    label: 'Memory over the range',
+  });
+  const netTop =
+    niceMax((Math.max(0, ...samples.map((one) => one.netVmsDown + one.netOtherDown)) * 8) / 1e6) *
+    (1e6 / 8);
+  $('history-network-now').textContent = none
+    ? ''
+    : `peak ${mbps(peakOf('netVmsDown'))} down by the VMs`;
+  chart('history-network', {
+    series: pair('netVmsDown', 'netOtherDown'),
+    max: netTop,
+    ticks: [0, netTop / 2, netTop],
+    format: mbps,
+    label: 'Network down over the range',
+  });
+  const diskTotalMb = data.diskBytes ? data.diskBytes / 1024 ** 2 : null;
+  $('history-disk-now').textContent =
+    none || !diskTotalMb ? '' : `most in use ${gb(peakOf('diskUsed'))}, of ${gb(diskTotalMb)}`;
+  const used = samples.map((one) => one.diskUsed);
+  if (!diskTotalMb || !used.some((value) => value > 0)) {
+    emptyChart('history-disk', 'Not measured for this range.');
+  } else {
+    chart('history-disk', {
+      series: [
+        {
+          name: 'In use',
+          values: used,
+          peaks: samples.map((one) => one.diskUsedMax),
+          color: 'whole',
+        },
+      ],
+      ...diskRange(used, diskTotalMb),
+      format: gb,
+      label: 'Disk in use over the range',
+    });
   }
 }
 
