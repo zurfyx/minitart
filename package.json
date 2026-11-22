@@ -20,6 +20,7 @@
   "scripts": {
     "start": "node src/main.ts start",
     "demo": "node src/main.ts start --demo",
+    "demo:build": "node --disable-warning=ExperimentalWarning scripts/build-demo.mjs demo/dist",
     "doctor": "node src/main.ts doctor",
     "typecheck": "tsc",
     "lint": "eslint .",

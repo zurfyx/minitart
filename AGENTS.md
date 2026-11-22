@@ -45,6 +45,7 @@ test/        cases the dashboard and the app share (headline-cases.json)
 ```bash
 pnpm install          # development tools only; minitart itself has no dependencies
 pnpm demo             # the dashboard with made-up jobs and VMs, at 127.0.0.1:4141
+pnpm demo:build       # the demo on the site, run in a browser, into demo/dist (D28)
 pnpm start            # the real manager
 pnpm typecheck        # strict TS (tsc, no emit): must pass before every commit
 pnpm lint             # ESLint

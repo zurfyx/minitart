@@ -4,7 +4,7 @@
 import type { DoneView, VmView } from './manager.ts';
 import { POINTS, STEP_MS, type ResourcePoint, type ResourcesView } from './resources.ts';
 import { SERIES, type MinuteSample } from './samples.ts';
-import type { Machine } from './settings.ts';
+import { defaultSettings, type Machine, type Settings } from './settings.ts';
 import type { Job } from './github/types.ts';
 import { FakeGitHub, FakeTart } from './testing/fakes.ts';
 
@@ -54,6 +54,16 @@ export interface DemoResources {
   sample(): Promise<void>;
   /** Points kept from before a restart; the demo has its own hour, so none are taken. */
   seed?(points: readonly ResourcePoint[]): void;
+}
+
+/** The demo's settings: its repos served, and a Mac with a price, for the Usage view. */
+export function demoSettings(machine: Machine): Settings {
+  const defaults = defaultSettings(machine);
+  return {
+    ...defaults,
+    repos: ['octo/app', 'octo/api', 'octo/site'],
+    cost: { ...defaults.cost, macUsd: 1999, lifeMonths: 36, watts: 25, kwhUsd: 0.3 },
+  };
 }
 
 export function demoWorld(machine: Machine): {

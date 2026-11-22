@@ -65,39 +65,41 @@ ended before its runner said how the job ended.
 
 ## Parts
 
-| File                                                                  | What it is                                                                                                                      |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                                                         | The command line: `start`, `doctor`, `upgrade`, `drain`, `resume`, `image build`, `selftest`, `service install` and `uninstall` |
-| `src/manager.ts`                                                      | The loop above, and the state the dashboard shows                                                                               |
-| `src/schedule.ts`                                                     | Which jobs are minitart's, and which VMs to start (pure)                                                                        |
-| `src/tart.ts`                                                         | The `tart` command line, and the flags that isolate a VM                                                                        |
-| `src/github/`                                                         | The REST client, and the GitHub App: its JWT, tokens and manifest                                                               |
-| `src/server.ts`                                                       | The dashboard's HTTP server                                                                                                     |
-| `src/tailnet.ts`                                                      | The tailnet names Tailscale forwards to the dashboard                                                                           |
-| `src/settings.ts`                                                     | Defaults from the machine; validation of what the dashboard saves                                                               |
-| `src/doctor.ts`                                                       | Is this Mac set up the way the security model assumes                                                                           |
-| `src/memory.ts`                                                       | What macOS has to spare for a new VM                                                                                            |
-| `src/selftest.ts`                                                     | Boots a VM and checks what it can reach                                                                                         |
-| `src/image.ts`                                                        | Builds the image job VMs are cloned from, with `images/*.sh`                                                                    |
-| `src/service.ts`                                                      | Installs the LaunchAgent                                                                                                        |
-| `src/upgrade.ts`                                                      | `minitart upgrade`: drain, upgrade (the menu bar app too, when installed), put right, restart                                   |
-| `src/version.ts`                                                      | The version a release wrote, or `0.0.0-dev` for a checkout                                                                      |
-| `src/testing/`                                                        | A GitHub and a Tart in memory, for the tests and `--demo`                                                                       |
-| `firewall/`                                                           | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                                                  |
-| `src/resources.ts`                                                    | CPU, memory, network and disk over the last hour, for the charts                                                                |
-| `src/samples.ts`                                                      | Each minute of the charts, its average and peak, kept in `history.db` (D27)                                                     |
-| `src/history-view.ts`                                                 | The History view's range: steps that fit it, VMs up in each (D27)                                                               |
-| `src/pricing.ts`                                                      | Other providers' list prices, with their sources and the date read                                                              |
-| `src/history.ts`                                                      | The jobs that ran, a year of them, in SQLite                                                                                    |
-| `src/home.ts`                                                         | `~/.minitart`: its files, kept to the owner, and old VM logs pruned                                                             |
-| `src/demo.ts`                                                         | The made-up jobs and VMs of `--demo`                                                                                            |
-| `app/`                                                                | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                                                              |
-| `dashboard/`                                                          | The page: plain HTML, CSS and four scripts (`app.js`, `view.js`, `charts.js`, `cost.js`), no build                              |
-| `test/headline-cases.json`                                            | The headline cases the dashboard and the menu bar app are both held to                                                          |
-| `Formula/`, `Casks/`, `scripts/release*.mjs`, `scripts/update-tap.sh` | The formula's and the app cask's templates, and the release tooling                                                             |
-| `scripts/pr-checklist.mjs`                                            | The pr-checklist job ([D13](decisions/D13-a-pull-request-shows-its-work.md))                                                    |
-| `.github/workflows/`                                                  | `ci.yml`, `pr.yml`, `release.yml`, `release-app.yml`                                                                            |
-| `site/`                                                               | minitart.rovira.sh                                                                                                              |
+| File                                                                         | What it is                                                                                                                      |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                                                                | The command line: `start`, `doctor`, `upgrade`, `drain`, `resume`, `image build`, `selftest`, `service install` and `uninstall` |
+| `src/manager.ts`                                                             | The loop above, and the state the dashboard shows                                                                               |
+| `src/schedule.ts`                                                            | Which jobs are minitart's, and which VMs to start (pure)                                                                        |
+| `src/tart.ts`                                                                | The `tart` command line, and the flags that isolate a VM                                                                        |
+| `src/github/`                                                                | The REST client, and the GitHub App: its JWT, tokens and manifest                                                               |
+| `src/server.ts`                                                              | The dashboard's HTTP server: who may ask, and the files                                                                         |
+| `src/api.ts`                                                                 | What the dashboard's API answers, apart from HTTP, for the server and the demo (D28)                                            |
+| `src/tailnet.ts`                                                             | The tailnet names Tailscale forwards to the dashboard                                                                           |
+| `src/settings.ts`                                                            | Defaults from the machine; validation of what the dashboard saves                                                               |
+| `src/doctor.ts`                                                              | Is this Mac set up the way the security model assumes                                                                           |
+| `src/memory.ts`                                                              | What macOS has to spare for a new VM                                                                                            |
+| `src/selftest.ts`                                                            | Boots a VM and checks what it can reach                                                                                         |
+| `src/image.ts`                                                               | Builds the image job VMs are cloned from, with `images/*.sh`                                                                    |
+| `src/service.ts`                                                             | Installs the LaunchAgent                                                                                                        |
+| `src/upgrade.ts`                                                             | `minitart upgrade`: drain, upgrade (the menu bar app too, when installed), put right, restart                                   |
+| `src/version.ts`                                                             | The version a release wrote, or `0.0.0-dev` for a checkout                                                                      |
+| `src/testing/`                                                               | A GitHub and a Tart in memory, for the tests and `--demo`                                                                       |
+| `firewall/`                                                                  | The pf rule that lets a VM reach the Mac for DHCP and DNS only                                                                  |
+| `src/resources.ts`                                                           | CPU, memory, network and disk over the last hour, for the charts                                                                |
+| `src/samples.ts`                                                             | Each minute of the charts, its average and peak, kept in `history.db` (D27)                                                     |
+| `src/history-view.ts`                                                        | The History view's range: steps that fit it, VMs up in each (D27)                                                               |
+| `src/pricing.ts`                                                             | Other providers' list prices, with their sources and the date read                                                              |
+| `src/history.ts`                                                             | The jobs that ran, a year of them, in SQLite                                                                                    |
+| `src/home.ts`                                                                | `~/.minitart`: its files, kept to the owner, and old VM logs pruned                                                             |
+| `src/demo.ts`                                                                | The made-up jobs and VMs of `--demo`                                                                                            |
+| `src/demo-browser.ts`, `src/demo-page.ts`, `scripts/build-demo.mjs`, `demo/` | The demo at demo.minitart.rovira.sh: the dashboard and the made-up Mac, run in the browser (D28)                                |
+| `app/`                                                                       | The menu bar app: a Swift package, built by `scripts/app.sh` (D26)                                                              |
+| `dashboard/`                                                                 | The page: plain HTML, CSS and four scripts (`app.js`, `view.js`, `charts.js`, `cost.js`), no build                              |
+| `test/headline-cases.json`                                                   | The headline cases the dashboard and the menu bar app are both held to                                                          |
+| `Formula/`, `Casks/`, `scripts/release*.mjs`, `scripts/update-tap.sh`        | The formula's and the app cask's templates, and the release tooling                                                             |
+| `scripts/pr-checklist.mjs`                                                   | The pr-checklist job ([D13](decisions/D13-a-pull-request-shows-its-work.md))                                                    |
+| `.github/workflows/`                                                         | `ci.yml`, `pr.yml`, `release.yml`, `release-app.yml`                                                                            |
+| `site/`                                                                      | minitart.rovira.sh                                                                                                              |
 
 There is no build step and no runtime dependency: Node runs the TypeScript files as they are
 ([D07](decisions/D07-typescript-run-as-it-is.md)).

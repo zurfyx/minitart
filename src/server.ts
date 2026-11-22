@@ -8,51 +8,25 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
-import type { Check } from './doctor.ts';
+import { createApi, type ApiDeps, type Reply } from './api.ts';
 import { appManifest, convertManifestCode, type AppCredentials } from './github/app.ts';
 import type { Fetch } from './github/client.ts';
-import type { GitHub } from './github/types.ts';
-import type { Manager } from './manager.ts';
-import { KEEP_MS, localDay, type History } from './history.ts';
-import { PRICES_CHECKED, PROVIDERS } from './pricing.ts';
-import type { ResourcesView } from './resources.ts';
-import { historyView, rangeFor, stepFor } from './history-view.ts';
-import { mergeSettings, SettingsError, type Machine } from './settings.ts';
+import { SettingsError } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
-import { VERSION } from './version.ts';
 
-export interface ServerDeps {
-  manager: Manager;
-  github: () => GitHub | null;
-  app: () => AppCredentials | null;
+export interface ServerDeps extends Omit<ApiDeps, 'machineName'> {
   saveApp: (app: AppCredentials) => void;
-  health: () => Check[];
-  /** The Mac's CPU, memory and disk over the last hour, for the charts (D23). */
-  resources?: () => ResourcesView | null;
-  /** Every job that ran, for the Jobs view (D24). */
-  history?: History;
-  /** A VM's log as written to disk, its last `maxBytes`, or null. The name is a job VM's. */
-  vmLogFile?: (name: string, maxBytes: number) => string | null;
-  /** The VM logs kept on disk: how many, what they take, and how many are kept at most. */
-  logs?: () => { files: number; bytes: number; kept: number };
-  /** minitart's own log files, where it writes what the Activity list shows, and their size. */
-  ownLogs?: () => { path: string; bytes: number }[];
-  machine: Machine;
   port: number;
-  /**
-   * The tailnet names Tailscale forwards to this server (D20). One with something against
-   * it (Funnel, plain HTTP) is never answered to.
-   */
-  tailnet?: () => readonly TailnetName[];
   dashboardDir: string;
   fetch?: Fetch;
-  /** The Mac's name as the page shows it. */
+  /** The Mac's name as the page shows it: its host name unless given. */
   machineName?: string;
   /** Whether a connection from this address is from the Mac itself. */
   isLocal?: (address: string | undefined) => boolean;
 }
 
-const STATIC: Record<string, [file: string, type: string]> = {
+/** The page's files, by the path each is served at. The demo's build copies them too (D28). */
+export const STATIC: Record<string, [file: string, type: string]> = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/charts.js': ['charts.js', 'text/javascript; charset=utf-8'],
@@ -81,9 +55,6 @@ const SECURITY_HEADERS = {
 };
 
 const MAX_BODY = 64 * 1024;
-/** Jobs on a page of the Jobs view. */
-export const JOBS_PER_PAGE = 50;
-const MAX_LOG = 1024 * 1024;
 
 export function isLoopback(address: string | undefined): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
@@ -94,18 +65,8 @@ export function createDashboardServer(deps: ServerDeps): Server {
   const hosts = new Set(['127.0.0.1', 'localhost', '[::1]'].map((name) => `${name}:${deps.port}`));
   /** The pending "create the GitHub App" round trip: its secret and when it expires. */
   let setup: { state: string; expiresAt: number } | null = null;
-
-  const state = () => ({
-    ...deps.manager.snapshot(),
-    health: deps.health(),
-    app: appView(deps.app()),
-    machine: { name: deps.machineName ?? hostname(), ...deps.machine },
-    // For the menu bar app (D26): which minitart this is, and where else it is served.
-    version: VERSION,
-    tailnet: (deps.tailnet?.() ?? [])
-      .filter((name) => name.refused === null)
-      .map((name) => name.origin),
-  });
+  // What each address of the API answers; this server says who may ask.
+  const api = createApi({ ...deps, machineName: () => deps.machineName ?? hostname() });
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const host = (request.headers.host ?? '').toLowerCase();
@@ -135,105 +96,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
         response.end(body);
         return;
       }
-      if (path === '/api/state') return json(response, 200, state());
       if (path === '/api/events') return events(request, response);
-      // Apart from the state: an hour of points is more than every change needs to carry.
-      if (path === '/api/resources') return json(response, 200, deps.resources?.() ?? null);
-      if (path === '/api/jobs') return jobsPage(response, url.searchParams);
-      if (path === '/api/usage') {
-        // The last `days` days by the Mac's calendar, today included (D25).
-        const days = Number(url.searchParams.get('days') ?? '30');
-        if (!Number.isInteger(days) || days < 1 || days > 366) {
-          return send(response, 400, 'days must be a whole number from 1 to 366');
-        }
-        const since = new Date();
-        since.setHours(0, 0, 0, 0);
-        since.setDate(since.getDate() - (days - 1));
-        // The dates as the Mac counts them: a page in another time zone draws the same days.
-        const dates = Array.from({ length: days }, (_, index) =>
-          localDay(
-            new Date(since.getFullYear(), since.getMonth(), since.getDate() + index).getTime(),
-          ),
-        );
-        const oldestAt = deps.history?.stats().oldestAt ?? null;
-        return json(response, 200, {
-          days,
-          dates,
-          since: since.getTime(),
-          usage: deps.history?.usage(since.getTime()) ?? [],
-          oldestDay: oldestAt === null ? null : localDay(oldestAt),
-          prices: { checked: PRICES_CHECKED, providers: PROVIDERS },
-        });
-      }
-      if (path === '/api/history') {
-        // A range of whole days back from `end` (now when not given), in steps that line up
-        // with the Mac's clock, as the History view steps through them (D27).
-        const days = Number(url.searchParams.get('days') ?? '1');
-        if (![1, 7, 30, 90, 365].includes(days)) {
-          return send(response, 400, 'days must be 1, 7, 30, 90 or 365');
-        }
-        const now = Date.now();
-        const endAsked = url.searchParams.get('end') || null;
-        const end = endAsked === null ? now : Number(endAsked);
-        if (!Number.isInteger(end) || end < 0) {
-          return send(response, 400, 'end must be a time in milliseconds');
-        }
-        const { from, to } = rangeFor(days, Math.min(end, now));
-        const resources = deps.resources?.() ?? null;
-        return json(response, 200, {
-          ...(deps.history
-            ? historyView(
-                deps.history,
-                from,
-                to,
-                deps.manager.snapshot().vms.filter((vm) => vm.jobAt !== null && vm.createdAt < to),
-                now,
-              )
-            : { from, to, stepMs: stepFor(to - from), samples: [], vms: [], oldestAt: null }),
-          days,
-          cores: resources?.cores ?? null,
-          memoryBytes: resources?.memoryBytes ?? null,
-          diskBytes: resources?.disk?.totalBytes ?? null,
-        });
-      }
-      if (path === '/api/storage') {
-        return json(response, 200, {
-          history: deps.history?.stats() ?? null,
-          keepDays: Math.round(KEEP_MS / 86_400_000),
-          logs: deps.logs?.() ?? null,
-          own: deps.ownLogs?.() ?? [],
-        });
-      }
-
-      const vmLog = /^\/api\/vms\/(minitart-(?:linux|macos)-[0-9a-f]{6})\/log$/.exec(path);
-      if (vmLog?.[1] !== undefined) {
-        const lines = deps.manager.vmLog(vmLog[1]);
-        if (lines) return send(response, 200, lines.join('\n'));
-        // One that ended a while ago, or before a restart: as it was written to disk.
-        const saved = deps.vmLogFile?.(vmLog[1], MAX_LOG) ?? null;
-        return saved !== null
-          ? send(response, 200, saved)
-          : send(
-              response,
-              404,
-              'minitart no longer has this VM’s output: it keeps that of the newest VMs only',
-            );
-      }
-
-      const jobLog = /^\/api\/jobs\/(\d{1,15})\/log$/.exec(path);
-      if (jobLog?.[1] !== undefined) {
-        // Only jobs minitart ran: the App's token must not become a way to read any log.
-        const jobId = Number(jobLog[1]);
-        const repo = deps.manager.repoOfJob(jobId);
-        const github = deps.github();
-        if (repo === null || github === null) return send(response, 404, 'No such job');
-        try {
-          const log = await github.jobLog(repo, jobId);
-          return send(response, 200, log.length > MAX_LOG ? log.slice(-MAX_LOG) : log);
-        } catch (error) {
-          return send(response, 502, error instanceof Error ? error.message : 'GitHub failed');
-        }
-      }
 
       if (path === '/setup/manifest') {
         if (deps.app()) return send(response, 409, 'The GitHub App already exists');
@@ -277,94 +140,29 @@ export function createDashboardServer(deps: ServerDeps): Server {
         }
         return;
       }
-      return send(response, 404, 'Not found');
+      const reply = await api.get(path, url.searchParams);
+      return reply ? answer(response, reply) : send(response, 404, 'Not found');
     }
 
-    if (request.method === 'POST' && path === '/api/settings') {
+    if (request.method === 'POST' && (path === '/api/settings' || path === '/api/drain')) {
       // A form on another site can post here; it cannot set this header pair.
       if (request.headers.origin !== origin) return send(response, 403, 'Wrong origin');
-      if (!(request.headers['content-type'] ?? '').startsWith('application/json')) {
+      if (
+        path === '/api/settings' &&
+        !(request.headers['content-type'] ?? '').startsWith('application/json')
+      ) {
         return send(response, 415, 'Send JSON');
       }
-      let patch: unknown;
+      let text: string;
       try {
-        patch = JSON.parse(await body(request));
+        text = await body(request);
       } catch {
         return send(response, 400, 'Not JSON');
       }
-      try {
-        deps.manager.updateSettings(mergeSettings(deps.manager.settings, patch, deps.machine));
-      } catch (error) {
-        if (error instanceof SettingsError) return send(response, 400, error.message);
-        throw error;
-      }
-      return json(response, 200, state());
-    }
-    if (request.method === 'POST' && path === '/api/drain') {
-      if (request.headers.origin !== origin) return send(response, 403, 'Wrong origin');
-      let wanted: unknown;
-      try {
-        wanted = (JSON.parse(await body(request)) as { draining?: unknown }).draining;
-      } catch {
-        return send(response, 400, 'Not JSON');
-      }
-      if (typeof wanted !== 'boolean') return send(response, 400, 'draining must be true or false');
-      deps.manager.setDraining(wanted);
-      return json(response, 200, state());
+      const reply = api.post(path, text);
+      return reply ? answer(response, reply) : send(response, 404, 'Not found');
     }
     return send(response, 405, 'Method not allowed');
-  }
-
-  /** A page of the history, newest first; the query is untrusted and checked. */
-  function jobsPage(response: ServerResponse, query: URLSearchParams): void {
-    const page = Number(query.get('page') ?? '1');
-    const repo = query.get('repo') || undefined;
-    const result = query.get('result') || undefined;
-    if (!Number.isInteger(page) || page < 1 || page > 1_000_000) {
-      return send(response, 400, 'page must be a whole number from 1');
-    }
-    if (repo !== undefined && !/^[A-Za-z0-9_-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo)) {
-      return send(response, 400, 'repo must be owner/name');
-    }
-    if (result !== undefined && !/^[a-z_]{1,32}$/.test(result)) {
-      return send(response, 400, 'result must be a word such as success or failure');
-    }
-    // The last `days` days by the Mac's calendar, today included, or every job kept.
-    const daysAsked = query.get('days') || undefined;
-    const days = daysAsked === undefined ? undefined : Number(daysAsked);
-    if (days !== undefined && (!Number.isInteger(days) || days < 1 || days > 366)) {
-      return send(response, 400, 'days must be a whole number from 1 to 366');
-    }
-    let since: number | undefined;
-    if (days !== undefined) {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - (days - 1));
-      since = start.getTime();
-    }
-    const history = deps.history;
-    const found = history
-      ? history.page({
-          offset: (page - 1) * JOBS_PER_PAGE,
-          limit: JOBS_PER_PAGE,
-          ...(repo === undefined ? {} : { repo }),
-          ...(result === undefined ? {} : { conclusion: result }),
-          ...(since === undefined ? {} : { since }),
-        })
-      : { total: 0, jobs: [] };
-    json(response, 200, {
-      ...found,
-      page,
-      pages: Math.max(1, Math.ceil(found.total / JOBS_PER_PAGE)),
-      per: JOBS_PER_PAGE,
-      repos: history?.repos() ?? [],
-      // How many ended each way, of the repo and range asked for: the result filter shows them.
-      results:
-        history?.results({
-          ...(repo === undefined ? {} : { repo }),
-          ...(since === undefined ? {} : { since }),
-        }) ?? {},
-    });
   }
 
   function events(request: IncomingMessage, response: ServerResponse): void {
@@ -373,7 +171,7 @@ export function createDashboardServer(deps: ServerDeps): Server {
       'content-type': 'text/event-stream',
       connection: 'keep-alive',
     });
-    const push = () => response.write(`data: ${JSON.stringify(state())}\n\n`);
+    const push = () => response.write(`data: ${JSON.stringify(api.state())}\n\n`);
     // A VM prints many lines a second; the page needs the state a few times a second.
     let timer: NodeJS.Timeout | null = null;
     const unsubscribe = deps.manager.onChange(() => {
@@ -407,11 +205,6 @@ function tailnetOrigin(names: readonly TailnetName[], host: string): string | nu
   return matching[0]?.origin ?? null;
 }
 
-function appView(app: AppCredentials | null): { slug: string; htmlUrl: string } | null {
-  // Never the key.
-  return app ? { slug: app.slug, htmlUrl: app.htmlUrl } : null;
-}
-
 function same(a: string, b: string): boolean {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
@@ -421,6 +214,11 @@ function same(a: string, b: string): boolean {
 function send(response: ServerResponse, status: number, text: string): void {
   response.writeHead(status, { ...SECURITY_HEADERS, 'content-type': 'text/plain; charset=utf-8' });
   response.end(text);
+}
+
+function answer(response: ServerResponse, reply: Reply): void {
+  if ('json' in reply) json(response, reply.status, reply.json);
+  else send(response, reply.status, reply.text);
 }
 
 function json(response: ServerResponse, status: number, value: unknown): void {
