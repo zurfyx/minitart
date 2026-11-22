@@ -27,17 +27,6 @@ function s(tag, attrs = {}, text) {
   return element;
 }
 
-/** The legend under a chart: a swatch that mirrors the mark, and a name. */
-export function legend(items) {
-  return h(
-    'div',
-    { class: 'legend' },
-    items.map(([series, name]) =>
-      h('span', { class: 'legend-item' }, h('span', { class: `swatch ${series}` }), name),
-    ),
-  );
-}
-
 /** Redraws `draw` whenever `root` changes width. */
 function sized(root, draw) {
   let width = 0;
@@ -65,14 +54,20 @@ function placeTip(tip, x, width) {
  * A stacked area chart of the last hour, with a crosshair whose tooltip lists every series
  * at the pointer. `series`, bottom up: `{ name, values, color }`, `color` 'vm' or 'other'.
  */
-export function areaChart(root, { from, to, times, series, max, ticks, format, height, label }) {
+export function areaChart(
+  root,
+  { from, to, times, series, min = 0, max, ticks, format, height, label },
+) {
   sized(root, (width) => {
-    const m = { top: 8, right: 8, bottom: 22, left: 44 };
+    // Room on the left for the longest tick label, whatever its unit.
+    const longest = Math.max(...ticks.map((tick) => String(format(tick)).length));
+    const m = { top: 8, right: 8, bottom: 22, left: Math.max(44, Math.ceil(longest * 6.4) + 10) };
     const w = width - m.left - m.right;
     const ht = height - m.top - m.bottom;
     const minutes = Math.round((to - from) / 60_000);
     const x = (t) => m.left + ((t - from) / Math.max(1, to - from)) * w;
-    const y = (v) => m.top + ht - (Math.min(v, max) / max) * ht;
+    // From `min`, not always 0: a chart of a few gigabytes moving on a disk of a terabyte.
+    const y = (v) => m.top + ht - ((Math.max(min, Math.min(v, max)) - min) / (max - min)) * ht;
     const svg = s('svg', {
       width,
       height,
@@ -167,13 +162,18 @@ export function areaChart(root, { from, to, times, series, max, ticks, format, h
               h('span', { class: 'muted' }, one.name),
             ),
           ),
-        h(
-          'div',
-          { class: 'tip-row total' },
-          h('span', { class: 'key' }),
-          h('strong', { class: 'num' }, format(total)),
-          h('span', { class: 'muted' }, 'in all'),
-        ),
+        // A total only where there is more than one part to add up.
+        ...(series.length > 1
+          ? [
+              h(
+                'div',
+                { class: 'tip-row total' },
+                h('span', { class: 'key' }),
+                h('strong', { class: 'num' }, format(total)),
+                h('span', { class: 'muted' }, 'in all'),
+              ),
+            ]
+          : []),
       );
       tip.style.top = `${m.top}px`;
       placeTip(tip, at, width);

@@ -51,6 +51,8 @@ export interface DemoResources {
   view(): ResourcesView;
   /** Adds a point for the VMs running now. */
   sample(): Promise<void>;
+  /** Points kept from before a restart; the demo has its own hour, so none are taken. */
+  seed?(points: readonly ResourcePoint[]): void;
 }
 
 export function demoWorld(machine: Machine): {
@@ -185,14 +187,23 @@ export function demoWorld(machine: Machine): {
   const point = (time: number, vms: { createdAt: number; jobAt: number | null }[]) => {
     let busyCores = 0;
     let gb = 0;
+    // Bytes a second: a job downloads most in its first minutes (its tools, its packages).
+    let down = 0;
+    let up = 0;
     for (const vm of vms) {
       if (vm.jobAt === null || time < vm.jobAt) {
         busyCores += 1.8;
         gb += 1.2;
+        down += 40_000;
       } else {
         const minutes = (time - vm.jobAt) / 60_000;
         busyCores += 2.6 + Math.sin(time / 47_000 + vm.createdAt) * 0.8;
         gb += Math.min(7.6, 1.6 + minutes * 1.3);
+        down +=
+          Math.max(0.2, 9 - minutes * 3) *
+          1_000_000 *
+          (1 + Math.sin(time / 9_000 + vm.createdAt) * 0.4);
+        up += 120_000 + Math.max(0, Math.sin(time / 31_000 + vm.createdAt)) * 600_000;
       }
     }
     wobble = Math.max(-1, Math.min(1, wobble + (Math.random() - 0.5) * 0.4));
@@ -204,6 +215,23 @@ export function demoWorld(machine: Machine): {
       cpuOther: Math.round(other * 10) / 10,
       memVms: Math.round(gb * 1024),
       memOther: Math.round(Math.min(totalGb - gb, 16 + wobble) * 1024),
+      netVmsDown: Math.round(down),
+      netVmsUp: Math.round(up),
+      netOtherDown: Math.round(250_000 + wobble * 150_000),
+      netOtherUp: Math.round(80_000 + wobble * 40_000),
+      // The Mac holds some 292 GB; each VM writes as its job goes, and gives it back when it is deleted.
+      diskUsed: Math.round(
+        292 * 1024 +
+          vms.reduce(
+            (sum, vm) =>
+              sum +
+              (vm.jobAt === null || time < vm.jobAt
+                ? 0.4
+                : Math.min(9, 0.4 + ((time - vm.jobAt) / 60_000) * 2)),
+            0,
+          ) *
+            1024,
+      ),
     };
   };
   for (let time = now - (POINTS - 1) * STEP_MS; time <= now; time += STEP_MS) {

@@ -5,6 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { chmodSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs';
 import type { DoneView } from './manager.ts';
+import { MINUTE_MS, SERIES, wholeMinutes, type MinuteSample } from './samples.ts';
 
 /** How long a finished job is kept. */
 export const KEEP_MS = 365 * 24 * 60 * 60_000;
@@ -15,6 +16,8 @@ export interface Today {
   finished: number;
   /** The jobs lost with their VM, not failed by their own steps. */
   lost: number;
+  /** Each repo that had a job end, by name: how many ended, failed and were lost. */
+  repos: { repo: string; jobs: number; failed: number; lost: number }[];
   /** How long a job waited for its VM: from GitHub queueing it to its runner taking it. */
   medianWaitMs: number | null;
 }
@@ -35,6 +38,9 @@ export interface HistoryStats {
   oldestAt: number | null;
   /** What the history takes on disk, with its write-ahead log; null when in memory. */
   bytes: number | null;
+  /** The charts' minutes kept, and when the oldest began. */
+  samples: number;
+  samplesOldestAt: number | null;
 }
 
 /** One kind of VM's work on one day, by the Mac's calendar (D25). */
@@ -77,6 +83,38 @@ export interface History {
   repoOfJob(jobId: number): string | null;
   /** Deletes what ended before `before`. Resolves with how many. */
   prune(before: number): number;
+  /** Keeps a minute of the charts. A minute already kept is left as it was. */
+  addSample(sample: MinuteSample): void;
+  /**
+   * The minutes from `from` to before `to`, oldest first, gathered `stepMs` at a time: each
+   * step's average of their averages and peak of their peaks. A step with no minute is left out.
+   */
+  samples(from: number, to: number, stepMs?: number): MinuteSample[];
+  /** Deletes the minutes before `before`. Resolves with how many. */
+  pruneSamples(before: number): number;
+}
+
+/** Steps of minutes gathered into fewer: averages averaged, peaks kept. */
+function gather(minutes: readonly MinuteSample[], stepMs: number): MinuteSample[] {
+  const steps = new Map<number, MinuteSample[]>();
+  for (const minute of minutes) {
+    const at = Math.floor(minute.at / stepMs) * stepMs;
+    const step = steps.get(at);
+    if (step) step.push(minute);
+    else steps.set(at, [minute]);
+  }
+  return [...steps].map(([at, group]) => {
+    const sample = { at } as MinuteSample;
+    for (const series of SERIES) {
+      sample[series] = round1(group.reduce((sum, one) => sum + one[series], 0) / group.length);
+      sample[`${series}Max`] = Math.max(...group.map((one) => one[`${series}Max`]));
+    }
+    return sample;
+  });
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 export function median(values: number[]): number | null {
@@ -93,6 +131,15 @@ function summarise(entries: readonly DoneView[]): Today {
     passed: entries.filter((entry) => entry.conclusion === 'success').length,
     finished: entries.length,
     lost: entries.filter((entry) => entry.conclusion === 'lost').length,
+    repos: [...new Set(entries.map((entry) => entry.repo))].sort().map((repo) => {
+      const own = entries.filter((entry) => entry.repo === repo);
+      return {
+        repo,
+        jobs: own.length,
+        failed: own.filter((entry) => entry.conclusion === 'failure').length,
+        lost: own.filter((entry) => entry.conclusion === 'lost').length,
+      };
+    }),
     medianWaitMs: median(
       entries.flatMap((entry) =>
         entry.jobAt !== undefined && entry.queuedAt !== undefined
@@ -106,6 +153,7 @@ function summarise(entries: readonly DoneView[]): Today {
 /** In memory: the tests' history, and the demo's. */
 export class MemoryHistory implements History {
   #entries: DoneView[];
+  #samples: MinuteSample[] = [];
 
   constructor(entries: DoneView[] = []) {
     this.#entries = [...entries].sort((a, b) => a.endedAt - b.endedAt);
@@ -179,7 +227,29 @@ export class MemoryHistory implements History {
       entries: this.#entries.length,
       oldestAt: this.#entries[0]?.endedAt ?? null,
       bytes: null,
+      samples: this.#samples.length,
+      samplesOldestAt: this.#samples[0]?.at ?? null,
     };
+  }
+
+  addSample(sample: MinuteSample): void {
+    if (this.#samples.some((one) => one.at === sample.at)) return;
+    this.#samples.push({ ...sample });
+    this.#samples.sort((a, b) => a.at - b.at);
+  }
+
+  samples(from: number, to: number, stepMs = MINUTE_MS): MinuteSample[] {
+    return gather(
+      this.#samples.filter((one) => one.at >= from && one.at < to),
+      wholeMinutes(stepMs),
+    );
+  }
+
+  pruneSamples(before: number): number {
+    const kept = this.#samples.filter((one) => one.at >= before);
+    const gone = this.#samples.length - kept.length;
+    this.#samples = kept;
+    return gone;
   }
 
   repoOfJob(jobId: number): string | null {
@@ -252,7 +322,36 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS jobs_by_end ON jobs (ended_at);
   CREATE INDEX IF NOT EXISTS jobs_by_job ON jobs (job_id);
   CREATE INDEX IF NOT EXISTS jobs_by_repo ON jobs (repo, ended_at);
+  -- The charts, a minute a row: each series' average and peak (samples.ts), in tenths, as
+  -- whole numbers: a third of the room of decimals.
+  CREATE TABLE IF NOT EXISTS samples (
+    at INTEGER PRIMARY KEY,
+    cpu_vms INTEGER NOT NULL,
+    cpu_vms_max INTEGER NOT NULL,
+    cpu_other INTEGER NOT NULL,
+    cpu_other_max INTEGER NOT NULL,
+    mem_vms INTEGER NOT NULL,
+    mem_vms_max INTEGER NOT NULL,
+    mem_other INTEGER NOT NULL,
+    mem_other_max INTEGER NOT NULL,
+    net_vms_down INTEGER NOT NULL,
+    net_vms_down_max INTEGER NOT NULL,
+    net_vms_up INTEGER NOT NULL,
+    net_vms_up_max INTEGER NOT NULL,
+    net_other_down INTEGER NOT NULL,
+    net_other_down_max INTEGER NOT NULL,
+    net_other_up INTEGER NOT NULL,
+    net_other_up_max INTEGER NOT NULL,
+    disk_used INTEGER NOT NULL,
+    disk_used_max INTEGER NOT NULL
+  ) STRICT;
 `;
+
+/** The samples table's columns, in SERIES's order: each series, then its peak. */
+const SAMPLE_COLUMNS = SERIES.flatMap((series) => {
+  const column = series.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  return [column, `${column}_max`];
+});
 
 /** In a file: `~/.minitart/history.db`. Times are milliseconds since 1970, as in the page. */
 export class SqliteHistory implements History {
@@ -263,6 +362,8 @@ export class SqliteHistory implements History {
   readonly #newest;
   readonly #byJob;
   readonly #prune;
+  readonly #addSample;
+  readonly #pruneSamples;
 
   constructor(path: string) {
     // Waits a moment for another reader or writer (`sqlite3` in a terminal) rather than
@@ -290,6 +391,52 @@ export class SqliteHistory implements History {
     this.#newest = this.#db.prepare('SELECT * FROM jobs ORDER BY ended_at DESC, id DESC LIMIT ?');
     this.#byJob = this.#db.prepare('SELECT repo FROM jobs WHERE job_id = ? LIMIT 1');
     this.#prune = this.#db.prepare('DELETE FROM jobs WHERE ended_at < ?');
+    this.#addSample = this.#db.prepare(
+      `INSERT OR IGNORE INTO samples (at, ${SAMPLE_COLUMNS.join(', ')})
+        VALUES (?${', ?'.repeat(SAMPLE_COLUMNS.length)})`,
+    );
+    this.#pruneSamples = this.#db.prepare('DELETE FROM samples WHERE at < ?');
+  }
+
+  addSample(sample: MinuteSample): void {
+    this.#addSample.run(
+      sample.at,
+      ...SERIES.flatMap((series) => [
+        Math.round(sample[series] * 10),
+        Math.round(sample[`${series}Max`] * 10),
+      ]),
+    );
+  }
+
+  samples(from: number, to: number, stepMs = MINUTE_MS): MinuteSample[] {
+    // Steps are whole minutes; SQL gathers them, with only numbers as parameters.
+    const step = wholeMinutes(stepMs);
+    const picks = SERIES.flatMap((series, index) => {
+      const column = SAMPLE_COLUMNS[index * 2];
+      return [
+        `round(avg(${column})) / 10.0 AS ${series}`,
+        `max(${column}_max) / 10.0 AS ${series}Max`,
+      ];
+    });
+    const rows = this.#db
+      .prepare(
+        // `%` works on whole numbers in SQLite, whatever type a parameter comes as.
+        `SELECT at - at % ? AS step_at, ${picks.join(', ')} FROM samples
+          WHERE at >= ? AND at < ? GROUP BY step_at ORDER BY step_at`,
+      )
+      .all(step, from, to) as Record<string, number>[];
+    return rows.map((row) => {
+      const sample = { at: Number(row['step_at']) } as MinuteSample;
+      for (const series of SERIES) {
+        sample[series] = Number(row[series]);
+        sample[`${series}Max`] = Number(row[`${series}Max`]);
+      }
+      return sample;
+    });
+  }
+
+  pruneSamples(before: number): number {
+    return Number(this.#pruneSamples.run(before).changes);
   }
 
   add(entry: DoneView): void {
@@ -418,10 +565,15 @@ export class SqliteHistory implements History {
         return 0;
       }
     };
+    const samples = this.#db
+      .prepare('SELECT count(*) AS n, min(at) AS oldest FROM samples')
+      .get() as { n: number; oldest: number | null };
     return {
       entries: Number(row.n),
       oldestAt: row.oldest === null ? null : Number(row.oldest),
       bytes: this.#path === ':memory:' ? null : size(this.#path) + size(`${this.#path}-wal`),
+      samples: Number(samples.n),
+      samplesOldestAt: samples.oldest === null ? null : Number(samples.oldest),
     };
   }
 

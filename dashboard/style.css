@@ -767,8 +767,8 @@ h2 .legend {
 
 .pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px 40px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 40px;
 }
 
 .pair-legend {
@@ -821,6 +821,11 @@ h2 .legend {
   fill: var(--viz-other);
   fill-opacity: 0.18;
 }
+/* A whole that is not split by who: the disk in use. Neither of the legend's two. */
+.area.whole {
+  fill: var(--body);
+  fill-opacity: 0.07;
+}
 
 .line {
   fill: none;
@@ -834,6 +839,9 @@ h2 .legend {
 .line.other {
   stroke: var(--viz-other);
 }
+.line.whole {
+  stroke: var(--body);
+}
 
 .dot {
   stroke: var(--bg);
@@ -844,6 +852,9 @@ h2 .legend {
 }
 .dot.other {
   fill: var(--viz-other);
+}
+.dot.whole {
+  fill: var(--body);
 }
 
 .cross {
@@ -904,6 +915,9 @@ h2 .legend {
 }
 .key.other {
   background: var(--viz-other);
+}
+.key.whole {
+  background: var(--body);
 }
 
 .legend {

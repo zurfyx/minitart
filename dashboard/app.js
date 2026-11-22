@@ -2,7 +2,7 @@
 // of its own beyond which log is open. Everything from GitHub (job, workflow and repo names)
 // is text someone else wrote, so it only ever reaches the page as text nodes.
 
-import { areaChart, columns, h, legend, meter, timeline } from './charts.js';
+import { areaChart, columns, h, meter, timeline } from './charts.js';
 import {
   compareProviders,
   dayLabel,
@@ -235,6 +235,7 @@ function render() {
     ),
   ];
   $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
+  drawReposToday();
   // The Usage view's numbers can come before the state it also needs: drawn once both are in.
   if (costData && !costDrawn && route().view === 'usage') drawCost();
 
@@ -309,6 +310,13 @@ function render() {
     form.elements.poll.value = settings.pollSeconds;
     form.elements.idle.value = settings.idleSeconds;
     form.elements.public.checked = settings.allowPublicRepos;
+    const keep = form.elements.keepCharts;
+    const days = settings.keepChartsDays === null ? '' : String(settings.keepChartsDays);
+    // A number of days set in the file by hand is shown as it is.
+    if (![...keep.options].some((option) => option.value === days)) {
+      keep.append(h('option', { value: days }, `${days} days`));
+    }
+    keep.value = days;
   }
 
   $('activity').replaceChildren(
@@ -323,6 +331,51 @@ function render() {
             ),
           )
       : [empty('Nothing has happened yet.')]),
+  );
+}
+
+/**
+ * Each repo served, or with a job today: how many of its jobs ended today, how many failed
+ * or were lost, and how many run now. A row opens the repo's jobs of today.
+ */
+function drawReposToday() {
+  // GitHub ignores case in names: one row a repo, under GitHub's own spelling when known.
+  const today = new Map((state.today.repos ?? []).map((one) => [one.repo.toLowerCase(), one]));
+  const spelled = new Map();
+  for (const name of [
+    ...state.settings.repos,
+    ...(state.today.repos ?? []).map((one) => one.repo),
+    ...state.vms.map((vm) => vm.repo),
+  ]) {
+    spelled.set(name.toLowerCase(), name);
+  }
+  const names = [...spelled.keys()].sort((a, b) => a.localeCompare(b));
+  $('repos-today').replaceChildren(
+    ...(names.length
+      ? names.map((key) => {
+          const name = spelled.get(key);
+          const counts = today.get(key);
+          const running = state.vms.filter(
+            (vm) => vm.repo.toLowerCase() === key && vm.status === 'running',
+          ).length;
+          const facts = counts
+            ? [
+                `${counts.jobs} ${counts.jobs === 1 ? 'job' : 'jobs'}`,
+                ...(counts.failed ? [`${counts.failed} failed`] : []),
+                ...(counts.lost ? [`${counts.lost} lost`] : []),
+              ].join(' · ')
+            : 'No jobs yet';
+          return row(
+            h(
+              'span',
+              { class: 'main' },
+              h('a', { href: jobsHash({ page: 1, repo: name, result: '', jobDays: 1 }) }, name),
+              h('span', { class: 'meta' }, facts),
+            ),
+            h('span', { class: 'muted num' }, running ? `${running} running` : ''),
+          );
+        })
+      : [empty('No repo is served yet.')]),
   );
 }
 
@@ -361,6 +414,32 @@ function drawTimeline() {
     ],
     onPick: (item) => showLog({ ...item.log, title: `${item.name ?? item.key} · ${item.repo}` }),
   });
+}
+
+/** Megabits a second from bytes a second, as the network chart writes them. */
+function mbps(bytes) {
+  const value = (bytes * 8) / 1e6;
+  return `${value >= 10 || value === 0 ? Math.round(value) : value.toFixed(1)} Mbit/s`;
+}
+
+/** A round top for a chart of `peak`: 1, 2 or 5 times a power of ten. */
+function niceMax(peak) {
+  if (!(peak > 0)) return 1;
+  const power = 10 ** Math.floor(Math.log10(peak));
+  return [1, 2, 5, 10].map((one) => one * power).find((one) => one >= peak) ?? 10 * power;
+}
+
+/** A disk chart's scale: the values' range with room around it, in round gigabytes. */
+function diskRange(values, totalMb) {
+  const known = values.filter((value) => value > 0);
+  if (!known.length) return { min: 0, max: totalMb, ticks: [0, totalMb / 2, totalMb] };
+  const low = Math.min(...known);
+  const high = Math.max(...known);
+  const pad = Math.max(8 * 1024, (high - low) * 0.5);
+  const step = 4 * 1024;
+  const min = Math.max(0, Math.floor((low - pad) / step) * step);
+  const max = Math.min(totalMb, Math.ceil((high + pad) / step) * step);
+  return { min, max, ticks: [min, (min + max) / 2, max] };
 }
 
 /** Gigabytes from megabytes, as the charts write them. */
@@ -417,29 +496,55 @@ function drawResources() {
     });
   }
 
-  drawStorage();
-  const disk = resources.disk;
-  if (!disk) {
-    $('disk-free').textContent = '';
-    $('disk').replaceChildren(empty('Not measured yet.'));
-    return;
+  // Down, by who: what a job fetches is what CI waits on. Up is in the heading.
+  const down = (point) => (point.netVmsDown ?? 0) + (point.netOtherDown ?? 0);
+  const up = (point) => (point.netVmsUp ?? 0) + (point.netOtherUp ?? 0);
+  $('network-now').textContent = last ? `${mbps(down(last))} down · ${mbps(up(last))} up now` : '';
+  if (!inUse($('network'))) {
+    const top = niceMax((Math.max(0, ...points.map(down)) * 8) / 1e6) * (1e6 / 8);
+    areaChart($('network'), {
+      ...span,
+      times,
+      series: series(
+        (point) => point.netVmsDown ?? 0,
+        (point) => point.netOtherDown ?? 0,
+      ),
+      max: top,
+      ticks: [0, top / 2, top],
+      format: mbps,
+      height: 150,
+      label: `Network down over the last hour${last ? `, ${mbps(down(last))} now` : ''}`,
+    });
   }
-  const used = disk.totalBytes - disk.freeBytes;
-  const size = (bytes) => `${Math.round(bytes / GB)} GB`;
-  $('disk-free').textContent = `${size(disk.freeBytes)} free of ${size(disk.totalBytes)}`;
-  $('disk').replaceChildren(
-    meter(
-      [
-        { value: used, color: 'other' },
-        { value: disk.freeBytes, color: 'free' },
+
+  // Space in use on the disk VMs are on: not split by who, since a VM shares its image's
+  // blocks until it writes. The VMs show as rises while they run and drops when deleted.
+  const diskTotalMb = resources.disk ? resources.disk.totalBytes / 1024 ** 2 : null;
+  $('disk-now').textContent =
+    last?.diskUsed !== undefined && diskTotalMb
+      ? `${gb(diskTotalMb - last.diskUsed)} free of ${gb(diskTotalMb)}`
+      : '';
+  if (!diskTotalMb || !points.some((point) => point.diskUsed > 0)) {
+    $('disk-chart').replaceChildren(empty('Not measured yet.'));
+  } else if (!inUse($('disk-chart'))) {
+    areaChart($('disk-chart'), {
+      ...span,
+      times,
+      series: [
+        { name: 'In use', values: points.map((point) => point.diskUsed ?? 0), color: 'whole' },
       ],
-      `${size(used)} used, ${size(disk.freeBytes)} free`,
-    ),
-    legend([
-      ['other', `Used, ${size(used)}`],
-      ['free', `Free, ${size(disk.freeBytes)}`],
-    ]),
-  );
+      // The hour's range, not the whole disk: a VM's few gigabytes would not show on a terabyte.
+      ...diskRange(
+        points.map((point) => point.diskUsed ?? 0),
+        diskTotalMb,
+      ),
+      format: gb,
+      height: 150,
+      label: `Disk in use over the last hour${last?.diskUsed !== undefined ? `, ${gb(last.diskUsed)} now` : ''}`,
+    });
+  }
+
+  drawStorage();
 }
 
 async function loadResources() {
@@ -567,6 +672,9 @@ settingsForm.addEventListener('submit', (event) => {
   if (value('idle') !== now.idleSeconds) patch.idleSeconds = value('idle');
   const allowPublic = settingsForm.elements.public.checked;
   if (allowPublic !== now.allowPublicRepos) patch.allowPublicRepos = allowPublic;
+  const keep = settingsForm.elements.keepCharts.value;
+  const keepDays = keep === '' ? null : Number(keep);
+  if (keepDays !== now.keepChartsDays) patch.keepChartsDays = keepDays;
   if (Object.keys(patch).length === 0) {
     delete settingsForm.dataset.dirty;
     $('settings-note').textContent = 'Nothing to save.';
@@ -706,6 +814,10 @@ function drawJobs(wanted) {
     h('option', { value: '' }, 'Every repo'),
     ...jobPage.repos.map((name) => h('option', { value: name }, name)),
   );
+  // A repo asked for that has no job kept yet is still shown as the one picked.
+  if (wanted.repo && !jobPage.repos.includes(wanted.repo)) {
+    repoSelect.append(h('option', { value: wanted.repo }, wanted.repo));
+  }
   repoSelect.value = wanted.repo;
   const resultSelect = /** @type {HTMLSelectElement} */ (form.elements.namedItem('result'));
   // Each result with how many of the repo's jobs ended that way, whichever result is shown.
@@ -808,6 +920,16 @@ function bytes(value) {
   return `${(value / GB).toFixed(value < 10 * GB ? 1 : 0)} GB`;
 }
 
+/** The charts' minutes kept, and for how long. */
+function chartsKept(history) {
+  const minutes = history.samples ?? 0;
+  const since = history.samplesOldestAt
+    ? ` since ${new Date(history.samplesOldestAt).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : '';
+  const days = state?.settings.keepChartsDays ?? null;
+  return `${minutes.toLocaleString()} ${minutes === 1 ? 'minute' : 'minutes'} of charts${since}, kept ${days === null ? 'forever' : `${days} days`}`;
+}
+
 function drawStorage() {
   const history = storage?.history ?? null;
   const since = history?.oldestAt
@@ -846,8 +968,8 @@ function drawStorage() {
   if (history) {
     lines.push(
       line(
-        'Job history',
-        `${count}, each kept ${storage.keepDays} days · ~/.minitart/history.db`,
+        'History',
+        `${count}, each kept ${storage.keepDays} days; ${chartsKept(history)} · ~/.minitart/history.db`,
         history.bytes === null ? 'in memory' : bytes(history.bytes),
       ),
     );

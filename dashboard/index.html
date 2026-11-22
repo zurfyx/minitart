@@ -65,7 +65,7 @@
         <div id="timeline" class="timeline"></div>
       </section>
 
-      <section class="pair" aria-label="CPU and memory">
+      <section class="pair" aria-label="CPU, memory, network and disk">
         <div>
           <h2>CPU <span class="aside num" id="cpu-now"></span></h2>
           <div id="cpu" class="chart"></div>
@@ -73,6 +73,14 @@
         <div>
           <h2>Memory <span class="aside num" id="memory-now"></span></h2>
           <div id="memory" class="chart"></div>
+        </div>
+        <div>
+          <h2>Network <span class="aside num" id="network-now"></span></h2>
+          <div id="network" class="chart"></div>
+        </div>
+        <div>
+          <h2>Disk <span class="aside num" id="disk-now"></span></h2>
+          <div id="disk-chart" class="chart"></div>
         </div>
         <div class="pair-legend">
           <span class="legend">
@@ -88,9 +96,8 @@
           <div id="jobs" class="rows"></div>
         </div>
         <div>
-          <h2>Disk <span class="aside num" id="disk-free"></span></h2>
-          <div id="disk"></div>
-          <p class="more"><a href="#mac">Storage →</a></p>
+          <h2>Repos today</h2>
+          <div id="repos-today" class="rows"></div>
         </div>
       </section>
     </main>
@@ -248,9 +255,9 @@
         <div id="storage-disk"></div>
         <div id="storage" class="rows"></div>
         <p class="muted small">
-          minitart deletes nothing of the history for its size: a job is kept a year, then goes. A
-          clone shares space with what it was cloned from, so Tart's sizes can add up to more than
-          they take.
+          minitart deletes nothing of the history for its size: a job is kept a year, then goes, and
+          the charts' minutes are kept forever unless a limit is set in Settings. A clone shares
+          space with what it was cloned from, so Tart's sizes can add up to more than they take.
         </p>
       </section>
 
@@ -286,6 +293,15 @@
           <label>
             <span>Delete an idle VM after, seconds</span>
             <input type="number" name="idle" min="30" max="3600" inputmode="numeric" />
+          </label>
+          <label>
+            <span>Keep the charts</span>
+            <select name="keepCharts">
+              <option value="">Forever</option>
+              <option value="365">A year</option>
+              <option value="90">90 days</option>
+              <option value="30">30 days</option>
+            </select>
           </label>
           <label class="check">
             <input type="checkbox" name="public" />

@@ -89,6 +89,15 @@ test('a patch changes only what it names', () => {
   assert.deepEqual(next.macos, base.macos);
 });
 
+test('the charts are kept forever unless a number of days is set, and can go back to forever', () => {
+  const base = defaultSettings(mini);
+  assert.equal(base.keepChartsDays, null);
+  const year = mergeSettings(base, { keepChartsDays: 365 }, mini);
+  assert.equal(year.keepChartsDays, 365);
+  assert.equal(mergeSettings(year, {}, mini).keepChartsDays, 365, 'kept when not named');
+  assert.equal(mergeSettings(year, { keepChartsDays: null }, mini).keepChartsDays, null);
+});
+
 test('more than two macOS VMs is refused', () => {
   const base = defaultSettings(mini);
   assert.throws(() => mergeSettings(base, { macos: { max: 3 } }, mini), SettingsError);
@@ -110,6 +119,9 @@ test('untrusted input is refused, not coerced', () => {
     { repos: ['not a repo'] },
     { repos: 'octo/app' },
     { pausedRepos: [] },
+    { keepChartsDays: 0 },
+    { keepChartsDays: 7.5 },
+    { keepChartsDays: '30' },
   ];
   for (const patch of bad) {
     assert.throws(() => mergeSettings(base, patch, mini), SettingsError, JSON.stringify(patch));
