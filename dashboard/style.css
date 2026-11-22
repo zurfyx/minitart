@@ -534,6 +534,14 @@ section > p {
   text-decoration: underline;
 }
 
+.row > .took {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* When it ended, under how long it took, as a job's repo is under its name. */
+.row .took .ended,
 .row .meta,
 .row .note {
   display: block;
@@ -1127,6 +1135,17 @@ h2 .legend {
 
   .activity time {
     width: auto;
+  }
+
+  /* On a phone the facts share a line: how long it took, then when it ended. */
+  .row > .took {
+    flex-direction: row;
+    align-items: baseline;
+  }
+
+  .row .took .ended::before {
+    content: ' · ';
+    white-space: pre;
   }
 }
 

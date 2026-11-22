@@ -224,9 +224,9 @@ function render() {
         // How long it took, as a running job shows how long it has run, and when it ended.
         h(
           'span',
-          { class: 'num' },
-          duration(job.endedAt - (job.jobAt ?? job.startedAt)),
-          h('span', { class: 'muted' }, ` · ${ago(state.now - job.endedAt)}`),
+          { class: 'took' },
+          h('span', { class: 'num' }, duration(job.endedAt - (job.jobAt ?? job.startedAt))),
+          h('span', { class: 'ended' }, ago(state.now - job.endedAt)),
         ),
         job.job.id !== null
           ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
