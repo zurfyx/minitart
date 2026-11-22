@@ -339,16 +339,24 @@ function render() {
  * or were lost, and how many run now. A row opens the repo's jobs of today.
  */
 function drawReposToday() {
-  const today = new Map((state.today.repos ?? []).map((one) => [one.repo, one]));
-  const names = [
-    ...new Set([...state.settings.repos, ...today.keys(), ...state.vms.map((vm) => vm.repo)]),
-  ].sort((a, b) => a.localeCompare(b));
+  // GitHub ignores case in names: one row a repo, under GitHub's own spelling when known.
+  const today = new Map((state.today.repos ?? []).map((one) => [one.repo.toLowerCase(), one]));
+  const spelled = new Map();
+  for (const name of [
+    ...state.settings.repos,
+    ...(state.today.repos ?? []).map((one) => one.repo),
+    ...state.vms.map((vm) => vm.repo),
+  ]) {
+    spelled.set(name.toLowerCase(), name);
+  }
+  const names = [...spelled.keys()].sort((a, b) => a.localeCompare(b));
   $('repos-today').replaceChildren(
     ...(names.length
-      ? names.map((name) => {
-          const counts = today.get(name);
+      ? names.map((key) => {
+          const name = spelled.get(key);
+          const counts = today.get(key);
           const running = state.vms.filter(
-            (vm) => vm.repo === name && vm.status === 'running',
+            (vm) => vm.repo.toLowerCase() === key && vm.status === 'running',
           ).length;
           const facts = counts
             ? [
@@ -516,12 +524,14 @@ function drawResources() {
     last?.diskUsed !== undefined && diskTotalMb
       ? `${gb(diskTotalMb - last.diskUsed)} free of ${gb(diskTotalMb)}`
       : '';
-  if (!inUse($('disk-chart')) && diskTotalMb) {
+  if (!diskTotalMb || !points.some((point) => point.diskUsed > 0)) {
+    $('disk-chart').replaceChildren(empty('Not measured yet.'));
+  } else if (!inUse($('disk-chart'))) {
     areaChart($('disk-chart'), {
       ...span,
       times,
       series: [
-        { name: 'In use', values: points.map((point) => point.diskUsed ?? 0), color: 'other' },
+        { name: 'In use', values: points.map((point) => point.diskUsed ?? 0), color: 'whole' },
       ],
       // The hour's range, not the whole disk: a VM's few gigabytes would not show on a terabyte.
       ...diskRange(
@@ -804,6 +814,10 @@ function drawJobs(wanted) {
     h('option', { value: '' }, 'Every repo'),
     ...jobPage.repos.map((name) => h('option', { value: name }, name)),
   );
+  // A repo asked for that has no job kept yet is still shown as the one picked.
+  if (wanted.repo && !jobPage.repos.includes(wanted.repo)) {
+    repoSelect.append(h('option', { value: wanted.repo }, wanted.repo));
+  }
   repoSelect.value = wanted.repo;
   const resultSelect = /** @type {HTMLSelectElement} */ (form.elements.namedItem('result'));
   // Each result with how many of the repo's jobs ended that way, whichever result is shown.

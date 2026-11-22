@@ -162,13 +162,18 @@ export function areaChart(
               h('span', { class: 'muted' }, one.name),
             ),
           ),
-        h(
-          'div',
-          { class: 'tip-row total' },
-          h('span', { class: 'key' }),
-          h('strong', { class: 'num' }, format(total)),
-          h('span', { class: 'muted' }, 'in all'),
-        ),
+        // A total only where there is more than one part to add up.
+        ...(series.length > 1
+          ? [
+              h(
+                'div',
+                { class: 'tip-row total' },
+                h('span', { class: 'key' }),
+                h('strong', { class: 'num' }, format(total)),
+                h('span', { class: 'muted' }, 'in all'),
+              ),
+            ]
+          : []),
       );
       tip.style.top = `${m.top}px`;
       placeTip(tip, at, width);
