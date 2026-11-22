@@ -16,7 +16,7 @@ import type { Manager } from './manager.ts';
 import { KEEP_MS, localDay, type History } from './history.ts';
 import { PRICES_CHECKED, PROVIDERS } from './pricing.ts';
 import type { ResourcesView } from './resources.ts';
-import { historyView, stepFor } from './history-view.ts';
+import { historyView, rangeFor, stepFor } from './history-view.ts';
 import { mergeSettings, SettingsError, type Machine } from './settings.ts';
 import type { TailnetName } from './tailnet.ts';
 import { VERSION } from './version.ts';
@@ -166,20 +166,19 @@ export function createDashboardServer(deps: ServerDeps): Server {
         });
       }
       if (path === '/api/history') {
-        // A range of whole days back from `end` (now when not given), as the History view
-        // steps through them (D27).
+        // A range of whole days back from `end` (now when not given), in steps that line up
+        // with the Mac's clock, as the History view steps through them (D27).
         const days = Number(url.searchParams.get('days') ?? '1');
         if (![1, 7, 30, 90, 365].includes(days)) {
           return send(response, 400, 'days must be 1, 7, 30, 90 or 365');
         }
         const now = Date.now();
-        const endAsked = url.searchParams.get('end');
+        const endAsked = url.searchParams.get('end') || null;
         const end = endAsked === null ? now : Number(endAsked);
         if (!Number.isInteger(end) || end < 0) {
           return send(response, 400, 'end must be a time in milliseconds');
         }
-        const to = Math.min(end, now);
-        const from = to - days * 24 * 60 * 60_000;
+        const { from, to } = rangeFor(days, Math.min(end, now));
         const resources = deps.resources?.() ?? null;
         return json(response, 200, {
           ...(deps.history
@@ -187,7 +186,8 @@ export function createDashboardServer(deps: ServerDeps): Server {
                 deps.history,
                 from,
                 to,
-                deps.manager.snapshot().vms.filter((vm) => vm.createdAt < to),
+                deps.manager.snapshot().vms.filter((vm) => vm.jobAt !== null && vm.createdAt < to),
+                now,
               )
             : { from, to, stepMs: stepFor(to - from), samples: [], vms: [], oldestAt: null }),
           days,

@@ -276,7 +276,8 @@ export function demoWorld(machine: Machine): {
   let started = 0;
   let up: { createdAt: number; jobAt: number | null; endedAt: number }[] = [];
   const firstMinute = Math.floor((now - 90 * DAY) / 60_000) * 60_000;
-  for (let minute = firstMinute; minute < now - (POINTS - 1) * STEP_MS; minute += 60_000) {
+  // Up to now: the last hour too, so the History view has no gap before the live minutes.
+  for (let minute = firstMinute; minute < now; minute += 60_000) {
     while (started < byStart.length && (byStart[started]?.startedAt ?? Infinity) <= minute) {
       const entry = byStart[started++];
       if (entry)

@@ -200,4 +200,12 @@ test('a dated axis: whole hours for a day, days for a week, months for a year', 
     'on the first of a month',
   );
   assert.ok(year.every((tick) => tick.at >= at(2025, 10, 22) && tick.at <= at(2026, 10, 22)));
+  // A narrow year: quarters of the calendar, and a year on the first so one always shows.
+  const narrow = dateTicks(at(2026, 1, 3), at(2027, 1, 3), 400);
+  assert.deepEqual(
+    narrow.map((tick) => new Date(tick.at).getMonth()),
+    [3, 6, 9, 0],
+  );
+  assert.match(narrow[0].label, /2026/);
+  assert.match(narrow[3].label, /2027/);
 });

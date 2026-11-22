@@ -120,6 +120,13 @@ function author(login) {
     : h('span', { class: 'author' }, login);
 }
 
+/** An empty state where a chart was: it is not drawn back over it when the page resizes. */
+function emptyChart(id, text) {
+  const root = $(id);
+  root.redraw = null;
+  root.replaceChildren(empty(text));
+}
+
 function empty(text) {
   return h('p', { class: 'empty' }, text);
 }
@@ -525,7 +532,7 @@ function drawResources() {
       ? `${gb(diskTotalMb - last.diskUsed)} free of ${gb(diskTotalMb)}`
       : '';
   if (!diskTotalMb || !points.some((point) => point.diskUsed > 0)) {
-    $('disk-chart').replaceChildren(empty('Not measured yet.'));
+    emptyChart('disk-chart', 'Not measured yet.');
   } else if (!inUse($('disk-chart'))) {
     areaChart($('disk-chart'), {
       ...span,
@@ -782,7 +789,9 @@ async function loadHistory() {
   if (historyEnd) params.set('end', String(historyEnd));
   const asked = params.toString();
   historyAsked = asked;
+  // Another range ends where this one does, so a step back stays back.
   for (const link of document.querySelectorAll('#history-range a')) {
+    link.href = historyHash(Number(link.dataset.days), historyEnd);
     if (Number(link.dataset.days) === historyDays) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
@@ -791,14 +800,13 @@ async function loadHistory() {
     const body = response.ok ? await response.json() : null;
     if (historyAsked !== asked) return;
     if (!body) {
-      $('history-vms').replaceChildren(empty('Could not read the history.'));
+      emptyChart('history-vms', 'Could not read the history.');
       return;
     }
     historyData = body;
     drawHistory();
   } catch {
-    if (historyAsked === asked)
-      $('history-vms').replaceChildren(empty('Could not reach minitart.'));
+    if (historyAsked === asked) emptyChart('history-vms', 'Could not reach minitart.');
   }
 }
 
@@ -812,7 +820,12 @@ function drawHistory() {
   const data = historyData;
   if (!data) return;
   // A step with nothing kept is left as a gap, not drawn across.
-  const span = { from: data.from, to: data.to, dates: true, gapMs: data.stepMs * 1.5 };
+  const span = {
+    from: data.from,
+    to: data.to,
+    dates: data.stepMs >= 24 * 60 * 60_000 ? 'days' : true,
+    gapMs: data.stepMs * 1.5,
+  };
   const day = (at, withYear) =>
     new Date(at).toLocaleString([], {
       day: 'numeric',
@@ -822,15 +835,19 @@ function drawHistory() {
       minute: '2-digit',
     });
   const minutes = Math.round(data.stepMs / 60_000);
-  const stepWord =
-    minutes >= 1440 ? 'a day' : minutes >= 60 ? `${minutes / 60} h` : `${minutes} min`;
+  const date = (at) =>
+    new Date(at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  // A point a day runs from a midnight to the day before the last one's.
   $('history-span').textContent =
-    `${day(data.from, true)} to ${day(data.to)} · a point every ${stepWord}`;
+    minutes >= 1440
+      ? `${date(data.from)} to ${date(data.to - 1)} · a point a day`
+      : `${day(data.from, true)} to ${day(data.to)} · a point every ${minutes >= 60 ? `${minutes / 60} h` : `${minutes} min`}`;
 
   // Earlier, as far back as anything is kept; later, up to now.
   const length = data.days * 24 * 60 * 60_000;
   const earlier = data.oldestAt !== null && data.from > data.oldestAt;
-  const atNow = Date.now() - data.to < 60_000;
+  // The last step holds now, so a range ending at it or after is the latest.
+  const atNow = data.to >= Date.now();
   $('history-pager').replaceChildren(
     earlier
       ? h('a', { href: historyHash(data.days, data.from) }, '← Earlier')
@@ -848,29 +865,42 @@ function drawHistory() {
 
   // VMs up, by kind, from the jobs kept.
   const vmTimes = data.vms.map((step) => step.at);
-  const peakVms = Math.max(0, ...data.vms.map((step) => step.linux + step.macos));
-  $('history-vms-peak').textContent = peakVms ? `busiest: ${peakVms.toFixed(1)} at once` : '';
-  const vmTop = Math.max(1, Math.ceil(peakVms));
-  areaChart($('history-vms'), {
-    ...span,
-    times: vmTimes,
-    series: [
-      { name: 'Linux', values: data.vms.map((step) => step.linux), color: 'linux' },
-      { name: 'macOS', values: data.vms.map((step) => step.macos), color: 'macos' },
-    ],
-    max: vmTop,
-    ticks: [0, vmTop / 2, vmTop],
-    format: (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1)),
-    height: 160,
-    label: `VMs up from ${day(data.from)} to ${day(data.to)}`,
-  });
+  const busiest = Math.max(0, ...data.vms.map((step) => step.most));
+  $('history-vms-peak').textContent = busiest ? `busiest: ${busiest} at once` : '';
+  // Drawn as each step's average, so its top is the highest average, not the most at once.
+  const vmTop = Math.max(1, Math.ceil(Math.max(0, ...data.vms.map((s) => s.linux + s.macos))));
+  if (!data.vms.length) emptyChart('history-vms', 'Nothing kept for this range yet.');
+  else
+    areaChart($('history-vms'), {
+      ...span,
+      times: vmTimes,
+      series: [
+        {
+          name: 'Linux',
+          values: data.vms.map((step) => step.linux),
+          peaks: data.vms.map((step) => step.linuxMost),
+          color: 'linux',
+        },
+        {
+          name: 'macOS',
+          values: data.vms.map((step) => step.macos),
+          peaks: data.vms.map((step) => step.macosMost),
+          color: 'macos',
+        },
+      ],
+      max: vmTop,
+      ticks: [0, vmTop / 2, vmTop],
+      format: (value) => (Number.isInteger(value) ? String(value) : value.toFixed(1)),
+      height: 160,
+      label: `VMs up from ${day(data.from)} to ${day(data.to)}`,
+    });
 
   const samples = data.samples;
   const times = samples.map((one) => one.at);
   const none = !samples.length;
   const chart = (id, options) => {
     if (none) {
-      $(id).replaceChildren(empty('Nothing kept for this range yet.'));
+      emptyChart(id, 'Nothing kept for this range yet.');
       return;
     }
     areaChart($(id), { ...span, times, height: 150, ...options });
@@ -927,7 +957,7 @@ function drawHistory() {
     none || !diskTotalMb ? '' : `most in use ${gb(peakOf('diskUsed'))}, of ${gb(diskTotalMb)}`;
   const used = samples.map((one) => one.diskUsed);
   if (!diskTotalMb || !used.some((value) => value > 0)) {
-    $('history-disk').replaceChildren(empty('Not measured for this range.'));
+    emptyChart('history-disk', 'Not measured for this range.');
   } else {
     chart('history-disk', {
       series: [

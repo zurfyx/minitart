@@ -109,7 +109,8 @@ export function areaChart(
       if (i === 0 || (gapMs && times[i] - times[i - 1] > gapMs)) runs.push([]);
       runs.at(-1).push(i);
     }
-    if (times.length > 1) {
+    // A range of dates draws even one point; the last hour waits for a second.
+    if (times.length > (dates ? 0 : 1)) {
       let below = times.map(() => 0);
       for (const one of series) {
         const top = one.values.map((value, index) => below[index] + value);
@@ -126,6 +127,13 @@ export function areaChart(
             s('path', { d: `${line}${back}Z`, class: `area ${one.color}` }),
             s('path', { d: line, class: `line ${one.color}` }),
           );
+          // A point alone between gaps has no line to show it: a dot does.
+          if (run.length === 1) {
+            const i = run[0];
+            svg.append(
+              s('circle', { cx: x(times[i]), cy: y(top[i]), r: 2.5, class: `dot ${one.color}` }),
+            );
+          }
         }
         below = top;
       }
@@ -139,7 +147,7 @@ export function areaChart(
     });
     const tip = h('div', { class: 'tip', hidden: true });
     root.replaceChildren(svg, tip);
-    if (times.length < 2) {
+    if (times.length < (dates ? 1 : 2)) {
       root.append(h('p', { class: 'chart-empty' }, 'The first points arrive within a minute.'));
       return;
     }
@@ -164,12 +172,13 @@ export function areaChart(
           'div',
           { class: 'tip-time' },
           dates
-            ? when.toLocaleString([], {
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
+            ? when.toLocaleString(
+                [],
+                // A point a day is that day: its hour moves with the clocks.
+                dates === 'days'
+                  ? { day: 'numeric', month: 'short', year: 'numeric' }
+                  : { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' },
+              )
             : [
                 minutesAgo === 0 ? 'now' : `${minutesAgo} min ago`,
                 ' · ',

@@ -39,5 +39,7 @@ little disk. Jobs stay kept a year (D24).
   next point, as a VM's CPU time does.
 - The History view goes back in time over them: a day, 7, 30 or 90 days or a year at a time,
   stepping earlier and later, the minutes gathered into steps that fit the range (at most
-  360 points), each step's average drawn and its peak in the tooltip. Its steps begin at the
-  Mac's midnight. Its VMs chart comes from the jobs kept (D24), so it goes back a year.
+  360 points), each step's average drawn and its peak in the tooltip. Its steps line up with
+  the Mac's clock, a day's from its midnight, and the last holds now. Its VMs chart comes
+  from the jobs kept (D24), so it goes back a year: each step's average, and the most up at
+  once in it. It counts the VMs that took a job, as those are the ones kept.

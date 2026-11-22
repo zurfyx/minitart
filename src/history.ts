@@ -103,8 +103,9 @@ export interface History {
 function gather(minutes: readonly MinuteSample[], from: number, stepMs: number): MinuteSample[] {
   const steps = new Map<number, MinuteSample[]>();
   for (const minute of minutes) {
-    // Steps begin at `from`: a day's steps at the Mac's midnight, not at UTC's.
-    const at = from + Math.floor((minute.at - from) / stepMs) * stepMs;
+    // Steps begin at `from`'s minute: the History view's begin at the Mac's midnight.
+    const base = from - (from % MINUTE_MS);
+    const at = base + Math.floor((minute.at - base) / stepMs) * stepMs;
     const step = steps.get(at);
     if (step) step.push(minute);
     else steps.set(at, [minute]);
@@ -240,6 +241,12 @@ export class MemoryHistory implements History {
   }
 
   addSample(sample: MinuteSample): void {
+    // Minutes come in order: only one out of it needs a look through the rest.
+    const last = this.#samples.at(-1);
+    if (!last || sample.at > last.at) {
+      this.#samples.push({ ...sample });
+      return;
+    }
     if (this.#samples.some((one) => one.at === sample.at)) return;
     this.#samples.push({ ...sample });
     this.#samples.sort((a, b) => a.at - b.at);
@@ -316,6 +323,9 @@ function fromRow(row: Row): DoneView {
     endedAt: row.ended_at,
   };
 }
+
+/** The longest a VM is up: VM_LIFETIME_MS (7 h, in manager.ts), and an hour more to be deleted. */
+const VM_UP_MOST_MS = 8 * 60 * MINUTE_MS;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS jobs (
@@ -438,11 +448,11 @@ export class SqliteHistory implements History {
     const rows = this.#db
       .prepare(
         // `%` works on whole numbers in SQLite, whatever type a parameter comes as.
-        // Steps begin at `from`: a day's steps at the Mac's midnight, not at UTC's.
+        // Steps begin at `from`'s minute: the History view's begin at the Mac's midnight.
         `SELECT at - (at - ?) % ? AS step_at, ${picks.join(', ')} FROM samples
           WHERE at >= ? AND at < ? GROUP BY step_at ORDER BY step_at`,
       )
-      .all(from, step, from, to) as Record<string, number>[];
+      .all(from - (from % MINUTE_MS), step, from, to) as Record<string, number>[];
     return rows.map((row) => {
       const sample = { at: Number(row['step_at']) } as MinuteSample;
       for (const series of SERIES) {
@@ -462,8 +472,17 @@ export class SqliteHistory implements History {
     to: number,
   ): { pool: 'linux' | 'macos'; startedAt: number; endedAt: number }[] {
     const rows = this.#db
-      .prepare('SELECT pool, started_at, ended_at FROM jobs WHERE ended_at >= ? AND started_at < ?')
-      .all(from, to) as { pool: 'linux' | 'macos'; started_at: number; ended_at: number }[];
+      // Bounded on both sides by when they ended, so the index on it does the work: a VM is
+      // deleted within VM_UP_MOST_MS of being cloned.
+      .prepare(
+        `SELECT pool, started_at, ended_at FROM jobs
+          WHERE ended_at >= ? AND ended_at < ? AND started_at < ?`,
+      )
+      .all(from, to + VM_UP_MOST_MS, to) as {
+      pool: 'linux' | 'macos';
+      started_at: number;
+      ended_at: number;
+    }[];
     return rows.map((row) => ({
       pool: row.pool,
       startedAt: Number(row.started_at),

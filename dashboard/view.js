@@ -154,6 +154,8 @@ const DATE_STEPS = [
   { ms: 14 * DAY_MS, unit: 'day', every: 14 },
   { ms: 31 * DAY_MS, unit: 'month', every: 1 },
   { ms: 92 * DAY_MS, unit: 'month', every: 3 },
+  { ms: 183 * DAY_MS, unit: 'month', every: 6 },
+  { ms: 366 * DAY_MS, unit: 'month', every: 12 },
 ];
 
 /**
@@ -161,7 +163,8 @@ const DATE_STEPS = [
  * or months, as many as `width` has room for. Each is `{ at, label }`.
  */
 export function dateTicks(from, to, width) {
-  const most = Math.max(2, Math.floor(width / 90));
+  // A label is at most "Nov 22" or "08:00 AM" wide: one every 70 pixels leaves room.
+  const most = Math.max(2, Math.floor(width / 70));
   const step = DATE_STEPS.find((one) => (to - from) / one.ms <= most) ?? DATE_STEPS.at(-1);
   const first = new Date(from);
   if (step.unit === 'hour') {
@@ -169,7 +172,11 @@ export function dateTicks(from, to, width) {
     first.setHours(Math.ceil(first.getHours() / step.every) * step.every);
   } else {
     first.setHours(0, 0, 0, 0);
-    if (step.unit === 'month') first.setDate(1);
+    // Months by the calendar's quarters and halves: Jan, Apr, Jul, Oct.
+    if (step.unit === 'month') {
+      first.setDate(1);
+      first.setMonth(Math.ceil(first.getMonth() / step.every) * step.every);
+    }
   }
   const ticks = [];
   for (const at = new Date(first); at.getTime() <= to;) {
@@ -181,13 +188,17 @@ export function dateTicks(from, to, width) {
             ? at.toLocaleDateString([], { day: 'numeric', month: 'short' })
             : at.toLocaleDateString([], {
                 month: 'short',
-                ...(at.getMonth() === 0 ? { year: 'numeric' } : {}),
+                // The year where it begins, and on the first so there is always one.
+                ...(at.getMonth() === 0 || ticks.length === 0 ? { year: 'numeric' } : {}),
               });
       ticks.push({ at: at.getTime(), label });
     }
     if (step.unit === 'hour') at.setHours(at.getHours() + step.every);
-    else if (step.unit === 'day') at.setDate(at.getDate() + step.every);
-    else at.setMonth(at.getMonth() + step.every);
+    else if (step.unit === 'day') {
+      // Midnight again: where clocks change at midnight, a day can begin at 1:00.
+      at.setDate(at.getDate() + step.every);
+      at.setHours(0, 0, 0, 0);
+    } else at.setMonth(at.getMonth() + step.every);
   }
   return ticks;
 }
