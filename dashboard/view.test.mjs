@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { headline, lanes, stats, timeTicks } from './view.js';
+import { dateTicks, headline, lanes, stats, timeTicks } from './view.js';
 
 const NOW = new Date(2026, 10, 19, 15, 0).getTime();
 const MIN = 60_000;
@@ -179,4 +179,25 @@ test('the headline, as the dashboard and the menu bar app both say it', async ()
   for (const one of cases) {
     assert.deepEqual(headline({ now: NOW, done: [], ...one.state }), one.headline, one.case);
   }
+});
+
+test('a dated axis: whole hours for a day, days for a week, months for a year', () => {
+  const at = (y, m, d, h = 0) => new Date(y, m, d, h).getTime();
+  const day = dateTicks(at(2026, 10, 21, 8, 10), at(2026, 10, 22, 8, 10), 900);
+  assert.ok(
+    day.every((tick) => new Date(tick.at).getMinutes() === 0),
+    'on the hour',
+  );
+  assert.ok(day.length >= 4 && day.length <= 10);
+  const week = dateTicks(at(2026, 10, 15), at(2026, 10, 22), 900);
+  assert.ok(
+    week.every((tick) => new Date(tick.at).getHours() === 0),
+    'at midnight',
+  );
+  const year = dateTicks(at(2025, 10, 22), at(2026, 10, 22), 900);
+  assert.ok(
+    year.every((tick) => new Date(tick.at).getDate() === 1),
+    'on the first of a month',
+  );
+  assert.ok(year.every((tick) => tick.at >= at(2025, 10, 22) && tick.at <= at(2026, 10, 22)));
 });

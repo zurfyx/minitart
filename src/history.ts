@@ -92,13 +92,19 @@ export interface History {
   samples(from: number, to: number, stepMs?: number): MinuteSample[];
   /** Deletes the minutes before `before`. Resolves with how many. */
   pruneSamples(before: number): number;
+  /** When each VM that was up between `from` and `to` was cloned and deleted, and its kind. */
+  vmTimes(
+    from: number,
+    to: number,
+  ): { pool: 'linux' | 'macos'; startedAt: number; endedAt: number }[];
 }
 
 /** Steps of minutes gathered into fewer: averages averaged, peaks kept. */
-function gather(minutes: readonly MinuteSample[], stepMs: number): MinuteSample[] {
+function gather(minutes: readonly MinuteSample[], from: number, stepMs: number): MinuteSample[] {
   const steps = new Map<number, MinuteSample[]>();
   for (const minute of minutes) {
-    const at = Math.floor(minute.at / stepMs) * stepMs;
+    // Steps begin at `from`: a day's steps at the Mac's midnight, not at UTC's.
+    const at = from + Math.floor((minute.at - from) / stepMs) * stepMs;
     const step = steps.get(at);
     if (step) step.push(minute);
     else steps.set(at, [minute]);
@@ -155,8 +161,9 @@ export class MemoryHistory implements History {
   #entries: DoneView[];
   #samples: MinuteSample[] = [];
 
-  constructor(entries: DoneView[] = []) {
+  constructor(entries: DoneView[] = [], samples: MinuteSample[] = []) {
     this.#entries = [...entries].sort((a, b) => a.endedAt - b.endedAt);
+    this.#samples = [...samples].sort((a, b) => a.at - b.at);
   }
 
   add(entry: DoneView): void {
@@ -241,8 +248,18 @@ export class MemoryHistory implements History {
   samples(from: number, to: number, stepMs = MINUTE_MS): MinuteSample[] {
     return gather(
       this.#samples.filter((one) => one.at >= from && one.at < to),
+      from,
       wholeMinutes(stepMs),
     );
+  }
+
+  vmTimes(
+    from: number,
+    to: number,
+  ): { pool: 'linux' | 'macos'; startedAt: number; endedAt: number }[] {
+    return this.#entries
+      .filter((entry) => entry.endedAt >= from && entry.startedAt < to)
+      .map((entry) => ({ pool: entry.pool, startedAt: entry.startedAt, endedAt: entry.endedAt }));
   }
 
   pruneSamples(before: number): number {
@@ -421,10 +438,11 @@ export class SqliteHistory implements History {
     const rows = this.#db
       .prepare(
         // `%` works on whole numbers in SQLite, whatever type a parameter comes as.
-        `SELECT at - at % ? AS step_at, ${picks.join(', ')} FROM samples
+        // Steps begin at `from`: a day's steps at the Mac's midnight, not at UTC's.
+        `SELECT at - (at - ?) % ? AS step_at, ${picks.join(', ')} FROM samples
           WHERE at >= ? AND at < ? GROUP BY step_at ORDER BY step_at`,
       )
-      .all(step, from, to) as Record<string, number>[];
+      .all(from, step, from, to) as Record<string, number>[];
     return rows.map((row) => {
       const sample = { at: Number(row['step_at']) } as MinuteSample;
       for (const series of SERIES) {
@@ -437,6 +455,20 @@ export class SqliteHistory implements History {
 
   pruneSamples(before: number): number {
     return Number(this.#pruneSamples.run(before).changes);
+  }
+
+  vmTimes(
+    from: number,
+    to: number,
+  ): { pool: 'linux' | 'macos'; startedAt: number; endedAt: number }[] {
+    const rows = this.#db
+      .prepare('SELECT pool, started_at, ended_at FROM jobs WHERE ended_at >= ? AND started_at < ?')
+      .all(from, to) as { pool: 'linux' | 'macos'; started_at: number; ended_at: number }[];
+    return rows.map((row) => ({
+      pool: row.pool,
+      startedAt: Number(row.started_at),
+      endedAt: Number(row.ended_at),
+    }));
   }
 
   add(entry: DoneView): void {

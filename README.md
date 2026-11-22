@@ -31,8 +31,9 @@ how it keeps your Mac and your network out of a job's reach.
 - **A dashboard**: one line that says what needs you, a timeline of the last hour's VMs, the
   Mac's CPU, memory and disk, and every job of the past year, with its log while GitHub
   keeps it. On the Mac itself, or on your Tailscale tailnet if you want it there, and as an
-  app in the Dock or on a phone. A Usage view counts the minutes run, with other providers'
-  list prices beside them for reference.
+  app in the Dock or on a phone. A History view goes back over the Mac's CPU, memory,
+  network and disk as far as they are kept, and a Usage view counts the minutes run, with
+  other providers' list prices beside them for reference.
 - **In the menu bar, if you want it.** `brew install --cask zurfyx/tap/minitart-app` adds a
   menu bar app that shows whether minitart is busy or needs you, and installs minitart with
   it.

@@ -1,7 +1,7 @@
 // The dashboard's charts, in plain SVG (D23). Everything named in them came from GitHub or
 // from Tart, so it reaches the page through text nodes only.
 
-import { timeTicks } from './view.js';
+import { dateTicks, timeTicks } from './view.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -56,7 +56,7 @@ function placeTip(tip, x, width) {
  */
 export function areaChart(
   root,
-  { from, to, times, series, min = 0, max, ticks, format, height, label },
+  { from, to, times, series, min = 0, max, ticks, format, height, label, dates = false, gapMs },
 ) {
   sized(root, (width) => {
     // Room on the left for the longest tick label, whatever its unit.
@@ -86,32 +86,47 @@ export function areaChart(
         ),
       );
     }
-    for (const tick of timeTicks(minutes, w)) {
-      const anchor = tick.ago === minutes ? 'start' : tick.ago === 0 ? 'end' : 'middle';
+    // An hour reads as minutes ago; a longer range, as hours, days or months by the calendar.
+    const axis = dates
+      ? dateTicks(from, to, w).map((tick) => ({ at: tick.at, label: tick.label }))
+      : timeTicks(minutes, w).map((tick) => ({ at: to - tick.ago * 60_000, label: tick.label }));
+    for (const tick of axis) {
+      const near = (edge) => Math.abs(x(tick.at) - x(edge)) < 24;
+      const anchor = near(from) ? 'start' : near(to) ? 'end' : 'middle';
       svg.append(
         s(
           'text',
-          { x: x(to - tick.ago * 60_000), y: height - 4, class: 'tick', 'text-anchor': anchor },
+          { x: x(tick.at), y: height - 4, class: 'tick', 'text-anchor': anchor },
           tick.label,
         ),
       );
     }
     const stacks = [];
+    // Runs of points with no gap longer than `gapMs` between them: nothing is drawn across a
+    // time nothing was kept (the Mac off, minitart stopped).
+    const runs = [];
+    for (let i = 0; i < times.length; i++) {
+      if (i === 0 || (gapMs && times[i] - times[i - 1] > gapMs)) runs.push([]);
+      runs.at(-1).push(i);
+    }
     if (times.length > 1) {
       let below = times.map(() => 0);
       for (const one of series) {
         const top = one.values.map((value, index) => below[index] + value);
         stacks.push(top);
-        const line = top
-          .map((v, i) => `${i ? 'L' : 'M'}${x(times[i]).toFixed(1)},${y(v).toFixed(1)}`)
-          .join('');
-        let back = '';
-        for (let i = below.length - 1; i >= 0; i--)
-          back += `L${x(times[i]).toFixed(1)},${y(below[i]).toFixed(1)}`;
-        svg.append(
-          s('path', { d: `${line}${back}Z`, class: `area ${one.color}` }),
-          s('path', { d: line, class: `line ${one.color}` }),
-        );
+        for (const run of runs) {
+          const line = run
+            .map((i, k) => `${k ? 'L' : 'M'}${x(times[i]).toFixed(1)},${y(top[i]).toFixed(1)}`)
+            .join('');
+          let back = '';
+          for (const i of [...run].reverse()) {
+            back += `L${x(times[i]).toFixed(1)},${y(below[i]).toFixed(1)}`;
+          }
+          svg.append(
+            s('path', { d: `${line}${back}Z`, class: `area ${one.color}` }),
+            s('path', { d: line, class: `line ${one.color}` }),
+          );
+        }
         below = top;
       }
     }
@@ -143,25 +158,37 @@ export function areaChart(
       });
       const total = series.reduce((sum, one) => sum + one.values[index], 0);
       const minutesAgo = Math.round((to - times[index]) / 60_000);
+      const when = new Date(times[index]);
       tip.replaceChildren(
         h(
           'div',
           { class: 'tip-time' },
-          minutesAgo === 0 ? 'now' : `${minutesAgo} min ago`,
-          ' · ',
-          new Date(times[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          dates
+            ? when.toLocaleString([], {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : [
+                minutesAgo === 0 ? 'now' : `${minutesAgo} min ago`,
+                ' · ',
+                when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              ],
         ),
-        ...[...series]
-          .reverse()
-          .map((one) =>
-            h(
-              'div',
-              { class: 'tip-row' },
-              h('span', { class: `key ${one.color}` }),
-              h('strong', { class: 'num' }, format(one.values[index])),
-              h('span', { class: 'muted' }, one.name),
-            ),
+        ...[...series].reverse().map((one) =>
+          h(
+            'div',
+            { class: 'tip-row' },
+            h('span', { class: `key ${one.color}` }),
+            h('strong', { class: 'num' }, format(one.values[index])),
+            h('span', { class: 'muted' }, one.name),
+            // Over a step of many minutes: its peak, which an average hides.
+            ...(one.peaks
+              ? [h('span', { class: 'muted' }, `peak ${format(one.peaks[index])}`)]
+              : []),
           ),
+        ),
         // A total only where there is more than one part to add up.
         ...(series.length > 1
           ? [

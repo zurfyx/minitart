@@ -37,5 +37,7 @@ little disk. Jobs stay kept a year (D24).
   not say whose an interface is.
 - An interface first seen (a VM just started), or whose count went back, counts from its
   next point, as a VM's CPU time does.
-- The view that goes back in time (the History view) reads these minutes, gathered into
-  steps that fit its range.
+- The History view goes back in time over them: a day, 7, 30 or 90 days or a year at a time,
+  stepping earlier and later, the minutes gathered into steps that fit the range (at most
+  360 points), each step's average drawn and its peak in the tooltip. Its steps begin at the
+  Mac's midnight. Its VMs chart comes from the jobs kept (D24), so it goes back a year.

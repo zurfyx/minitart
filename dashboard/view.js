@@ -140,4 +140,56 @@ export function timeTicks(minutes, width) {
   return ticks;
 }
 
+const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
+/** The gaps a dated axis can have between its ticks, smallest first. */
+const DATE_STEPS = [
+  { ms: HOUR_MS, unit: 'hour', every: 1 },
+  { ms: 3 * HOUR_MS, unit: 'hour', every: 3 },
+  { ms: 6 * HOUR_MS, unit: 'hour', every: 6 },
+  { ms: 12 * HOUR_MS, unit: 'hour', every: 12 },
+  { ms: DAY_MS, unit: 'day', every: 1 },
+  { ms: 2 * DAY_MS, unit: 'day', every: 2 },
+  { ms: 7 * DAY_MS, unit: 'day', every: 7 },
+  { ms: 14 * DAY_MS, unit: 'day', every: 14 },
+  { ms: 31 * DAY_MS, unit: 'month', every: 1 },
+  { ms: 92 * DAY_MS, unit: 'month', every: 3 },
+];
+
+/**
+ * Ticks for a time axis from `from` to `to`, by the calendar of the page: whole hours, days
+ * or months, as many as `width` has room for. Each is `{ at, label }`.
+ */
+export function dateTicks(from, to, width) {
+  const most = Math.max(2, Math.floor(width / 90));
+  const step = DATE_STEPS.find((one) => (to - from) / one.ms <= most) ?? DATE_STEPS.at(-1);
+  const first = new Date(from);
+  if (step.unit === 'hour') {
+    first.setMinutes(0, 0, 0);
+    first.setHours(Math.ceil(first.getHours() / step.every) * step.every);
+  } else {
+    first.setHours(0, 0, 0, 0);
+    if (step.unit === 'month') first.setDate(1);
+  }
+  const ticks = [];
+  for (const at = new Date(first); at.getTime() <= to;) {
+    if (at.getTime() >= from) {
+      const label =
+        step.unit === 'hour'
+          ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : step.unit === 'day'
+            ? at.toLocaleDateString([], { day: 'numeric', month: 'short' })
+            : at.toLocaleDateString([], {
+                month: 'short',
+                ...(at.getMonth() === 0 ? { year: 'numeric' } : {}),
+              });
+      ticks.push({ at: at.getTime(), label });
+    }
+    if (step.unit === 'hour') at.setHours(at.getHours() + step.every);
+    else if (step.unit === 'day') at.setDate(at.getDate() + step.every);
+    else at.setMonth(at.getMonth() + step.every);
+  }
+  return ticks;
+}
+
 export const GB = 1024 ** 3;

@@ -3,6 +3,7 @@
 
 import type { DoneView, VmView } from './manager.ts';
 import { POINTS, STEP_MS, type ResourcePoint, type ResourcesView } from './resources.ts';
+import { SERIES, type MinuteSample } from './samples.ts';
 import type { Machine } from './settings.ts';
 import type { Job } from './github/types.ts';
 import { FakeGitHub, FakeTart } from './testing/fakes.ts';
@@ -59,6 +60,8 @@ export function demoWorld(machine: Machine): {
   github: FakeGitHub;
   tart: FakeTart;
   history: DoneView[];
+  /** Ninety days of the charts' minutes, for the History view. */
+  samples: MinuteSample[];
   resources: (vms: () => VmView[]) => DemoResources;
   stop: () => void;
 } {
@@ -175,6 +178,39 @@ export function demoWorld(machine: Machine): {
       endedAt: at(ended),
     });
   }
+  // And the ninety days before those: work on weekdays, by day, little at weekends.
+  const DAY = 24 * 60 * 60_000;
+  for (let day = 4; day < 90; day++) {
+    const date = new Date(now - day * DAY);
+    const weekend = date.getDay() === 0 || date.getDay() === 6;
+    const jobs = weekend ? 4 : 28 + ((day * 7) % 17);
+    for (let n = 0; n < jobs; n++) {
+      const work = WORK[(day + n) % WORK.length];
+      if (!work) continue;
+      const pool = work[1] === 'minitart-macos' ? ('macos' as const) : ('linux' as const);
+      const start = new Date(date);
+      start.setHours(9, 0, 0, 0);
+      const took = start.getTime() + ((n * 37 + day * 11) % 600) * 60_000;
+      const ended = took + work[4] * 1000 * (0.8 + ((n + day) % 5) * 0.1);
+      history.push({
+        vm: `minitart-${pool}-${(0xc00000 + day * 4096 + n).toString(16)}`,
+        repo: work[0],
+        pool,
+        job: {
+          id: null,
+          name: work[3],
+          workflow: work[2],
+          url: '',
+          actor: ACTORS[n % ACTORS.length] ?? 'mona',
+        },
+        conclusion: n % 13 === 4 ? 'failure' : n % 31 === 9 ? 'cancelled' : 'success',
+        startedAt: took - 36_000,
+        jobAt: took,
+        queuedAt: took - 20_000,
+        endedAt: Math.round(ended),
+      });
+    }
+  }
   // Oldest first, as the manager keeps it.
   history.sort((a, b) => a.endedAt - b.endedAt);
 
@@ -234,6 +270,27 @@ export function demoWorld(machine: Machine): {
       ),
     };
   };
+  // The charts' minutes for those ninety days: what the VMs up in each minute would have used.
+  const samples: MinuteSample[] = [];
+  const byStart = [...history].sort((a, b) => a.startedAt - b.startedAt);
+  let started = 0;
+  let up: { createdAt: number; jobAt: number | null; endedAt: number }[] = [];
+  const firstMinute = Math.floor((now - 90 * DAY) / 60_000) * 60_000;
+  for (let minute = firstMinute; minute < now - (POINTS - 1) * STEP_MS; minute += 60_000) {
+    while (started < byStart.length && (byStart[started]?.startedAt ?? Infinity) <= minute) {
+      const entry = byStart[started++];
+      if (entry)
+        up.push({ createdAt: entry.startedAt, jobAt: entry.jobAt ?? null, endedAt: entry.endedAt });
+    }
+    up = up.filter((vm) => vm.endedAt > minute);
+    const one = point(minute, up);
+    const sample = { at: minute } as MinuteSample;
+    for (const series of SERIES) {
+      sample[series] = one[series];
+      sample[`${series}Max`] = Math.round(one[series] * 1.25 * 10) / 10;
+    }
+    samples.push(sample);
+  }
   for (let time = now - (POINTS - 1) * STEP_MS; time <= now; time += STEP_MS) {
     const vms = history
       .filter((entry) => entry.startedAt <= time && entry.endedAt > time)
@@ -255,6 +312,7 @@ export function demoWorld(machine: Machine): {
     github,
     tart,
     history,
+    samples,
     resources: (vms) => ({
       view: () => ({
         stepMs: STEP_MS,

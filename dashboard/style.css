@@ -240,6 +240,32 @@ select {
   fill: var(--viz-macos);
 }
 
+/* The History view's VMs, by kind, as areas. */
+.area.linux {
+  fill: var(--viz-linux);
+  fill-opacity: 0.2;
+}
+.line.linux {
+  stroke: var(--viz-linux);
+}
+.dot.linux {
+  fill: var(--viz-linux);
+}
+.area.macos {
+  fill: var(--viz-macos);
+  fill-opacity: 0.2;
+}
+.line.macos {
+  stroke: var(--viz-macos);
+}
+.dot.macos {
+  fill: var(--viz-macos);
+}
+
+.history-pager {
+  margin: -8px 0 8px;
+}
+
 .column {
   outline: none;
 }

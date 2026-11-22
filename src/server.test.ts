@@ -164,6 +164,17 @@ test('the page and its state are served, with a policy that allows no outside sc
     results: Record<string, number>;
   };
   assert.deepEqual([today.total, today.results], [0, {}]);
+  // The History view's ranges, checked before they reach the history.
+  for (const bad of ['days=2', 'days=x', 'days=7&end=-1', 'days=7&end=1.5']) {
+    assert.equal((await fetch(`${origin}/api/history?${bad}`)).status, 400, bad);
+  }
+  const past = (await (await fetch(`${origin}/api/history?days=7`)).json()) as {
+    days: number;
+    stepMs: number;
+    to: number;
+    from: number;
+  };
+  assert.deepEqual([past.days, past.stepMs, past.to - past.from], [7, 30 * 60_000, 7 * 86_400_000]);
   const usage = (await (await fetch(`${origin}/api/usage?days=7`)).json()) as {
     days: number;
     usage: unknown[];
