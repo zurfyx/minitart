@@ -217,18 +217,22 @@ function render() {
         clock(Date.parse(job.createdAt)),
       ),
     ),
-    ...done
-      .slice(0, 10)
-      .map((job) =>
-        row(
-          status(job.conclusion),
-          jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool, null, job.job.actor),
-          h('span', { class: 'muted num' }, ago(state.now - job.endedAt)),
-          job.job.id !== null
-            ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
-            : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
+    ...done.slice(0, 10).map((job) =>
+      row(
+        status(job.conclusion),
+        jobCell(jobName(job.job), job.repo, job.job.workflow, job.pool, null, job.job.actor),
+        // How long it took, as a running job shows how long it has run, and when it ended.
+        h(
+          'span',
+          { class: 'num' },
+          duration(job.endedAt - (job.jobAt ?? job.startedAt)),
+          h('span', { class: 'muted' }, ` · ${ago(state.now - job.endedAt)}`),
         ),
+        job.job.id !== null
+          ? logButton({ kind: 'job', id: job.job.id, title: `${job.job.name} · ${job.repo}` })
+          : logButton({ kind: 'vm', name: job.vm, title: job.vm }),
       ),
+    ),
   ];
   $('jobs').replaceChildren(...(jobs.length ? jobs : [empty('No job has run yet.')]));
   // The Usage view's numbers can come before the state it also needs: drawn once both are in.
