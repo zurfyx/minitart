@@ -64,6 +64,9 @@ node scripts/release-app.mjs plan   # what a push to main would release of the a
   Node's standard library. A development dependency needs a reason.
 - **Only erasable TypeScript** (D07): no enums, parameter properties or namespaces. Imports
   name the `.ts` file.
+- **The demo is a host, not a branch.** `--demo` picks the made-up Mac once, in `main.ts`
+  (`demoMac`, beside `thisMac`); the site's demo runs `src/api.ts` in the browser (D28).
+  The manager, the server, the API and the dashboard do not ask whether it is a demo.
 - **The security rules are code rules** (D01, D03, D04):
   - A VM is started only through `src/tart.ts`, which never passes `--dir` and always passes
     the network it was given. No code path shares a folder with a VM.

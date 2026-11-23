@@ -14,10 +14,10 @@ import { GitHubClient } from './github/client.ts';
 import type { GitHub } from './github/types.ts';
 import { Home } from './home.ts';
 import { buildImage, latestRunner, UPSTREAM, type BuiltImage } from './image.ts';
-import { Manager, type LogLine } from './manager.ts';
+import { Manager, type LogLine, type VmView } from './manager.ts';
 import { KEEP_MS, MemoryHistory, openHistory, type History } from './history.ts';
 import { readMemory, type Memory } from './memory.ts';
-import { liveResources, STEP_MS } from './resources.ts';
+import { liveResources, STEP_MS, type Resources } from './resources.ts';
 import { asPoint, Minutes } from './samples.ts';
 import { defaultGateway, hostAddresses, listening, selftest } from './selftest.ts';
 import { createDashboardServer } from './server.ts';
@@ -156,28 +156,83 @@ function printChecks(checks: readonly Check[]): boolean {
   return checks.every((check) => check.ok || check.optional);
 }
 
-async function start(flags: { port: number; network: Network; demo: boolean }): Promise<void> {
-  const demo = flags.demo ? demoWorld(machine) : null;
-  const home = demo ? null : new Home();
-  const tart: Tart = demo?.tart ?? new TartCli();
-  let app = home ? loadApp(home) : null;
-  // What goes wrong before the manager exists is said once it does, so the dashboard shows it.
-  const early: string[] = [];
-  let say: ((text: string) => void) | null = null;
-  let lastWarning = '';
-  const warn = (text: string) => {
-    // The same trouble every poll is said once.
-    if (text === lastWarning) return;
-    lastWarning = text;
-    if (say) say(text);
-    else early.push(text);
-  };
+/** The charts' points, of this Mac or of the demo's. */
+type Charts = Pick<Resources, 'view' | 'sample'> & { seed?: Resources['seed'] };
+
+/**
+ * What `start` runs on: this Mac, or the demo's made-up one. `start` picks one, from `--demo`,
+ * and runs either without asking which. Each is a plain function: none relies on `this`.
+ */
+interface Host {
+  tart: Tart;
+  /** The GitHub App, once it exists. */
+  app: () => AppCredentials | null;
+  /** GitHub, through the App. */
+  github: () => GitHub | null;
+  /** Keeps the App the dashboard's setup created, and uses it from then on. */
+  saveApp: (app: AppCredentials) => void;
+  settings: Settings;
+  saveSettings: (settings: Settings) => void;
+  /** The jobs that ran and the charts' minutes (D24, D27). */
+  history: History;
+  /** What the checks found when they last ran. */
+  health: () => Check[];
+  /** Runs the checks again. */
+  check: () => Promise<void>;
+  /** Why no VM may start now, or null (D04, D21). */
+  blocked: () => string | null;
+  /** What macOS had to spare when last read. */
+  memory: () => Memory | null;
+  /** Reads what macOS has to spare again. */
+  readMemory: () => Promise<void>;
+  charts: Charts;
+  /** Writes a line a VM printed, as it comes. */
+  vmLog?: (vm: string, line: string) => void;
+  /** A VM's output once the VM is gone, its last `maxBytes`. */
+  vmLogFile: (name: string, maxBytes: number) => string | null;
+  /** What the VM logs take. */
+  logs: () => { files: number; bytes: number };
+  /** minitart's own log files, and what each takes. */
+  ownLogs: () => { path: string; bytes: number }[];
+  /** Deletes the older VM logs, keeping those of `keep`. */
+  pruneLogs: (keep: ReadonlySet<string>) => void;
+  /** The name the page shows, when not the Mac's own. */
+  machineName?: string;
+  /** What to say once the dashboard listens, if anything. */
+  greeting: () => string | null;
+  stop: () => void;
+}
+
+/**
+ * What a host asks of `start` once it runs: the manager's settings and VMs, and the tailnet
+ * names. The manager is made after the host, so none of it may be asked for while the host is
+ * being made.
+ */
+interface Started {
+  settings: () => Settings;
+  vms: () => VmView[];
+  tailnet: () => readonly TailnetName[];
+}
+
+/** This Mac: its Tart, its GitHub App, `~/.minitart`, its checks, memory and charts. */
+function thisMac(options: {
+  network: Network;
+  running: Started;
+  /** Said on the dashboard once the manager exists, the same trouble once. */
+  warn: (text: string) => void;
+  /** Said on the dashboard once the manager exists. */
+  note: (text: string) => void;
+}): Host {
+  const { network, running } = options;
+  const home = new Home();
+  const tart = new TartCli();
+  let app = loadApp(home);
   const connect = (credentials: AppCredentials) =>
-    new GitHubClient(new AppAuth(credentials, fetch, Date.now, warn));
-  let github: GitHub | null = demo?.github ?? (app ? connect(app) : null);
+    new GitHubClient(new AppAuth(credentials, fetch, Date.now, options.warn));
+  let github: GitHub | null = app ? connect(app) : null;
   // An App can be renamed on GitHub, which changes its address: the saved one is refreshed.
   const refreshApp = async () => {
-    if (!app || !home) return;
+    if (!app) return;
     const now = await appIdentity(app).catch(() => null);
     if (now === null || (now.slug === app.slug && now.htmlUrl === app.htmlUrl)) return;
     app = { ...app, ...now };
@@ -185,22 +240,169 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   };
   // A link that stays stale is the worst of it: nothing here may stop minitart starting.
   refreshApp().catch(() => {});
-  let health: Check[] = [];
 
-  const stamp = (at: number) => new Date(at).toISOString();
-  // The jobs that ran, a year of them (D24). The demo's are made up, and kept in memory.
+  // The jobs that ran, a year of them (D24).
   let history: History;
   try {
-    history = home
-      ? openHistory(home.dir, (text) => early.push(text))
-      : new MemoryHistory(demo?.history ?? [], demo?.samples ?? []);
+    history = openHistory(home.dir, options.note);
   } catch (error) {
     // A damaged file must not stop the jobs: they run, and are remembered until a restart.
-    early.push(
+    options.note(
       `Could not open history.db (${(error as Error).message}): jobs are kept in memory until it is moved aside`,
     );
     history = new MemoryHistory();
   }
+
+  let health: Check[] = [];
+  let checking = false;
+  let newest: string | null = null;
+  let latestVersion: string | null = null;
+  let newestAt = 0;
+  const check = async (): Promise<void> => {
+    // One at a time: each check runs a few commands.
+    if (checking) return;
+    checking = true;
+    try {
+      // GitHub's newest runner version is asked for once a day.
+      if (Date.now() - newestAt > 24 * 60 * 60_000) {
+        latestVersion = await newestMinitart();
+        newest = await newestRunner();
+        newestAt = Date.now();
+      }
+      health = await runChecks({
+        network,
+        settings: running.settings(),
+        images: await images(tart, running.settings()),
+        hasApp: app !== null,
+        runners: { have: builtRunners(home), latest: newest },
+        versions: { running: VERSION, latest: latestVersion },
+        tailnet: running.tailnet(),
+        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
+      });
+    } finally {
+      checking = false;
+    }
+  };
+
+  let memory: Memory | null = null;
+  let readingFree = false;
+  const readMemoryNow = async () => {
+    // One at a time: a slow answer must not arrive after a newer one and replace it.
+    if (readingFree) return;
+    readingFree = true;
+    try {
+      memory = await readMemory();
+    } finally {
+      readingFree = false;
+    }
+  };
+
+  return {
+    tart,
+    app: () => app,
+    github: () => github,
+    saveApp: (created) => {
+      home.writeJson('app.json', created);
+      app = created;
+      github = connect(created);
+      check().catch((error: unknown) => console.error(error));
+    },
+    settings: loadSettings(home, options.note),
+    saveSettings: (settings) => {
+      home.writeJson('settings.json', settings);
+      // The health line follows a settings change without waiting a minute.
+      check().catch((error: unknown) => console.error(error));
+    },
+    history,
+    health: () => health,
+    check,
+    blocked: () => blockedBy(health, network),
+    memory: () => memory,
+    readMemory: readMemoryNow,
+    charts: liveResources({
+      cores: machine.cpus,
+      memoryBytes: machine.memoryBytes,
+      availableMb: () => memory?.availableMb ?? null,
+      images: () => [running.settings().linux.image, running.settings().macos.image],
+    }),
+    vmLog: (vm, line) => home.appendLog(`${vm}.log`, line),
+    vmLogFile: (name, maxBytes) => home.readLog(`${name}.log`, maxBytes),
+    logs: () => home.logsUsage(),
+    // Where the service writes: Homebrew's log folder, or the folder of `service install`.
+    ownLogs: () =>
+      [
+        '/opt/homebrew/var/log/minitart.log',
+        '/usr/local/var/log/minitart.log',
+        home.path('logs', 'manager.log'),
+      ].flatMap((path) => {
+        try {
+          return [{ path, bytes: statSync(path).size }];
+        } catch {
+          return [];
+        }
+      }),
+    pruneLogs: (keep) => home.pruneLogs(KEPT_VM_LOGS, keep),
+    greeting: () => (app ? null : 'open it on this Mac to create the GitHub App.'),
+    stop: () => {},
+  };
+}
+
+/**
+ * The demo's made-up Mac (`--demo`): a GitHub and a Tart in memory, made-up jobs and charts.
+ * Nothing of this Mac is read or written (but the tailnet names, which `start` reads), and it
+ * has nothing to isolate, so nothing blocks.
+ */
+function demoMac(running: Started): Host {
+  const demo = demoWorld(machine);
+  return {
+    tart: demo.tart,
+    app: () => null,
+    github: () => demo.github,
+    saveApp: () => {},
+    settings: demoSettings(machine),
+    saveSettings: () => {},
+    history: new MemoryHistory(demo.history, demo.samples),
+    health: () => [],
+    check: async () => {},
+    blocked: () => null,
+    memory: () => null,
+    readMemory: async () => {},
+    charts: demo.resources(running.vms),
+    vmLogFile: () => null,
+    logs: () => ({ files: 0, bytes: 0 }),
+    ownLogs: () => [],
+    pruneLogs: () => {},
+    machineName: 'mac-mini.local',
+    greeting: () => null,
+    stop: () => demo.stop(),
+  };
+}
+
+async function start(flags: { port: number; network: Network; demo: boolean }): Promise<void> {
+  // What goes wrong before the manager exists is said once it does, so the dashboard shows it.
+  const early: string[] = [];
+  let say: ((text: string) => void) | null = null;
+  const note = (text: string) => (say ? say(text) : early.push(text));
+  let lastWarning = '';
+  const warn = (text: string) => {
+    // The same trouble every poll is said once.
+    if (text === lastWarning) return;
+    lastWarning = text;
+    note(text);
+  };
+  let tailnet: TailnetName[] = [];
+  // The manager is made with what the host has, and the host asks it back.
+  const running: Started = {
+    settings: () => manager.settings,
+    vms: () => manager.snapshot().vms,
+    tailnet: () => tailnet,
+  };
+  const host = flags.demo
+    ? demoMac(running)
+    : thisMac({ network: flags.network, running, warn, note });
+  const { history, charts } = host;
+
+  const stamp = (at: number) => new Date(at).toISOString();
   const pruneHistory = () => {
     try {
       history.prune(Date.now() - KEEP_MS);
@@ -212,58 +414,21 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     }
   };
   const manager = new Manager({
-    // The demo has no Mac to isolate anything from.
-    blocked: () => (demo ? null : blockedBy(health, flags.network)),
-    memory: () => memory,
-    github: () => github,
-    tart,
+    blocked: host.blocked,
+    memory: host.memory,
+    github: host.github,
+    tart: host.tart,
     network: flags.network,
-    settings: home ? loadSettings(home, (text) => early.push(text)) : demoSettings(machine),
-    saveSettings: (settings) => {
-      home?.writeJson('settings.json', settings);
-      // The health line follows a settings change without waiting a minute.
-      check().catch((error: unknown) => console.error(error));
-    },
+    settings: host.settings,
+    saveSettings: host.saveSettings,
     history,
-    vmLog: (vm, line) => home?.appendLog(`${vm}.log`, line),
+    ...(host.vmLog ? { vmLog: host.vmLog } : {}),
     log: (line: LogLine) =>
       console.log(`${stamp(line.at)} ${line.level === 'warn' ? 'WARN ' : ''}${line.text}`),
   });
   say = (text) => manager.warn(text);
   for (const text of early) say(text);
 
-  let checking = false;
-  let tailnet: TailnetName[] = [];
-  let memory: Memory | null = null;
-  let newest: string | null = null;
-  let latestVersion: string | null = null;
-  let newestAt = 0;
-  async function check(): Promise<void> {
-    // One at a time: each check runs a few commands.
-    if (demo || checking) return;
-    checking = true;
-    try {
-      if (demo) return;
-      // GitHub's newest runner version is asked for once a day.
-      if (Date.now() - newestAt > 24 * 60 * 60_000) {
-        latestVersion = await newestMinitart();
-        newest = await newestRunner();
-        newestAt = Date.now();
-      }
-      health = await runChecks({
-        network: flags.network,
-        settings: manager.settings,
-        images: await images(tart, manager.settings),
-        hasApp: app !== null,
-        runners: { have: home ? builtRunners(home) : {}, latest: newest },
-        versions: { running: VERSION, latest: latestVersion },
-        tailnet,
-        fromBrew: installKind(fileURLToPath(import.meta.url)).kind === 'brew',
-      });
-    } finally {
-      checking = false;
-    }
-  }
   // The tailnet names are read on their own, so nothing else that is slow can keep a name
   // that has just been published to the internet answered for longer.
   const readNames = async () => {
@@ -271,96 +436,55 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
   };
   await readNames();
   const everyHalfMinute = setInterval(() => void readNames(), 30_000);
-  // What macOS has to spare is read as often as the queue is, and never in the demo.
-  let readingFree = false;
-  const readFree = async () => {
-    // One at a time: a slow answer must not arrive after a newer one and replace it.
-    if (demo || readingFree) return;
-    readingFree = true;
-    try {
-      memory = await readMemory();
-    } finally {
-      readingFree = false;
-    }
-  };
-  await readFree();
-  const everyFewSeconds = setInterval(() => void readFree(), 5000);
-  // The charts' points: CPU, memory and disk, every ten seconds (D23).
-  const resources = demo
-    ? demo.resources(() => manager.snapshot().vms)
-    : liveResources({
-        cores: machine.cpus,
-        memoryBytes: machine.memoryBytes,
-        availableMb: () => memory?.availableMb ?? null,
-        images: () => [manager.settings.linux.image, manager.settings.macos.image],
-      });
+  // What macOS has to spare is read as often as the queue is.
+  await host.readMemory();
+  const everyFewSeconds = setInterval(() => void host.readMemory(), 5000);
   // The hour before a restart, from the minutes kept, so the charts do not start empty.
   try {
     const now = Date.now();
-    resources.seed?.(history.samples(now - 60 * 60_000, now).map(asPoint));
+    charts.seed?.(history.samples(now - 60 * 60_000, now).map(asPoint));
   } catch (error) {
     console.error(error);
   }
-  // Each minute of points is kept, its average and its peak, for the History view.
+  // The charts' points every ten seconds (D23), and each minute of them kept, its average and
+  // its peak, for the History view (D27).
   const minutes = new Minutes();
-  const sampleResources = () =>
-    resources
+  const sampleCharts = () =>
+    charts
       .sample()
       .then(() => {
-        const newest = resources.view().points.at(-1);
+        const newest = charts.view().points.at(-1);
         const minute = newest ? minutes.add(newest) : null;
         if (minute) history.addSample(minute);
       })
       .catch((error: unknown) => console.error(error));
-  void sampleResources();
-  const everyTenSeconds = setInterval(() => void sampleResources(), STEP_MS);
-  await check();
-  const prune = () =>
-    home?.pruneLogs(KEPT_VM_LOGS, new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
+  void sampleCharts();
+  const everyTenSeconds = setInterval(() => void sampleCharts(), STEP_MS);
+  await host.check();
+  const prune = () => host.pruneLogs(new Set(manager.snapshot().vms.map((vm) => `${vm.name}.log`)));
   prune();
   pruneHistory();
   const everyMinute = setInterval(() => {
     // A check that throws is tried again in a minute; it must not stop the manager.
-    check().catch((error: unknown) => console.error(error));
+    host.check().catch((error: unknown) => console.error(error));
     prune();
     pruneHistory();
   }, 60_000);
 
   const server = createDashboardServer({
     manager,
-    github: () => github,
-    app: () => app,
-    saveApp: (created) => {
-      home?.writeJson('app.json', created);
-      app = created;
-      github = connect(created);
-      check().catch((error: unknown) => console.error(error));
-    },
-    health: () => health,
-    resources: () => resources.view(),
+    github: host.github,
+    app: host.app,
+    saveApp: host.saveApp,
+    health: host.health,
+    resources: () => charts.view(),
     history,
-    vmLogFile: (name, maxBytes) => home?.readLog(`${name}.log`, maxBytes) ?? null,
-    // Where the service writes: Homebrew's log folder, or the folder of `service install`.
-    ownLogs: () =>
-      // The demo writes no log of its own, and shows none of the Mac's.
-      (home
-        ? [
-            '/opt/homebrew/var/log/minitart.log',
-            '/usr/local/var/log/minitart.log',
-            home.path('logs', 'manager.log'),
-          ]
-        : []
-      ).flatMap((path) => {
-        try {
-          return [{ path, bytes: statSync(path).size }];
-        } catch {
-          return [];
-        }
-      }),
-    logs: () => ({ ...(home?.logsUsage() ?? { files: 0, bytes: 0 }), kept: KEPT_VM_LOGS }),
+    vmLogFile: host.vmLogFile,
+    ownLogs: host.ownLogs,
+    logs: () => ({ ...host.logs(), kept: KEPT_VM_LOGS }),
     tailnet: () => tailnet,
     machine,
-    ...(demo ? { machineName: 'mac-mini.local' } : {}),
+    ...(host.machineName === undefined ? {} : { machineName: host.machineName }),
     port: flags.port,
     dashboardDir: fileURLToPath(new URL('../dashboard/', import.meta.url)),
   });
@@ -372,7 +496,8 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     if (flags.network === 'shared') {
       console.log('minitart: WARNING: --unsafe-shared-network lets jobs reach your LAN.');
     }
-    if (!demo && !app) console.log('minitart: open it on this Mac to create the GitHub App.');
+    const greeting = host.greeting();
+    if (greeting) console.log(`minitart: ${greeting}`);
   });
 
   let stopping = false;
@@ -391,7 +516,7 @@ async function start(flags: { port: number; network: Network; demo: boolean }): 
     } catch (error) {
       console.error(error);
     }
-    demo?.stop();
+    host.stop();
     server.close();
     server.closeAllConnections();
     void manager.stop().then(() => process.exit(0));
